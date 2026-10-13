@@ -1,0 +1,50 @@
+{
+  "name": "Chatwoot",
+  "id": "chatwoot",
+  "available": true,
+  "port": 8284,
+  "exposable": true,
+  "force_expose": true,
+  "https": true,
+  "dynamic_config": true,
+  "min_tipi_version": "4.0.0",
+  "tipi_version": 1,
+  "version": "latest-ce",
+  "categories": [
+    "utilities"
+  ],
+  "short_desc": "Plateforme open source de support client et de messagerie omnicanale.",
+  "description": "Chatwoot avec Rails, Sidekiq, PostgreSQL/pgvector et Redis. Domaine HTTPS obligatoire.",
+  "author": "Chatwoot",
+  "source": "https://github.com/chatwoot/chatwoot",
+  "website": "https://www.chatwoot.com/",
+  "supported_architectures": [
+    "amd64"
+  ],
+  "form_fields": [
+    {
+      "type": "random",
+      "label": "Secret Rails",
+      "env_variable": "CHATWOOT_SECRET_KEY_BASE",
+      "required": true,
+      "min": 64,
+      "encoding": "hex"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe PostgreSQL",
+      "env_variable": "CHATWOOT_DB_PASSWORD",
+      "required": true,
+      "min": 32,
+      "encoding": "hex"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe Redis",
+      "env_variable": "CHATWOOT_REDIS_PASSWORD",
+      "required": true,
+      "min": 32,
+      "encoding": "hex"
+    }
+  ]
+}
