@@ -1,0 +1,91 @@
+x-chatwoot-env: &chatwoot-env
+  RAILS_ENV: production
+  NODE_ENV: production
+  INSTALLATION_ENV: docker
+  SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE}
+  FRONTEND_URL: ${APP_PROTOCOL}://${APP_DOMAIN}
+  FORCE_SSL: "true"
+  ENABLE_ACCOUNT_SIGNUP: "false"
+  DEFAULT_LOCALE: fr
+  ACTIVE_STORAGE_SERVICE: local
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DATABASE: chatwoot
+  POSTGRES_USERNAME: chatwoot
+  POSTGRES_PASSWORD: ${CHATWOOT_DB_PASSWORD}
+  REDIS_URL: redis://redis:6379
+  REDIS_PASSWORD: ${CHATWOOT_REDIS_PASSWORD}
+  RAILS_LOG_TO_STDOUT: "true"
+  LOG_LEVEL: info
+
+services:
+  chatwoot:
+    image: chatwoot/chatwoot:latest-ce
+    restart: unless-stopped
+    entrypoint: docker/entrypoints/rails.sh
+    command: ["bundle", "exec", "rails", "s", "-p", "3000", "-b", "0.0.0.0"]
+    environment: *chatwoot-env
+    volumes:
+      - ${APP_DATA_DIR}/storage:/app/storage
+    depends_on:
+      chatwoot-init:
+        condition: service_completed_successfully
+    x-runtipi:
+      is_main: true
+      internal_port: 3000
+
+  sidekiq:
+    image: chatwoot/chatwoot:latest-ce
+    restart: unless-stopped
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+    environment: *chatwoot-env
+    volumes:
+      - ${APP_DATA_DIR}/storage:/app/storage
+    depends_on:
+      chatwoot-init:
+        condition: service_completed_successfully
+
+  chatwoot-init:
+    image: chatwoot/chatwoot:latest-ce
+    restart: "no"
+    entrypoint: ["bundle", "exec", "rails"]
+    command: ["db:chatwoot_prepare"]
+    environment: *chatwoot-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chatwoot
+      POSTGRES_USER: chatwoot
+      POSTGRES_PASSWORD: ${CHATWOOT_DB_PASSWORD}
+    volumes:
+      - ${APP_DATA_DIR}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatwoot -d chatwoot"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${CHATWOOT_REDIS_PASSWORD}
+    volumes:
+      - ${APP_DATA_DIR}/redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+x-runtipi:
+  schema_version: 2
