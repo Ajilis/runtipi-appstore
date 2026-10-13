@@ -1,0 +1,65 @@
+{
+  "name": "Postiz (sans Elasticsearch)",
+  "id": "postiz-lite",
+  "available": true,
+  "short_desc": "Planification des réseaux sociaux avec PostgreSQL, Redis et Temporal.",
+  "author": "Gitroom",
+  "port": 8286,
+  "categories": ["social", "productivity"],
+  "description": "Postiz auto-hébergé sans Elasticsearch. Compatible Cloudflare Tunnel : HTTPS public vers HTTP local 127.0.0.1:8286. Temporal utilise PostgreSQL pour la visibilité des workflows.",
+  "tipi_version": 1,
+  "version": "latest",
+  "source": "https://github.com/gitroomhq/postiz-app",
+  "website": "https://postiz.com",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.5.0",
+  "supported_architectures": ["amd64"],
+  "form_fields": [
+    {
+      "type": "text",
+      "label": "URL publique Postiz (Cloudflare, HTTPS)",
+      "hint": "URL exacte utilisée depuis Internet, sans slash final. Configurer Cloudflare Tunnel vers http://127.0.0.1:8286.",
+      "placeholder": "https://postiz.exemple.fr",
+      "required": true,
+      "env_variable": "POSTIZ_PUBLIC_URL"
+    },
+    {
+      "type": "random",
+      "label": "Clé JWT Postiz",
+      "hint": "Ne jamais modifier ce secret après installation.",
+      "required": true,
+      "min": 64,
+      "encoding": "hex",
+      "env_variable": "POSTIZ_JWT_SECRET"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe PostgreSQL Postiz",
+      "required": true,
+      "min": 48,
+      "encoding": "hex",
+      "env_variable": "POSTIZ_DB_PASSWORD"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe PostgreSQL Temporal",
+      "required": true,
+      "min": 48,
+      "encoding": "hex",
+      "env_variable": "POSTIZ_TEMPORAL_DB_PASSWORD"
+    },
+    {
+      "type": "boolean",
+      "label": "Désactiver les inscriptions Postiz",
+      "hint": "Laisser désactivé pour créer le premier compte. Activer ensuite pour empêcher de nouvelles inscriptions.",
+      "required": false,
+      "default": false,
+      "env_variable": "POSTIZ_DISABLE_REGISTRATION"
+    }
+  ],
+  "created_at": 1791896400000,
+  "updated_at": 1791896400000
+}
