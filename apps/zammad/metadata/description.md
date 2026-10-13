@@ -1,25 +1,31 @@
-# Zammad
+# Zammad (sans Elasticsearch)
 
-Zammad est un logiciel libre de support client et de gestion de tickets. L'installation Runtipi fournit PostgreSQL, Redis, Memcached, Elasticsearch, Rails, WebSocket, Nginx et les sauvegardes quotidiennes.
+Zammad est une plateforme de support client et de gestion de tickets open source. Cette version allégée pour Runtipi comprend PostgreSQL, Redis, Memcached, Rails, WebSocket, Nginx et les sauvegardes quotidiennes, **sans Elasticsearch**.
 
-## Configuration Cloudflare Tunnel (sans Traefik)
+## Accès via Cloudflare Tunnel (sans Traefik)
 
-- Domaine : saisir **ZAMMAD_DOMAIN** (par exemple `tickets.exemple.fr`, sans `https://`).
-- Dans Cloudflare Zero Trust, configurer le nom d'hôte public vers le service **HTTP** `http://127.0.0.1:8285`.
-- Le service `cloudflared` doit être installé sur le serveur Runtipi, directement sur l'hôte ou dans un conteneur utilisant `network_mode: host`.
-- Ne pas activer l'exposition de domaine Runtipi.
-- Aucun port PostgreSQL, Redis ou Elasticsearch n'est publié.
-- Le port **8285** évite un conflit avec Chatwoot (8284) déjà présent dans ce store.
+- Renseigner le domaine public dans `ZAMMAD_DOMAIN` (par exemple `tickets.exemple.fr`, sans `https://`).
+- Dans Cloudflare Zero Trust, créer un *Public Hostname* avec le service HTTP `http://127.0.0.1:8285`.
+- `cloudflared` doit s'exécuter sur le même serveur, directement sur l'hôte ou dans un conteneur en `network_mode: host`.
+- Ne pas activer l'exposition de domaine de Runtipi. Le port 8285 est lié à `127.0.0.1` et évite le port 8284 de Chatwoot.
+- Aucun port PostgreSQL, Redis ou Memcached n'est publié.
 
-## Prérequis
+## Fonctionnalités et ressources
 
-- Runtipi 4.5 ou plus récent, Docker Compose récent et processeur amd64/arm64.
-- Mémoire recommandée pour l'ensemble de l'hôte : au moins 6 à 8 Go.
-- Sur l'hôte Docker, configurer `vm.max_map_count=262144` pour Elasticsearch.
-- Mettre en place des sauvegardes externes du stockage et de la base de données ; tester la restauration.
+- Désactivation explicite avec `ELASTICSEARCH_ENABLED=false` pour tous les conteneurs Zammad, notamment `zammad-init`.
+- **Limitation :** la recherche plein texte et les fonctionnalités de recherche/rapports nécessitant l'index Elasticsearch peuvent être limitées ou indisponibles.
+- Plus besoin du réglage système `vm.max_map_count` requis par Elasticsearch.
+- Prévoir les ressources nécessaires au serveur Rails, PostgreSQL, Redis et Memcached ; sans Elasticsearch, l'utilisation mémoire est inférieure à la version complète.
 
-Le port hôte est limité à `127.0.0.1` et le chiffrement HTTPS est terminé à Cloudflare. Si le tunnel fonctionne dans un autre conteneur sur un réseau Docker isolé, la route `127.0.0.1` ne fonctionnera pas : adapter la configuration réseau, sans publier le service sur toutes les interfaces.
+## Mise à jour depuis la version avec Elasticsearch
 
-**Sécurité :** le rôle PostgreSQL initial dispose de privilèges administrateur dans son conteneur. Pour une production durcie, utiliser un rôle applicatif non privilégié comme dans le Compose officiel Zammad.
+1. Effectuer une sauvegarde de PostgreSQL et du répertoire de stockage Zammad.
+2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 3`).
+3. Vérifier que Zammad démarre et que le tunnel répond.
+4. Si un ancien conteneur Elasticsearch demeure **orphelin**, le supprimer uniquement après identification. **Ne supprimer aucun volume de données sans sauvegarde et vérification.**
 
-Sources : https://github.com/zammad/zammad-docker-compose — https://runtipi.io/docs/reference/dynamic-compose
+En cas de nouvelle installation, installer directement cette version. Ne jamais supprimer `runtipi-db` ni les volumes PostgreSQL de Zammad pendant une mise à jour.
+
+**Note de sécurité :** le compte PostgreSQL applicatif de cette configuration simplifiée est également le compte initial du serveur PostgreSQL. Pour renforcer les privilèges en production, utiliser le rôle applicatif non privilégié de la configuration officielle.
+
+Documentation : https://github.com/zammad/zammad-docker-compose — https://runtipi.io/docs/reference/dynamic-compose
