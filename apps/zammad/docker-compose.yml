@@ -1,0 +1,151 @@
+# Zammad 7.2.2 pour Runtipi >= 4.5 (Dynamic Compose v2)
+# Adaptation de https://github.com/zammad/zammad-docker-compose
+# Aucun routage Traefik : Cloudflare Tunnel pointe sur localhost:8285.
+# Le connecteur Cloudflare doit tourner sur le meme hote en mode reseau host.
+
+x-zammad-common: &zammad-common
+  image: ghcr.io/zammad/zammad:7.2.2-0000
+  restart: unless-stopped
+  init: true
+  environment:
+    TZ: ${TZ:-Europe/Paris}
+    POSTGRESQL_HOST: zammad-postgresql
+    POSTGRESQL_PORT: "5432"
+    POSTGRESQL_DB: zammad_production
+    POSTGRESQL_USER: zammad
+    POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+    POSTGRESQL_DB_CREATE: "false"
+    REDIS_URL: redis://zammad-redis:6379
+    MEMCACHE_SERVERS: zammad-memcached:11211
+    ELASTICSEARCH_ENABLED: "true"
+    ELASTICSEARCH_HOST: zammad-elasticsearch
+    ELASTICSEARCH_PORT: "9200"
+    ELASTICSEARCH_SCHEMA: http
+    # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
+    # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
+    NGINX_SERVER_SCHEME: "https"
+    ZAMMAD_HTTP_TYPE: "https"
+    ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
+    NGINX_CLIENT_MAX_BODY_SIZE: 50M
+    BACKUP_DIR: /var/tmp/zammad
+    BACKUP_TIME: "03:00"
+    BACKUP_ON_START: "false"
+    HOLD_DAYS: "10"
+  volumes:
+    - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
+    - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
+  depends_on:
+    zammad-postgresql:
+      condition: service_healthy
+    zammad-redis:
+      condition: service_healthy
+    zammad-memcached:
+      condition: service_healthy
+
+services:
+  zammad-postgresql:
+    image: postgres:17.11-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zammad_production
+      POSTGRES_USER: zammad
+      POSTGRES_PASSWORD: ${ZAMMAD_DB_PASSWORD}
+    volumes:
+      - ${APP_DATA_DIR}/data/postgresql:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -tAc 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+
+  zammad-redis:
+    image: redis:8.10.2-alpine
+    restart: unless-stopped
+    volumes:
+      - ${APP_DATA_DIR}/data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zammad-memcached:
+    image: memcached:1.6.45-alpine
+    command: ["memcached", "-m", "256"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "11211"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zammad-elasticsearch:
+    image: elasticsearch:9.5.5
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+    volumes:
+      # Volume Docker: evite les erreurs de droits sur les bind mounts Elasticsearch.
+      - zammad-elasticsearch-data:/usr/share/elasticsearch/data
+
+  zammad-init:
+    <<: *zammad-common
+    command: ["zammad-init"]
+    user: "0:0"
+    restart: on-failure
+    depends_on:
+      zammad-postgresql:
+        condition: service_healthy
+      zammad-redis:
+        condition: service_healthy
+      zammad-memcached:
+        condition: service_healthy
+      zammad-elasticsearch:
+        condition: service_started
+
+  zammad-railsserver:
+    <<: *zammad-common
+    command: ["zammad-railsserver"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+
+  zammad-scheduler:
+    <<: *zammad-common
+    command: ["zammad-scheduler"]
+
+  zammad-websocket:
+    <<: *zammad-common
+    command: ["zammad-websocket"]
+
+  zammad-backup:
+    <<: *zammad-common
+    command: ["zammad-backup"]
+    user: "0:0"
+    volumes:
+      - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
+      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad
+
+  zammad-nginx:
+    <<: *zammad-common
+    command: ["zammad-nginx"]
+    init: false
+    depends_on:
+      zammad-railsserver:
+        condition: service_healthy
+    # Acces limite au serveur local : PAS de Traefik, PAS de port public.
+    # Accessible depuis cloudflared si son conteneur est en network_mode: host.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8285}:8080"
+
+volumes:
+  zammad-elasticsearch-data:
+
+x-runtipi:
+  schema_version: 2

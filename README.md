@@ -22,3 +22,15 @@ Documentation : [Chatwoot](https://developers.chatwoot.com/self-hosted/deploymen
 ## HTTPS via Cloudflare Tunnel
 
 L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=false` dans Rails pour éviter une redirection HTTPS vers le port local sans serveur TLS. Renseigner `CHATWOOT_FRONTEND_URL` avec l'URL publique **HTTPS** de Cloudflare Tunnel (par exemple `https://support.exemple.fr`). Le chiffrement client HTTPS est assuré par Cloudflare. Tester localement avec `curl -I http://127.0.0.1:8284` : une réponse HTTP ou une redirection applicative normale est attendue, mais pas de redirection vers `https://127.0.0.1:8284/`.
+
+## Installer Zammad avec Cloudflare Tunnel (sans Traefik)
+
+1. Ajouter ce store dans **Runtipi → Settings → App Stores** : `https://github.com/Ajilis/runtipi-appstore`, si ce n'est pas déjà fait.
+2. Actualiser le store, sélectionner **Zammad**, saisir `ZAMMAD_DOMAIN` et laisser générer le mot de passe PostgreSQL.
+3. Préparer l'hôte Elasticsearch : `sudo sysctl -w vm.max_map_count=262144` (et rendre le paramètre persistant).
+4. Dans Cloudflare Zero Trust, créer un *Public Hostname* pour le domaine choisi avec le service `http://127.0.0.1:8285` (tunnel en réseau hôte sur le serveur Runtipi).
+5. Ouvrir le domaine en HTTPS pour terminer l'assistant de configuration Zammad.
+
+**Ports :** Chatwoot utilise le port 8284, Zammad le port **8285**. Runtipi n'expose pas Zammad via Traefik. Prévoir une capacité mémoire suffisante et des sauvegardes hors du serveur.
+
+Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob/develop/logo.svg). L'application est fournie comme configuration à tester sur une instance Runtipi réelle.
