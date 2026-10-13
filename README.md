@@ -6,9 +6,12 @@ Boutique d'applications personnalisées pour [Runtipi](https://runtipi.io).
 
 1. Dans **Runtipi → Settings → App Stores**, ajouter cette URL : `https://github.com/Ajilis/runtipi-appstore`.
 2. Actualiser les catalogues et ouvrir **Chatwoot**.
-3. Configurer un domaine public HTTPS et installer l'application.
-4. Créer le premier administrateur : l'inscription publique étant désactivée par défaut, l'activer temporairement dans le Compose (`ENABLE_ACCOUNT_SIGNUP=true`), redéployer, créer le compte, puis remettre la valeur à `false`.
-5. Configurer SMTP avant d'utiliser les notifications par e-mail.
+3. Installer sans activer l'exposition de domaine Runtipi. Le port hôte par défaut est **8284**, redirigé par Runtipi vers le port interne **3000**.
+4. Renseigner le champ **URL publique Chatwoot (Cloudflare)**, par exemple `https://support.exemple.fr`.
+5. Dans Cloudflare Tunnel, créer un Public Hostname `support.exemple.fr` vers `http://IP_LAN_DU_SERVEUR:8284` si `cloudflared` s'exécute hors du réseau Docker de Runtipi. Si `cloudflared` est sur la même machine hors Docker, utiliser `http://127.0.0.1:8284`.
+6. Ne pas ouvrir le port 8284 sur le routeur ; limiter son accès au réseau local ou au processus `cloudflared` par pare-feu.
+7. Créer le premier administrateur : l'inscription publique étant désactivée par défaut, l'activer temporairement dans le Compose (`ENABLE_ACCOUNT_SIGNUP=true`), redéployer, créer le compte, puis remettre la valeur à `false`.
+8. Configurer SMTP avant d'utiliser les notifications par e-mail.
 
 Le déploiement comprend Rails, Sidekiq, PostgreSQL/pgvector et Redis. Les données sont persistantes dans `APP_DATA_DIR`. Aucune base de données n'est exposée sur Internet.
 
