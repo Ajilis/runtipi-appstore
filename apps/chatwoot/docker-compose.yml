@@ -23,13 +23,15 @@ services:
     image: chatwoot/chatwoot:latest-ce
     restart: unless-stopped
     entrypoint: docker/entrypoints/rails.sh
-    command: ["bundle", "exec", "rails", "s", "-p", "3000", "-b", "0.0.0.0"]
+    command: ["sh", "-c", "bundle exec rails db:chatwoot_prepare && exec bundle exec rails s -p 3000 -b 0.0.0.0"]
     environment: *chatwoot-env
     volumes:
       - ${APP_DATA_DIR}/storage:/app/storage
     depends_on:
-      chatwoot-init:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     x-runtipi:
       is_main: true
       internal_port: 3000
@@ -41,16 +43,6 @@ services:
     environment: *chatwoot-env
     volumes:
       - ${APP_DATA_DIR}/storage:/app/storage
-    depends_on:
-      chatwoot-init:
-        condition: service_completed_successfully
-
-  chatwoot-init:
-    image: chatwoot/chatwoot:latest-ce
-    restart: "no"
-    entrypoint: ["bundle", "exec", "rails"]
-    command: ["db:chatwoot_prepare"]
-    environment: *chatwoot-env
     depends_on:
       postgres:
         condition: service_healthy
