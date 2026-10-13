@@ -1,44 +1,7 @@
-# Zammad 7.2.2 sans Elasticsearch pour Runtipi >= 4.5 (Dynamic Compose v2)
+# Zammad 7.2.2 sans Elasticsearch, sans ancres YAML (validation Runtipi v2)
 # Adaptation de https://github.com/zammad/zammad-docker-compose
 # Aucun routage Traefik : Cloudflare Tunnel pointe sur localhost:8285.
 # Le connecteur Cloudflare doit tourner sur le meme hote en mode reseau host.
-
-x-zammad-common: &zammad-common
-  image: ghcr.io/zammad/zammad:7.2.2-0000
-  restart: unless-stopped
-  init: true
-  environment:
-    TZ: ${TZ:-Europe/Paris}
-    POSTGRESQL_HOST: zammad-postgresql
-    POSTGRESQL_PORT: "5432"
-    POSTGRESQL_DB: zammad_production
-    POSTGRESQL_USER: zammad
-    POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
-    POSTGRESQL_DB_CREATE: "false"
-    REDIS_URL: redis://zammad-redis:6379
-    MEMCACHE_SERVERS: zammad-memcached:11211
-    # Zammad est utilise sans Elasticsearch (pas de recherche plein texte indexee).
-    ELASTICSEARCH_ENABLED: "false"
-    # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
-    # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
-    NGINX_SERVER_SCHEME: "https"
-    ZAMMAD_HTTP_TYPE: "https"
-    ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
-    NGINX_CLIENT_MAX_BODY_SIZE: 50M
-    BACKUP_DIR: /var/tmp/zammad
-    BACKUP_TIME: "03:00"
-    BACKUP_ON_START: "false"
-    HOLD_DAYS: "10"
-  volumes:
-    - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
-    - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
-  depends_on:
-    zammad-postgresql:
-      condition: service_healthy
-    zammad-redis:
-      condition: service_healthy
-    zammad-memcached:
-      condition: service_healthy
 
 services:
   zammad-postgresql:
@@ -79,7 +42,33 @@ services:
       retries: 5
 
   zammad-init:
-    <<: *zammad-common
+    image: ghcr.io/zammad/zammad:7.2.2-0000
+    init: true
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+      POSTGRESQL_DB_CREATE: "false"
+      REDIS_URL: redis://zammad-redis:6379
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      # Zammad est utilise sans Elasticsearch (pas de recherche plein texte indexee).
+      ELASTICSEARCH_ENABLED: "false"
+      # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
+      # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
+      NGINX_SERVER_SCHEME: "https"
+      ZAMMAD_HTTP_TYPE: "https"
+      ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: 50M
+      BACKUP_DIR: /var/tmp/zammad
+      BACKUP_TIME: "03:00"
+      BACKUP_ON_START: "false"
+      HOLD_DAYS: "10"
+    volumes:
+      - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
+      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
     command: ["zammad-init"]
     user: "0:0"
     restart: on-failure
@@ -92,7 +81,42 @@ services:
         condition: service_healthy
 
   zammad-railsserver:
-    <<: *zammad-common
+    image: ghcr.io/zammad/zammad:7.2.2-0000
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+      POSTGRESQL_DB_CREATE: "false"
+      REDIS_URL: redis://zammad-redis:6379
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      # Zammad est utilise sans Elasticsearch (pas de recherche plein texte indexee).
+      ELASTICSEARCH_ENABLED: "false"
+      # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
+      # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
+      NGINX_SERVER_SCHEME: "https"
+      ZAMMAD_HTTP_TYPE: "https"
+      ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: 50M
+      BACKUP_DIR: /var/tmp/zammad
+      BACKUP_TIME: "03:00"
+      BACKUP_ON_START: "false"
+      HOLD_DAYS: "10"
+    volumes:
+      - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
+      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
+    depends_on:
+      zammad-postgresql:
+        condition: service_healthy
+      zammad-redis:
+        condition: service_healthy
+      zammad-memcached:
+        condition: service_healthy
+
     command: ["zammad-railsserver"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:3000"]
@@ -102,15 +126,117 @@ services:
       retries: 3
 
   zammad-scheduler:
-    <<: *zammad-common
+    image: ghcr.io/zammad/zammad:7.2.2-0000
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+      POSTGRESQL_DB_CREATE: "false"
+      REDIS_URL: redis://zammad-redis:6379
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      # Zammad est utilise sans Elasticsearch (pas de recherche plein texte indexee).
+      ELASTICSEARCH_ENABLED: "false"
+      # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
+      # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
+      NGINX_SERVER_SCHEME: "https"
+      ZAMMAD_HTTP_TYPE: "https"
+      ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: 50M
+      BACKUP_DIR: /var/tmp/zammad
+      BACKUP_TIME: "03:00"
+      BACKUP_ON_START: "false"
+      HOLD_DAYS: "10"
+    volumes:
+      - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
+      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
+    depends_on:
+      zammad-postgresql:
+        condition: service_healthy
+      zammad-redis:
+        condition: service_healthy
+      zammad-memcached:
+        condition: service_healthy
+
     command: ["zammad-scheduler"]
 
   zammad-websocket:
-    <<: *zammad-common
+    image: ghcr.io/zammad/zammad:7.2.2-0000
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+      POSTGRESQL_DB_CREATE: "false"
+      REDIS_URL: redis://zammad-redis:6379
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      # Zammad est utilise sans Elasticsearch (pas de recherche plein texte indexee).
+      ELASTICSEARCH_ENABLED: "false"
+      # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
+      # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
+      NGINX_SERVER_SCHEME: "https"
+      ZAMMAD_HTTP_TYPE: "https"
+      ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: 50M
+      BACKUP_DIR: /var/tmp/zammad
+      BACKUP_TIME: "03:00"
+      BACKUP_ON_START: "false"
+      HOLD_DAYS: "10"
+    volumes:
+      - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
+      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
+    depends_on:
+      zammad-postgresql:
+        condition: service_healthy
+      zammad-redis:
+        condition: service_healthy
+      zammad-memcached:
+        condition: service_healthy
+
     command: ["zammad-websocket"]
 
   zammad-backup:
-    <<: *zammad-common
+    image: ghcr.io/zammad/zammad:7.2.2-0000
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+      POSTGRESQL_DB_CREATE: "false"
+      REDIS_URL: redis://zammad-redis:6379
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      # Zammad est utilise sans Elasticsearch (pas de recherche plein texte indexee).
+      ELASTICSEARCH_ENABLED: "false"
+      # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
+      # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
+      NGINX_SERVER_SCHEME: "https"
+      ZAMMAD_HTTP_TYPE: "https"
+      ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: 50M
+      BACKUP_DIR: /var/tmp/zammad
+      BACKUP_TIME: "03:00"
+      BACKUP_ON_START: "false"
+      HOLD_DAYS: "10"
+    depends_on:
+      zammad-postgresql:
+        condition: service_healthy
+      zammad-redis:
+        condition: service_healthy
+      zammad-memcached:
+        condition: service_healthy
+
     command: ["zammad-backup"]
     user: "0:0"
     volumes:
@@ -118,7 +244,33 @@ services:
       - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad
 
   zammad-nginx:
-    <<: *zammad-common
+    image: ghcr.io/zammad/zammad:7.2.2-0000
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+      POSTGRESQL_DB_CREATE: "false"
+      REDIS_URL: redis://zammad-redis:6379
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      # Zammad est utilise sans Elasticsearch (pas de recherche plein texte indexee).
+      ELASTICSEARCH_ENABLED: "false"
+      # Cloudflare termine HTTPS et envoie du HTTP a Nginx.
+      # Sans scheme=https, Zammad peut rejeter la session avec une erreur CSRF.
+      NGINX_SERVER_SCHEME: "https"
+      ZAMMAD_HTTP_TYPE: "https"
+      ZAMMAD_FQDN: ${ZAMMAD_DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: 50M
+      BACKUP_DIR: /var/tmp/zammad
+      BACKUP_TIME: "03:00"
+      BACKUP_ON_START: "false"
+      HOLD_DAYS: "10"
+    volumes:
+      - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
+      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
     command: ["zammad-nginx"]
     init: false
     depends_on:
@@ -128,6 +280,9 @@ services:
     # Accessible depuis cloudflared si son conteneur est en network_mode: host.
     ports:
       - "127.0.0.1:${APP_PORT:-8285}:8080"
+    x-runtipi:
+      is_main: true
+      internal_port: 8080
 
 x-runtipi:
   schema_version: 2

@@ -1,6 +1,6 @@
 # Zammad (sans Elasticsearch)
 
-Zammad est une plateforme de support client et de gestion de tickets open source. Cette version allégée pour Runtipi comprend PostgreSQL, Redis, Memcached, Rails, WebSocket, Nginx et les sauvegardes quotidiennes, **sans Elasticsearch**.
+Zammad est une plateforme de support client et de gestion de tickets open source. La configuration des conteneurs est explicite (sans ancres YAML) pour satisfaire la validation du Compose par Runtipi. Cette version allégée pour Runtipi comprend PostgreSQL, Redis, Memcached, Rails, WebSocket, Nginx et les sauvegardes quotidiennes, **sans Elasticsearch**.
 
 ## Accès via Cloudflare Tunnel (sans Traefik)
 
@@ -20,7 +20,7 @@ Zammad est une plateforme de support client et de gestion de tickets open source
 ## Mise à jour depuis la version avec Elasticsearch
 
 1. Effectuer une sauvegarde de PostgreSQL et du répertoire de stockage Zammad.
-2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 3`).
+2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 4`).
 3. Vérifier que Zammad démarre et que le tunnel répond.
 4. Si un ancien conteneur Elasticsearch demeure **orphelin**, le supprimer uniquement après identification. **Ne supprimer aucun volume de données sans sauvegarde et vérification.**
 
