@@ -35,3 +35,15 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 **Ports :** Chatwoot `8284` et Zammad `8285`, chacun à associer à un nom de domaine Cloudflare distinct.
 
 Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob/develop/logo.svg). Déploiement Runtipi réel à valider.
+
+## Installer Postiz sans Elasticsearch (Cloudflare Tunnel)
+
+1. Dans **Runtipi → Settings → App Stores**, actualiser ce catalogue : `https://github.com/Ajilis/runtipi-appstore`.
+2. Installer **Postiz (sans Elasticsearch)** (identifiant `postiz-lite`, port local **8286**). Renseigner l'**URL publique HTTPS** exacte, par exemple `https://postiz.exemple.fr` (sans slash final).
+3. Dans Cloudflare Tunnel, faire pointer le *Public Hostname* vers `http://127.0.0.1:8286` si `cloudflared` s'exécute sur le même hôte avec accès à la boucle locale. Sinon adapter le routage réseau du tunnel.
+4. **Ne pas exposer le port 8286 sur Internet.** Laisser les inscriptions activées le temps de créer le premier compte, puis cocher **Désactiver les inscriptions Postiz** dans la configuration de l'application.
+5. Configurer ensuite les identifiants des réseaux sociaux (OAuth/API) selon les plateformes voulues.
+
+Cette version comprend **5 conteneurs** : Postiz, PostgreSQL Postiz, Redis, Temporal et PostgreSQL Temporal. **Aucun Elasticsearch** : Temporal utilise PostgreSQL pour sa base de visibilité. Les données persistent dans `APP_DATA_DIR`. Elle est destinée à une **nouvelle installation** ; une migration depuis une configuration Temporal/Elasticsearch existante nécessite un plan de sauvegarde. L'image Postiz est actuellement basée sur le tag `latest`, à surveiller avant les mises à jour.
+
+Documentation de l'application : [`apps/postiz-lite/metadata/description.md`](apps/postiz-lite/metadata/description.md).
