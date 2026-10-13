@@ -30,7 +30,9 @@ services:
       postiz-redis:
         condition: service_healthy
       postiz-temporal:
-        condition: service_healthy
+        # Avoid blocking installation on Temporal's CLI health check.
+        # Postiz retries startup via its Docker restart policy if needed.
+        condition: service_started
     networks:
       - postiz-internal
     ports:
@@ -111,12 +113,6 @@ services:
         condition: service_healthy
     networks:
       - postiz-internal
-    healthcheck:
-      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "postiz-temporal:7233"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 90s
 
 networks:
   postiz-internal:
