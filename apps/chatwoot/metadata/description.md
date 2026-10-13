@@ -4,7 +4,8 @@ Plateforme open source de support client omnicanal, avec interface Rails, traite
 
 ## Pré-requis
 - Instance Runtipi v4+ sur serveur amd64
-- Nom de domaine avec HTTPS
+- Port hôte 8284 (HTTP local), sans exposition HTTPS via Runtipi
+- URL externe HTTPS pour Cloudflare Tunnel, à renseigner lors de l'installation
 - Au moins 4 Go de RAM recommandés
 - SMTP à configurer pour les e-mails sortants
 
