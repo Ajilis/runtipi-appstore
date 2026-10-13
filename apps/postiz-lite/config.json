@@ -9,7 +9,7 @@
     "social"
   ],
   "description": "Postiz auto-hébergé sans Elasticsearch. Compatible Cloudflare Tunnel : HTTPS public vers HTTP local 127.0.0.1:8286. Temporal utilise PostgreSQL pour la visibilité des workflows.",
-  "tipi_version": 2,
+  "tipi_version": 3,
   "version": "latest",
   "source": "https://github.com/gitroomhq/postiz-app",
   "website": "https://postiz.com",
@@ -65,5 +65,5 @@
     }
   ],
   "created_at": 1791896400000,
-  "updated_at": 1791900000000
+  "updated_at": 1791901500000
 }
