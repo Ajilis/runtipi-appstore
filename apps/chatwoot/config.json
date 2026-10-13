@@ -3,18 +3,18 @@
   "id": "chatwoot",
   "available": true,
   "port": 8284,
-  "exposable": true,
-  "force_expose": true,
-  "https": true,
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
   "dynamic_config": true,
   "min_tipi_version": "4.0.0",
-  "tipi_version": 1,
+  "tipi_version": 2,
   "version": "latest-ce",
   "categories": [
     "utilities"
   ],
   "short_desc": "Plateforme open source de support client et de messagerie omnicanale.",
-  "description": "Chatwoot avec Rails, Sidekiq, PostgreSQL/pgvector et Redis. Domaine HTTPS obligatoire.",
+  "description": "Chatwoot avec Rails, Sidekiq, PostgreSQL/pgvector et Redis. Accès local par port hôte, compatible Cloudflare Tunnel.",
   "author": "Chatwoot",
   "source": "https://github.com/chatwoot/chatwoot",
   "website": "https://www.chatwoot.com/",
@@ -45,6 +45,13 @@
       "required": true,
       "min": 32,
       "encoding": "hex"
+    },
+    {
+      "type": "text",
+      "label": "URL publique Chatwoot (Cloudflare)",
+      "env_variable": "CHATWOOT_FRONTEND_URL",
+      "required": true,
+      "placeholder": "https://support.exemple.fr"
     }
   ]
 }
