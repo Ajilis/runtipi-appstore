@@ -20,7 +20,7 @@ Zammad est une plateforme de support client et de gestion de tickets open source
 ## Mise à jour depuis la version avec Elasticsearch
 
 1. Effectuer une sauvegarde de PostgreSQL et du répertoire de stockage Zammad.
-2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 5`).
+2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 6`).
 3. Vérifier que Zammad démarre et que le tunnel répond.
 4. Si un ancien conteneur Elasticsearch demeure **orphelin**, le supprimer uniquement après identification. **Ne supprimer aucun volume de données sans sauvegarde et vérification.**
 
@@ -29,3 +29,15 @@ En cas de nouvelle installation, installer directement cette version. Ne jamais 
 **Note de sécurité :** le compte PostgreSQL applicatif de cette configuration simplifiée est également le compte initial du serveur PostgreSQL. Pour renforcer les privilèges en production, utiliser le rôle applicatif non privilégié de la configuration officielle.
 
 Documentation : https://github.com/zammad/zammad-docker-compose — https://runtipi.io/docs/reference/dynamic-compose
+
+## Première installation et mise à jour (catalogue v6)
+
+- Au démarrage, **zammad-init** contrôle la base PostgreSQL Zammad. Sur une base neuve, il laisse les migrations et les données initiales de Zammad se créer normalement.
+- Si une **installation inachevée** contient déjà le paramètre `6005_postmaster_filter_identify_group`, mais **aucun utilisateur et aucun ticket**, le service effectue d'abord une **sauvegarde PostgreSQL `pg_dump`** dans `data/backup/recovery-incomplete-init-*.dump`, puis réinitialise **uniquement le schéma de la base Zammad** pour relancer une initialisation propre.
+- Dès qu'il existe des utilisateurs ou des tickets, **aucune réinitialisation du schéma n'est autorisée**. Le garde laisse intactes les données de l'application.
+- Le script n'est pas un mécanisme général de nettoyage Docker : il ne touche ni aux autres applications Runtipi, ni à leurs bases et volumes. Les sauvegardes de récupération restent sur le disque ; les archiver ou supprimer ultérieurement est une décision de l'administrateur.
+- Runtipi conserve les montages persistants `data/postgresql`, `data/storage`, `data/redis` et `data/backup` pendant les mises à jour. Une mise à jour Zammad peut **exécuter des migrations SQL nécessaires**, mais ne doit ni effacer ni recréer la base de production. Faire une sauvegarde avant toute mise à jour.
+- Le service `zammad-init` reste actif une fois initialisé (état `healthy`), pour que Runtipi le compte comme un conteneur démarré. Rails, scheduler, websocket et sauvegarde attendent son état `healthy` avant de démarrer.
+- Lors de la première installation, prévoir un délai de tâche Runtipi suffisant (par exemple 15 minutes), suivant la machine.
+
+**Attention :** si PostgreSQL contient des données réelles, le mécanisme de récupération est désactivé automatiquement. Il ne garantit pas la réparation de tous les scénarios d'échec ; les erreurs différentes de ce cas exigent un diagnostic.

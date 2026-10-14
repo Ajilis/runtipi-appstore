@@ -34,7 +34,7 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 **Ports :** Chatwoot `8284` et Zammad `8285`, chacun à associer à un nom de domaine Cloudflare distinct.
 
-**Correction d'installation :** la configuration Zammad ne définit plus `x-runtipi.is_main` sur Nginx, car Runtipi créerait un second mappage automatique du port. Le seul mappage reste `127.0.0.1:8285:8080` pour Cloudflare Tunnel en réseau hôte. Version du catalogue Zammad : **5**.
+**Installation sécurisée (version du catalogue 6) :** Zammad vérifie la présence d'une base incomplète avant d'initialiser Rails. Si la signature précise du seed `6005_postmaster_filter_identify_group` est présente sans utilisateur ni ticket, un `pg_dump` de secours est conservé, puis seul le schéma PostgreSQL de Zammad est réinitialisé. Les bases déjà utilisées sont conservées. Les mises à jour conservent les volumes et peuvent appliquer les migrations Zammad normales. Aucun port Traefik ; uniquement `127.0.0.1:8285:8080` via Cloudflare Tunnel.
 
 Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob/develop/logo.svg). Déploiement Runtipi réel à valider.
 
