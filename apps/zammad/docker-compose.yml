@@ -68,10 +68,46 @@ services:
       HOLD_DAYS: "10"
     volumes:
       - ${APP_DATA_DIR}/data/storage:/opt/zammad/storage
-      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad:ro
-    command: ["zammad-init"]
+      - ${APP_DATA_DIR}/data/backup:/var/tmp/zammad
+    # Sauvegarde obligatoire avant recuperation d'une base Zammad inachevee, sans utilisateurs ni tickets.
+    entrypoint: ["/bin/bash", "-euc"]
+    command:
+      - |
+        export PGHOST="$$POSTGRESQL_HOST" PGPORT="$$POSTGRESQL_PORT"
+        export PGUSER="$$POSTGRESQL_USER" PGPASSWORD="$$POSTGRESQL_PASS" PGDATABASE="$$POSTGRESQL_DB"
+        echo "Preflight Zammad : analyse de la base de donnees."
+        tables="$$(psql -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.tickets') IS NOT NULL AND to_regclass('public.settings') IS NOT NULL")"
+        if [ "$$tables" = "t" ]; then
+          users="$$(psql -v ON_ERROR_STOP=1 -Atqc 'SELECT count(*) FROM public.users')"
+          tickets="$$(psql -v ON_ERROR_STOP=1 -Atqc 'SELECT count(*) FROM public.tickets')"
+          conflict="$$(psql -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM public.settings WHERE lower(name) = '6005_postmaster_filter_identify_group'")"
+          if [ "$$users" = "0" ] && [ "$$tickets" = "0" ] && [ "$$conflict" != "0" ]; then
+            echo "Installation inachevee : sauvegarde PostgreSQL."
+            umask 077
+            snapshot="/var/tmp/zammad/recovery-incomplete-init-$$(date -u +%Y%m%dT%H%M%SZ).dump"
+            pg_dump --format=custom --file="$$snapshot"
+            test -s "$$snapshot"
+            echo "Sauvegarde creee : $$snapshot"
+            psql -v ON_ERROR_STOP=1 -c 'BEGIN; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION zammad; COMMIT;'
+            echo "Schema applicatif Zammad reinitialise."
+          else
+            echo "Donnees existantes preservees : aucune reinitialisation."
+          fi
+        else
+          echo "Base vierge ou schema incomplet sans signature du conflit : aucune reinitialisation."
+        fi
+        /opt/zammad/bin/docker-entrypoint zammad-init
+        touch /tmp/zammad-init-ready
+        echo "Initialisation Zammad terminee."
+        exec sleep infinity
     user: "0:0"
     restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/zammad-init-ready"]
+      interval: 10s
+      timeout: 5s
+      start_period: 600s
+      retries: 5
     depends_on:
       zammad-postgresql:
         condition: service_healthy
@@ -115,6 +151,8 @@ services:
       zammad-redis:
         condition: service_healthy
       zammad-memcached:
+        condition: service_healthy
+      zammad-init:
         condition: service_healthy
 
     command: ["zammad-railsserver"]
@@ -161,6 +199,8 @@ services:
         condition: service_healthy
       zammad-memcached:
         condition: service_healthy
+      zammad-init:
+        condition: service_healthy
 
     command: ["zammad-scheduler"]
 
@@ -200,6 +240,8 @@ services:
         condition: service_healthy
       zammad-memcached:
         condition: service_healthy
+      zammad-init:
+        condition: service_healthy
 
     command: ["zammad-websocket"]
 
@@ -235,6 +277,8 @@ services:
       zammad-redis:
         condition: service_healthy
       zammad-memcached:
+        condition: service_healthy
+      zammad-init:
         condition: service_healthy
 
     command: ["zammad-backup"]
