@@ -1,5 +1,11 @@
 # Zammad (sans Elasticsearch)
 
+**Version du catalogue Runtipi : 9**  
+**Version du logiciel Zammad : 7.2.2**  
+**Statut :** déploiement personnalisé Ajilis, sans Elasticsearch, accès réseau local et Cloudflare Tunnel.
+
+> Le numéro de catalogue indique la révision de l’application Runtipi ; il est distinct de la version de Zammad. Il faut mettre à jour l’application depuis le catalogue pour afficher une description installée plus récente.
+
 Zammad est une plateforme de support client et de gestion de tickets open source. La configuration des conteneurs est explicite (sans ancres YAML) pour satisfaire la validation du Compose par Runtipi. Cette version allégée pour Runtipi comprend PostgreSQL, Redis, Memcached, Rails, WebSocket, Nginx et les sauvegardes quotidiennes, **sans Elasticsearch**.
 
 ## Accès via le réseau local et Cloudflare Tunnel (sans Traefik)
@@ -21,7 +27,7 @@ Zammad est une plateforme de support client et de gestion de tickets open source
 ## Mise à jour depuis la version avec Elasticsearch
 
 1. Effectuer une sauvegarde de PostgreSQL et du répertoire de stockage Zammad.
-2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 8`).
+2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 9`).
 3. Vérifier que Zammad démarre et que le tunnel répond.
 4. Si un ancien conteneur Elasticsearch demeure **orphelin**, le supprimer uniquement après identification. **Ne supprimer aucun volume de données sans sauvegarde et vérification.**
 
@@ -31,7 +37,7 @@ En cas de nouvelle installation, installer directement cette version. Ne jamais 
 
 Documentation : https://github.com/zammad/zammad-docker-compose — https://runtipi.io/docs/reference/dynamic-compose
 
-## Première installation et mise à jour (catalogue v8)
+## Première installation et mise à jour (catalogue v9)
 
 - Au démarrage, **zammad-init** contrôle la base PostgreSQL Zammad. Sur une base neuve, il laisse les migrations et les données initiales de Zammad se créer normalement.
 - Si une **installation inachevée** contient déjà le paramètre `6005_postmaster_filter_identify_group`, mais **aucun utilisateur et aucun ticket**, le service effectue d'abord une **sauvegarde PostgreSQL `pg_dump`** dans `data/backup/recovery-incomplete-init-*.dump`, puis réinitialise **uniquement le schéma de la base Zammad** pour relancer une initialisation propre.

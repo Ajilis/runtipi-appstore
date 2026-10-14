@@ -8,8 +8,8 @@
   "categories": [
     "utilities"
   ],
-  "description": "Zammad 7.2.2 sans Elasticsearch. Migration complète Debian/Ubuntu vers Runtipi par sauvegarde officielle, avec restauration préalable aux migrations.",
-  "tipi_version": 8,
+  "description": "Version du catalogue Runtipi : 9 | Version Zammad : 7.2.2. Sans Elasticsearch ; migration Debian/Ubuntu vers Runtipi prise en charge.",
+  "tipi_version": 9,
   "version": "7.2.2",
   "source": "https://github.com/zammad/zammad",
   "website": "https://zammad.org/",

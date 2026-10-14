@@ -25,6 +25,8 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 ## Installer Zammad sans Elasticsearch (Cloudflare Tunnel, sans Traefik)
 
+**Version du catalogue Runtipi : 9** · **Version du logiciel : Zammad 7.2.2**. La v9 n'apporte qu'une amélioration de la visibilité du numéro de version dans la description de l'application et ne modifie pas le Docker Compose ni les volumes persistants.
+
 1. Dans **Runtipi → Settings → App Stores**, actualiser `https://github.com/Ajilis/runtipi-appstore`.
 2. Installer ou mettre à jour **Zammad**, renseigner `ZAMMAD_DOMAIN`, et conserver le mot de passe PostgreSQL existant en cas de mise à jour.
 3. Configurer un *Public Hostname* Cloudflare vers `http://127.0.0.1:8285` (si cloudflared est sur le même serveur en réseau hôte).
@@ -34,13 +36,13 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 **Ports :** Chatwoot `8284` et Zammad `8285`, chacun à associer à un nom de domaine Cloudflare distinct.
 
-**Installation sécurisée (version du catalogue 8) :** Zammad préserve les données et les fichiers de configuration lors des mises à jour et conserve le précontrôle de récupération après une installation inachevée (sauvegarde PostgreSQL avant réinitialisation limitée au cas sans utilisateur ni ticket). Le port `8285:8080/tcp` est accessible sur le LAN (par exemple `http://192.168.1.16:8285/`) et avec Cloudflare Tunnel (`http://127.0.0.1:8285` si cloudflared utilise le réseau hôte). Les connexions applicatives sont prévues sur le domaine public HTTPS canonique ; une adresse IP HTTP peut être redirigée. Ne pas publier ce port sur Internet ; aucun Traefik applicatif. Le port reste fixe à 8285.
+**Installation sécurisée (version du catalogue 9) :** Zammad préserve les données et les fichiers de configuration lors des mises à jour et conserve le précontrôle de récupération après une installation inachevée (sauvegarde PostgreSQL avant réinitialisation limitée au cas sans utilisateur ni ticket). Le port `8285:8080/tcp` est accessible sur le LAN (par exemple `http://192.168.1.16:8285/`) et avec Cloudflare Tunnel (`http://127.0.0.1:8285` si cloudflared utilise le réseau hôte). Les connexions applicatives sont prévues sur le domaine public HTTPS canonique ; une adresse IP HTTP peut être redirigée. Ne pas publier ce port sur Internet ; aucun Traefik applicatif. Le port reste fixe à 8285.
 
 Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob/develop/logo.svg). Déploiement Runtipi réel à valider.
 
 **Migration confirmée pour ancienne instance Zammad 6.5.0 PostgreSQL :** passage vers 7.2.2 nécessitant des migrations de base, à tester avant bascule des canaux. La documentation officielle recommande de préférence une restauration à version identique avant mise à niveau. Détails et précautions dans le guide ci-dessous.
 
-**Migration Debian/Ubuntu → Runtipi :** la version 8 corrige l'ordre de démarrage pour permettre à `zammad-backup` de restaurer les archives du paquet avant `zammad-init`. La restauration n'est activée qu'après dépôt intentionnel des archives officielles dans `data/backup/restore/`. Elle remplace les données de destination : effectuer une sauvegarde avant toute migration. [Procédure complète](apps/zammad/metadata/migration-debian.md).
+**Migration Debian/Ubuntu → Runtipi :** la version 8 (toujours incluse dans la v9) corrige l'ordre de démarrage pour permettre à `zammad-backup` de restaurer les archives du paquet avant `zammad-init`. La restauration n'est activée qu'après dépôt intentionnel des archives officielles dans `data/backup/restore/`. Elle remplace les données de destination : effectuer une sauvegarde avant toute migration. [Procédure complète](apps/zammad/metadata/migration-debian.md).
 
 ## Installer Postiz sans Elasticsearch (Cloudflare Tunnel)
 
