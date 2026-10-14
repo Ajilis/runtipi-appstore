@@ -75,6 +75,15 @@ services:
       - |
         export PGHOST="$$POSTGRESQL_HOST" PGPORT="$$POSTGRESQL_PORT"
         export PGUSER="$$POSTGRESQL_USER" PGPASSWORD="$$POSTGRESQL_PASS" PGDATABASE="$$POSTGRESQL_DB"
+        # Lors d'une migration, zammad-backup restaure avant que les migrations Rails demarrent.
+        # Une restauration echouee bloque le demarrage : ne pas initialiser une base partielle.
+        if [ -d /var/tmp/zammad/restore ] && [ -n "$$(ls -A /var/tmp/zammad/restore)" ]; then
+          echo "Restauration Zammad en attente : zammad-init attend la fin de l'import."
+          until [ ! -d /var/tmp/zammad/restore ]; do
+            sleep 3
+          done
+          echo "Dossier de restauration archive : reprise de l'initialisation."
+        fi
         echo "Preflight Zammad : analyse de la base de donnees."
         tables="$$(psql -v ON_ERROR_STOP=1 -Atqc "SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.tickets') IS NOT NULL AND to_regclass('public.settings') IS NOT NULL")"
         if [ "$$tables" = "t" ]; then
@@ -246,6 +255,7 @@ services:
     command: ["zammad-websocket"]
 
   zammad-backup:
+    # Demarre sans attendre zammad-init, afin de restaurer une sauvegarde avant les migrations.
     image: ghcr.io/zammad/zammad:7.2.2-0000
     restart: unless-stopped
     init: true
@@ -277,8 +287,6 @@ services:
       zammad-redis:
         condition: service_healthy
       zammad-memcached:
-        condition: service_healthy
-      zammad-init:
         condition: service_healthy
 
     command: ["zammad-backup"]

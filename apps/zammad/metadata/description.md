@@ -21,7 +21,7 @@ Zammad est une plateforme de support client et de gestion de tickets open source
 ## Mise à jour depuis la version avec Elasticsearch
 
 1. Effectuer une sauvegarde de PostgreSQL et du répertoire de stockage Zammad.
-2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 7`).
+2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 8`).
 3. Vérifier que Zammad démarre et que le tunnel répond.
 4. Si un ancien conteneur Elasticsearch demeure **orphelin**, le supprimer uniquement après identification. **Ne supprimer aucun volume de données sans sauvegarde et vérification.**
 
@@ -31,7 +31,7 @@ En cas de nouvelle installation, installer directement cette version. Ne jamais 
 
 Documentation : https://github.com/zammad/zammad-docker-compose — https://runtipi.io/docs/reference/dynamic-compose
 
-## Première installation et mise à jour (catalogue v7)
+## Première installation et mise à jour (catalogue v8)
 
 - Au démarrage, **zammad-init** contrôle la base PostgreSQL Zammad. Sur une base neuve, il laisse les migrations et les données initiales de Zammad se créer normalement.
 - Si une **installation inachevée** contient déjà le paramètre `6005_postmaster_filter_identify_group`, mais **aucun utilisateur et aucun ticket**, le service effectue d'abord une **sauvegarde PostgreSQL `pg_dump`** dans `data/backup/recovery-incomplete-init-*.dump`, puis réinitialise **uniquement le schéma de la base Zammad** pour relancer une initialisation propre.
@@ -49,3 +49,15 @@ Documentation : https://github.com/zammad/zammad-docker-compose — https://runt
 - `dynamic_config` est désactivé pour éviter qu'un changement de port dans le formulaire diverge du mappage réellement publié.
 - Un test `curl -I http://127.0.0.1:8285/` ou `curl -I http://192.168.1.16:8285/` ne fonctionnera qu'après démarrage effectif de `zammad-nginx` ; tester également le domaine HTTPS Cloudflare configuré.
 - L'accès à l'interface peut rediriger vers le domaine HTTPS canonique. Pour un usage interactif fiable sur le LAN, utiliser ce domaine HTTPS (éventuellement avec DNS local adapté) plutôt que l'adresse IP HTTP.
+
+## Migration depuis un Zammad Debian / Ubuntu
+
+La version 8 accepte la **restauration complète par les deux archives officielles** du Zammad paquet : `<date>_zammad_db.psql.gz` et `<date>_zammad_files.tar.gz`. Elle ne récupère pas automatiquement des données d'un autre serveur et ne restaure **rien** tant que les archives n'ont pas été déposées volontairement dans `data/backup/restore/`.
+
+- Le conteneur `zammad-backup` peut maintenant restaurer le contenu de la base **avant** `zammad-init`. Il attend PostgreSQL, Redis et Memcached, mais pas la fin de l'initialisation Rails.
+- Si `data/backup/restore/` contient des fichiers, `zammad-init` attend que le service de restauration archive ce dossier après réussite. Cela protège la base contre une initialisation ou un seed concurrents.
+- Rails, scheduler, websocket et Nginx démarrent ensuite dans l'ordre usuel. Sur les mises à jour sans dossier `restore`, les données existantes sont préservées et les migrations officielles se déroulent normalement.
+- **Destructif sur la destination :** la restauration officielle remplace le schéma PostgreSQL actuel, et l'extraction des fichiers remplace ou ajoute des pièces jointes. Sauvegarder la destination avant l'import ; ne jamais placer des archives dans `restore` par inadvertance.
+- Utiliser de préférence la **même version Zammad** sur source et destination. Ne jamais restaurer une base créée par une version plus récente dans un Zammad plus ancien. Vérifier les chemins de stockage externalisé, les intégrations, les connexions e-mail et les paramètres de domaine après migration.
+
+Procédure complète : [Migration Debian/Ubuntu vers Runtipi](migration-debian.md).
