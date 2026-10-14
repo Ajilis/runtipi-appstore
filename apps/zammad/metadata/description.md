@@ -7,7 +7,7 @@ Zammad est une plateforme de support client et de gestion de tickets open source
 - Renseigner le domaine public dans `ZAMMAD_DOMAIN` (par exemple `tickets.exemple.fr`, sans `https://`).
 - Dans Cloudflare Zero Trust, créer un *Public Hostname* avec le service HTTP `http://127.0.0.1:8285`.
 - `cloudflared` doit s'exécuter sur le même serveur, directement sur l'hôte ou dans un conteneur en `network_mode: host`.
-- Ne pas activer l'exposition de domaine de Runtipi. Le port 8285 est lié à `127.0.0.1` et évite le port 8284 de Chatwoot.
+- Ne pas activer l'exposition de domaine de Runtipi. Le port 8285 est lié à `127.0.0.1` et évite le port 8284 de Chatwoot. Zammad ne déclare pas `is_main`, afin d'éviter le mappage de port et les routes Traefik automatiques.
 - Aucun port PostgreSQL, Redis ou Memcached n'est publié.
 
 ## Fonctionnalités et ressources
@@ -20,7 +20,7 @@ Zammad est une plateforme de support client et de gestion de tickets open source
 ## Mise à jour depuis la version avec Elasticsearch
 
 1. Effectuer une sauvegarde de PostgreSQL et du répertoire de stockage Zammad.
-2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 4`).
+2. Actualiser l'App Store Runtipi, puis mettre à jour Zammad (version du catalogue `tipi_version: 5`).
 3. Vérifier que Zammad démarre et que le tunnel répond.
 4. Si un ancien conteneur Elasticsearch demeure **orphelin**, le supprimer uniquement après identification. **Ne supprimer aucun volume de données sans sauvegarde et vérification.**
 

@@ -1,4 +1,4 @@
-# Zammad 7.2.2 sans Elasticsearch, sans ancres YAML (validation Runtipi v2)
+# Zammad 7.2.2 sans Elasticsearch - acces Cloudflare Tunnel uniquement
 # Adaptation de https://github.com/zammad/zammad-docker-compose
 # Aucun routage Traefik : Cloudflare Tunnel pointe sur localhost:8285.
 # Le connecteur Cloudflare doit tourner sur le meme hote en mode reseau host.
@@ -280,9 +280,6 @@ services:
     # Accessible depuis cloudflared si son conteneur est en network_mode: host.
     ports:
       - "127.0.0.1:${APP_PORT:-8285}:8080"
-    x-runtipi:
-      is_main: true
-      internal_port: 8080
 
 x-runtipi:
   schema_version: 2

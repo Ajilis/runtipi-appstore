@@ -34,6 +34,8 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 **Ports :** Chatwoot `8284` et Zammad `8285`, chacun à associer à un nom de domaine Cloudflare distinct.
 
+**Correction d'installation :** la configuration Zammad ne définit plus `x-runtipi.is_main` sur Nginx, car Runtipi créerait un second mappage automatique du port. Le seul mappage reste `127.0.0.1:8285:8080` pour Cloudflare Tunnel en réseau hôte. Version du catalogue Zammad : **5**.
+
 Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob/develop/logo.svg). Déploiement Runtipi réel à valider.
 
 ## Installer Postiz sans Elasticsearch (Cloudflare Tunnel)
