@@ -8,13 +8,13 @@
   "categories": [
     "utilities"
   ],
-  "description": "Zammad sans Elasticsearch, preflight d'installation inachevee avec sauvegarde PostgreSQL, donnees conservees a la mise a jour. Cloudflare Tunnel.",
-  "tipi_version": 6,
+  "description": "Zammad sans Elasticsearch, installation avec recuperation PostgreSQL sauvegardee, donnees conservees lors des mises a jour. Port 8285 en LAN et Cloudflare Tunnel.",
+  "tipi_version": 7,
   "version": "7.2.2",
   "source": "https://github.com/zammad/zammad",
   "website": "https://zammad.org/",
   "exposable": false,
-  "dynamic_config": true,
+  "dynamic_config": false,
   "min_tipi_version": "4.5.0",
   "supported_architectures": [
     "amd64",

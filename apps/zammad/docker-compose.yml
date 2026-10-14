@@ -320,10 +320,11 @@ services:
     depends_on:
       zammad-railsserver:
         condition: service_healthy
-    # Acces limite au serveur local : PAS de Traefik, PAS de port public.
-    # Accessible depuis cloudflared si son conteneur est en network_mode: host.
+    # Port TCP 8285 accessible sur le LAN ; Cloudflare Tunnel peut aussi cibler 127.0.0.1:8285.
+    # Ne pas rediriger le port 8285 depuis le routeur vers Internet.
+    # Pas de Traefik et aucun port PostgreSQL/Redis/Memcached expose.
     ports:
-      - "127.0.0.1:${APP_PORT:-8285}:8080"
+      - "8285:8080/tcp"
 
 x-runtipi:
   schema_version: 2
