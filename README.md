@@ -38,6 +38,8 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob/develop/logo.svg). Déploiement Runtipi réel à valider.
 
+**Migration confirmée pour ancienne instance Zammad 6.5.0 PostgreSQL :** passage vers 7.2.2 nécessitant des migrations de base, à tester avant bascule des canaux. La documentation officielle recommande de préférence une restauration à version identique avant mise à niveau. Détails et précautions dans le guide ci-dessous.
+
 **Migration Debian/Ubuntu → Runtipi :** la version 8 corrige l'ordre de démarrage pour permettre à `zammad-backup` de restaurer les archives du paquet avant `zammad-init`. La restauration n'est activée qu'après dépôt intentionnel des archives officielles dans `data/backup/restore/`. Elle remplace les données de destination : effectuer une sauvegarde avant toute migration. [Procédure complète](apps/zammad/metadata/migration-debian.md).
 
 ## Installer Postiz sans Elasticsearch (Cloudflare Tunnel)

@@ -9,6 +9,28 @@ Documentation Zammad :
 - https://docs.zammad.org/en/latest/appendix/backup-and-restore/docker-compose.html
 - https://docs.zammad.org/en/latest/appendix/backup-and-restore/migrate-hosts.html
 
+## Cas confirmé : ancien Zammad 6.5.0 sur Debian Bookworm, PostgreSQL
+
+La source fournit `6.5.0-1753078720.dace359f.bookworm` et l'adaptateur PostgreSQL. La cible Runtipi utilise **Zammad 7.2.2**. C'est un **passage de version majeure (6 → 7)** ; ne pas sauter d'autres versions majeures et lire les notes de rupture de Zammad 7.0 avant validation.
+
+La documentation officielle **recommande de restaurer de préférence dans la même version que la source**, puis de mettre à jour. Avec notre cible déjà en 7.2.2, l'import d'une sauvegarde 6.5.0 suivie de `db:migrate` est un **scénario de migration à tester**, et non une garantie d'import réussi. Préserver l'ancienne instance et ses archives ; ne pas procéder à la bascule des canaux si les migrations Rails ou l'interface ne sont pas validées. Une alternative plus prudente est une instance de transit **6.5.0** puis une mise à niveau contrôlée vers 7.2.2 ; elle nécessite un déploiement de transit compatible qui n'est pas inclus dans l'app du catalogue.
+
+Références :
+- https://docs.zammad.org/en/latest/appendix/backup-and-restore/migrate-hosts.html
+- https://docs.zammad.org/en/latest/install/update.html
+- https://zammad.com/en/product/releases/7-0
+
+Commandes **non destructives** sur l'ancien serveur pour préparer l'export :
+
+```bash
+sudo zammad run rails r 'puts "storage_provider=#{Setting.get("storage_provider")}"'
+sudo ls -l /opt/zammad/contrib/backup/{config.dist,zammad_backup.sh}
+sudo test -f /opt/zammad/contrib/backup/config && sudo grep -E '^(BACKUP_DIR|FULL_FS_DUMP)=' /opt/zammad/contrib/backup/config || true
+df -h /var/tmp /opt/zammad
+```
+
+Pour les pièces jointes : `DB` (stockage dans PostgreSQL), `File` (répertoire `/opt/zammad/storage`) et `S3` (stockage objet à migrer à part) ne doivent pas être supposés équivalents. Conserver les éventuels réglages système personnalisés qui ne figurent pas dans la base (variables d'environnement, proxy, certificats, identité mail).
+
 ## Étape 0 — Contrôles préalables : ne rien arrêter encore
 
 Sur le **serveur Debian/Ubuntu d'origine** :
