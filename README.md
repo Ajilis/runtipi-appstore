@@ -58,14 +58,14 @@ Documentation de l'application : [`apps/postiz-lite/metadata/description.md`](ap
 
 ## Installer Fil CRM (Cloudflare Tunnel, sans Traefik)
 
-**Version du catalogue Runtipi : 1** · **Version du logiciel : Fil CRM 0.2.0** (image `ghcr.io/ajilis/crm:sha-b16002e`, amd64 et arm64).
+**Version du catalogue Runtipi : 2** · **Version du logiciel : Fil CRM 0.2.0** (image `ghcr.io/ajilis/crm:sha-052d6ac`, amd64 et arm64). La v2 corrige l'arrêt du worker (et donc l'état « arrêté » dans Runtipi) quand l'envoi d'emails n'est pas encore configuré.
 
 1. Dans **Runtipi → Settings → App Stores**, actualiser `https://github.com/Ajilis/runtipi-appstore`.
 2. Installer **Fil CRM** (identifiant `fil-crm`, port local **8287**) sans activer l'exposition de domaine Runtipi, en laissant **Port ouvert** coché.
 3. Renseigner l'**URL publique HTTPS** exacte, sans slash final (par exemple `https://crm.exemple.fr`). Le secret de signature et le mot de passe PostgreSQL sont générés par Runtipi.
 4. Dans Cloudflare Tunnel, créer un *Public Hostname* vers `http://IP_LAN_DU_SERVEUR:8287` (ou `http://127.0.0.1:8287` si `cloudflared` tourne sur le serveur en réseau hôte), sans réécriture de l'en-tête Host.
 5. Ouvrir l'URL publique et créer l'espace de l'entreprise (premier compte administrateur). Le site répond aussi sur `http://IP_DU_SERVEUR:8287` depuis le réseau local, connexion comprise.
-6. Compléter `APP_DATA_DIR/config/fil.env` pour les emails (Brevo) et l'assistant vocal (Retell), puis redémarrer l'application.
+6. Compléter `APP_DATA_DIR/config/fil.env` pour les emails (`BREVO_API_KEY`, `NOTIFICATIONS_FROM_EMAIL`) et l'assistant vocal (`RETELL_API_KEY`), puis redémarrer l'application. Tant que la clé Brevo est vide, le worker reste en attente sans rien envoyer.
 
 Le déploiement comprend **3 conteneurs** : le site, qui applique les migrations à chaque démarrage, le worker (relances et notifications par email) et PostgreSQL 16, sans port publié. Les données persistent dans `APP_DATA_DIR` : `config/fil.env` (configuration, jamais écrasée) et `postgres/`. **Ne pas ouvrir le port 8287 sur le routeur.** Validé avec le code de Runtipi 4.9.1, pas encore testé sur une instance Runtipi réelle.
 

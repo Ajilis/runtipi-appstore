@@ -9,7 +9,7 @@
     "utilities"
   ],
   "description": "Fil CRM : fiches, pipeline, import CSV, assistant IA qui décroche (Retell) et automate de relances par email (Brevo). Accès local par le port hôte 8287, compatible Cloudflare Tunnel, sans Traefik.",
-  "tipi_version": 1,
+  "tipi_version": 2,
   "version": "0.2.0",
   "source": "https://github.com/Ajilis/CRM",
   "website": "https://github.com/Ajilis/CRM",
@@ -52,5 +52,5 @@
     }
   ],
   "created_at": 1792509600000,
-  "updated_at": 1792509600000
+  "updated_at": 1792511426000
 }

@@ -1,7 +1,7 @@
 # Fil CRM
 
-**Version du catalogue Runtipi : 1**  
-**Version du logiciel : Fil CRM 0.2.0** (image `ghcr.io/ajilis/crm:sha-b16002e`)  
+**Version du catalogue Runtipi : 2**  
+**Version du logiciel : Fil CRM 0.2.0** (image `ghcr.io/ajilis/crm:sha-052d6ac`)  
 **Statut :** application Ajilis, accès réseau local et Cloudflare Tunnel, sans Traefik.
 
 Fil CRM est un CRM B2B pour PME françaises : fiches, contacts, pipeline, import CSV, **assistant IA qui décroche** (Retell) et **automate de relances par email** (Brevo). Toutes les entrées, qu'elles viennent d'un humain, de l'assistant ou de l'automate, s'écrivent sur le fil de la fiche.
@@ -10,6 +10,8 @@ Le déploiement comprend **3 conteneurs** :
 - le site, qui applique les migrations de la base à chaque démarrage ;
 - le worker : relances, notifications par email, purge des sessions ;
 - PostgreSQL 16.
+
+**Nouveautés de la révision 2 :** le worker ne plante plus quand l'envoi d'emails n'est pas encore configuré. Il attend, et l'application reste « en marche » dans Runtipi. Une installation en révision 1 dont le fichier `config/fil.env` contient encore `MAIL_PROVIDER=console` doit passer à `MAIL_PROVIDER=brevo` avec une clé Brevo pour envoyer des emails.
 
 ## Installer via l'App Store Ajilis
 
@@ -38,8 +40,7 @@ Le premier démarrage prend une à deux minutes : création de la base, migratio
 
 | Réglage | Rôle |
 | --- | --- |
-| `MAIL_PROVIDER` | `console` par défaut (emails affichés dans les journaux du worker, rien n'est envoyé) ; `brevo` pour un envoi réel |
-| `BREVO_API_KEY`, `NOTIFICATIONS_FROM_EMAIL`, `NOTIFICATIONS_FROM_NAME` | envoi par Brevo |
+| `BREVO_API_KEY`, `NOTIFICATIONS_FROM_EMAIL`, `NOTIFICATIONS_FROM_NAME` | envoi des emails par Brevo (`MAIL_PROVIDER=brevo`). Tant que la clé est vide, le worker reste en attente et n'envoie rien ; il l'indique dans ses journaux |
 | `RETELL_API_KEY` | assistant vocal (clé Retell marquée « webhook ») |
 | `WORKER_INTERVAL_SECONDS` | intervalle du worker, 30 s par défaut |
 | `SESSION_COOKIE_SECURE`, `TRUSTED_PROXY_HOPS` | voir ci-dessus |

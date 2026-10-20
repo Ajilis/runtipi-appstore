@@ -15,7 +15,7 @@
 services:
   # Site web (Next.js). Applique les migrations de la base avant de démarrer.
   fil-crm:
-    image: ghcr.io/ajilis/crm:sha-b16002e
+    image: ghcr.io/ajilis/crm:sha-052d6ac
     restart: unless-stopped
     command: ["web"]
     environment:
@@ -40,7 +40,7 @@ services:
 
   # Worker : relances automatiques, notifications par email, purge des sessions expirées.
   worker:
-    image: ghcr.io/ajilis/crm:sha-b16002e
+    image: ghcr.io/ajilis/crm:sha-052d6ac
     restart: unless-stopped
     command: ["worker"]
     environment:
