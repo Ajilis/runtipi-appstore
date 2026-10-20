@@ -1,0 +1,78 @@
+# Fil CRM pour Runtipi (dynamic compose, schéma 2)
+#
+# Accès : http://IP_DU_SERVEUR:8287 sur le réseau local, et Cloudflare Tunnel vers cette même
+# adresse. Runtipi publie le port 3000 du site sur le port 8287 (« Port ouvert ») ; l'application
+# n'est pas exposable par domaine (exposable: false), donc aucune règle Traefik n'est générée.
+#
+# Données persistantes dans APP_DATA_DIR :
+#   config/fil.env   fichier de configuration de l'application (emails, Retell, réglages),
+#                    créé au premier démarrage puis jamais écrasé
+#   postgres/        base PostgreSQL 16
+# L'URL publique et les secrets sont gérés par Runtipi (formulaire de l'application, app.env).
+#
+# Image construite depuis https://github.com/Ajilis/CRM (Dockerfile, workflow « Image Docker »).
+
+services:
+  # Site web (Next.js). Applique les migrations de la base avant de démarrer.
+  fil-crm:
+    image: ghcr.io/ajilis/crm:sha-b16002e
+    restart: unless-stopped
+    command: ["web"]
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      APP_URL: ${FIL_PUBLIC_URL}
+      APP_SECRET: ${FIL_APP_SECRET}
+      DATABASE_URL: postgresql://fil:${FIL_DB_PASSWORD}@postgres:5432/fil
+    volumes:
+      - ${APP_DATA_DIR}/config:/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/connexion').then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    x-runtipi:
+      is_main: true
+      internal_port: 3000
+
+  # Worker : relances automatiques, notifications par email, purge des sessions expirées.
+  worker:
+    image: ghcr.io/ajilis/crm:sha-b16002e
+    restart: unless-stopped
+    command: ["worker"]
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      APP_URL: ${FIL_PUBLIC_URL}
+      APP_SECRET: ${FIL_APP_SECRET}
+      DATABASE_URL: postgresql://fil:${FIL_DB_PASSWORD}@postgres:5432/fil
+    volumes:
+      - ${APP_DATA_DIR}/config:/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fil-crm:
+        condition: service_healthy
+
+  # Base PostgreSQL 16 : aucun port publié sur l'hôte.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      POSTGRES_DB: fil
+      POSTGRES_USER: fil
+      POSTGRES_PASSWORD: ${FIL_DB_PASSWORD}
+    volumes:
+      - ${APP_DATA_DIR}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fil -d fil"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+x-runtipi:
+  schema_version: 2
