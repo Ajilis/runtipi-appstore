@@ -3,7 +3,8 @@
 export const LINKEDIN_CHECK_COOLDOWN_SECONDS = 90;
 export const LINKEDIN_ERROR_CODES = Object.freeze([
   'http_rejected', 'http_error', 'rate_limited', 'unexpected_response',
-  'timeout', 'network_error', 'credentials_unavailable', 'unexpected_error',
+  'timeout', 'network_error', 'dns_error', 'tls_error', 'connection_error',
+  'redirect_detected', 'credentials_unavailable', 'unexpected_error',
 ]);
 
 export function linkedinCheckPatch(result, now = new Date()) {
