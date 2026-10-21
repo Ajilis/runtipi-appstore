@@ -1,0 +1,65 @@
+{
+  "name": "Rendevo",
+  "id": "rendevo",
+  "available": true,
+  "short_desc": "Agent IA de prospection LinkedIn : signaux d'achat, messages personnalisés, setter IA et prise de rendez-vous.",
+  "author": "Ajilis",
+  "port": 8288,
+  "categories": [
+    "automation",
+    "social"
+  ],
+  "description": "Version du catalogue Runtipi : 1 | Version Rendevo : 0.1.0. Agent de prospection auto-hébergé : il qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres. Node.js + PostgreSQL, données et fichier de configuration persistants. Accès local http://IP:8288 et Cloudflare Tunnel, sans Traefik.",
+  "tipi_version": 1,
+  "version": "0.1.0",
+  "source": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
+  "website": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.5.0",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "text",
+      "label": "URL publique Rendevo (Cloudflare Tunnel)",
+      "hint": "Adresse HTTPS exacte du hostname Cloudflare, sans slash final. Utilisée dans les liens envoyés aux prospects (agenda, vidéo, réservation). Le tunnel doit pointer vers http://IP_DU_SERVEUR:8288.",
+      "placeholder": "https://rdv.exemple.fr",
+      "regex": "^https?://[^/\\s]+$",
+      "pattern_error": "Saisissez une URL du type https://rdv.exemple.fr, sans chemin ni slash final",
+      "required": true,
+      "env_variable": "RENDEVO_PUBLIC_URL"
+    },
+    {
+      "type": "random",
+      "label": "Secret de l'application",
+      "hint": "Chiffre les clés API stockées en base. Ne jamais le modifier après l'installation.",
+      "required": true,
+      "min": 64,
+      "encoding": "hex",
+      "env_variable": "RENDEVO_APP_SECRET"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe PostgreSQL",
+      "required": true,
+      "min": 48,
+      "encoding": "hex",
+      "env_variable": "RENDEVO_DB_PASSWORD"
+    },
+    {
+      "type": "boolean",
+      "label": "Autoriser les inscriptions publiques",
+      "hint": "Laisser décoché : le premier compte créé devient administrateur, les suivants sont ajoutés depuis Réglages > Équipe.",
+      "required": false,
+      "default": false,
+      "env_variable": "RENDEVO_ALLOW_SIGNUP"
+    }
+  ],
+  "created_at": 1792589944768,
+  "updated_at": 1792589944768
+}

@@ -1,0 +1,20 @@
+{
+  "name": "rendevo",
+  "version": "0.1.0",
+  "description": "Agent IA de prospection LinkedIn auto-hébergé : signaux d'achat, messages personnalisés, setter IA et prise de rendez-vous.",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node server/index.js",
+    "build:web": "node scripts/build-web.mjs",
+    "check": "node --check server/index.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-icons": "5.7.0"
+  }
+}

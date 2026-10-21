@@ -1,0 +1,314 @@
+import { bad, notFound } from '../lib/http.js';
+import { readWebsite } from '../services/website.js';
+import { providerList, getProvider } from '../services/providers/index.js';
+import { DEFAULT_SEQUENCE, DEFAULT_CAMPAIGN_SETTINGS } from '../services/agent.js';
+import { fakeProspects } from '../services/providers/simulation.js';
+
+const SECTIONS = ['offer', 'icp', 'voice', 'availability', 'schedule', 'goal', 'ai', 'public_url', 'onboarding_done'];
+
+function maskSettings(s) {
+  const out = { ...s };
+  if (out.ai) {
+    out.ai = { ...out.ai, has_api_key: !!out.ai.api_key_enc };
+    delete out.ai.api_key_enc;
+  }
+  return out;
+}
+
+function maskAccount(a) {
+  const cfg = { ...a.config };
+  const hasKey = !!cfg.api_key_enc;
+  delete cfg.api_key_enc;
+  delete cfg.api_key;
+  return { ...a, config: { ...cfg, has_api_key: hasKey } };
+}
+
+function cleanList(v) {
+  return (Array.isArray(v) ? v : String(v || '').split(/[,\n]/)).map((x) => String(x).trim()).filter(Boolean).slice(0, 40);
+}
+
+export function registerCore(router, deps, { requireAuth, requireAdmin }) {
+  const { db, ai, agent, vault, calendar } = deps;
+
+  // ------------------------------------------------------------ settings
+  router.get('/api/settings', requireAuth, async (ctx) => {
+    const ws = ctx.state.ws;
+    return {
+      settings: maskSettings(ws.settings),
+      ai_defaults: { provider: deps.config.ai?.provider, model: deps.config.ai?.model, base_url: deps.config.ai?.base_url, configured: ai.enabled({ settings: {} }) },
+      ai_enabled: ai.enabled(ws),
+      config_file: deps.config.configFile,
+      public_url: agent.publicUrl(ws),
+      public_url_from_env: !!deps.config.publicUrl,
+      calendar_feed: agent.publicUrl(ws) ? `${agent.publicUrl(ws)}/api/public/calendar/${ws.calendar_token}.ics` : `/api/public/calendar/${ws.calendar_token}.ics`,
+      booking_link: agent.publicUrl(ws) ? `${agent.publicUrl(ws)}/r/${ws.booking_token}` : `/r/${ws.booking_token}`,
+      limits: deps.config.limits,
+    };
+  });
+
+  router.patch('/api/settings', requireAuth, requireAdmin, async (ctx) => {
+    const body = await ctx.json();
+    const ws = ctx.state.ws;
+    const settings = { ...ws.settings };
+    for (const key of Object.keys(body)) {
+      if (!SECTIONS.includes(key)) continue;
+      let value = body[key];
+      if (key === 'ai') {
+        const prev = settings.ai || {};
+        value = {
+          provider: ['none', 'openai', 'anthropic'].includes(value.provider) ? value.provider : prev.provider || 'none',
+          base_url: String(value.base_url ?? prev.base_url ?? '').trim(),
+          model: String(value.model ?? prev.model ?? '').trim(),
+          temperature: Math.min(1.2, Math.max(0, Number(value.temperature ?? prev.temperature ?? 0.7))),
+          api_key_enc: value.api_key === '' && value.clear_key ? '' : value.api_key ? vault.encrypt(value.api_key) : prev.api_key_enc || '',
+        };
+      }
+      if (key === 'icp') {
+        value = Object.fromEntries(['titles', 'industries', 'locations', 'company_sizes', 'keywords', 'exclusions', 'excluded_companies'].map((k) => [k, cleanList(value[k])]));
+      }
+      if (key === 'voice' && value.examples) value.examples = (value.examples || []).map(String).filter(Boolean).slice(0, 6);
+      if (key === 'public_url') value = String(value || '').trim().replace(/\/+$/, '');
+      if (typeof value === 'object' && value !== null && !Array.isArray(value) && key !== 'ai' && key !== 'icp') value = { ...(settings[key] || {}), ...value };
+      settings[key] = value;
+    }
+    await db.query('UPDATE workspaces SET settings = $2 WHERE id = $1', [ws.id, JSON.stringify(settings)]);
+    return { settings: maskSettings(settings) };
+  });
+
+  router.post('/api/settings/ai/test', requireAuth, async (ctx) => {
+    const ws = await agent.workspace(ctx.state.ws.id);
+    if (!ai.enabled(ws)) throw bad('Renseignez un fournisseur et un modèle (et une clé pour Anthropic).');
+    try { return await ai.test(ws); } catch (e) { throw bad(`Échec du test : ${e.message}`); }
+  });
+
+  router.post('/api/offer/analyze', requireAuth, async (ctx) => {
+    const body = await ctx.json();
+    let page = { title: '', description: '', text: '', url: body.url };
+    if (body.url) {
+      try { page = await readWebsite(body.url); } catch (e) {
+        if (!body.text) throw bad(`Impossible de lire ${body.url} : ${e.message}. Collez la description de votre offre à la place.`);
+      }
+      if (page.linkedin && !body.text) throw bad('LinkedIn ne peut pas être lu directement. Collez votre titre et votre section « Infos » dans le champ description.');
+    }
+    const analysis = await ai.analyzeOffer(ctx.state.ws, { url: page.url, pageText: page.text, title: page.title, description: page.description, extra: body.text });
+    return { analysis, page: { title: page.title, description: page.description, url: page.url } };
+  });
+
+  router.post('/api/agent', requireAuth, async (ctx) => {
+    const body = await ctx.json();
+    const enabled = !!body.enabled;
+    await db.query('UPDATE workspaces SET agent_enabled = $2 WHERE id = $1', [ctx.state.ws.id, enabled]);
+    await deps.activity.log(ctx.state.ws.id, enabled ? 'agent.started' : 'agent.paused', { data: { by: ctx.state.user.email } });
+    return { agent_enabled: enabled };
+  });
+
+  // ------------------------------------------------------------ accounts
+  router.get('/api/providers', requireAuth, async () => providerList());
+
+  router.get('/api/accounts', requireAuth, async (ctx) => {
+    const { rows } = await db.query(
+      `SELECT a.*, coalesce(u.invites, 0) AS invites_today, coalesce(u.messages, 0) AS messages_today,
+              (SELECT coalesce(sum(invites), 0)::int FROM usage WHERE account_id = a.id AND day > current_date - 7) AS invites_week
+         FROM accounts a LEFT JOIN usage u ON u.account_id = a.id AND u.day = current_date
+        WHERE a.workspace_id = $1 ORDER BY a.created_at`,
+      [ctx.state.ws.id],
+    );
+    return rows.map((a) => ({ ...maskAccount(a), limits: { ...(deps.config.limits?.[a.account_type] || {}), ...(a.config?.limits || {}) } }));
+  });
+
+  function accountConfig(provider, input = {}, prev = {}) {
+    const cfg = { ...prev };
+    if (provider === 'unipile') {
+      if (input.dsn !== undefined) cfg.dsn = String(input.dsn).trim();
+      if (input.account_id !== undefined) cfg.account_id = String(input.account_id).trim();
+      if (input.api_key) cfg.api_key_enc = vault.encrypt(String(input.api_key).trim());
+    }
+    if (input.ignore_window !== undefined) cfg.ignore_window = !!input.ignore_window;
+    if (input.limits) cfg.limits = Object.fromEntries(Object.entries(input.limits).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, Math.max(0, parseInt(v, 10) || 0)]));
+    delete cfg.api_key;
+    return cfg;
+  }
+
+  router.post('/api/accounts', requireAuth, requireAdmin, async (ctx) => {
+    const body = await ctx.json();
+    getProvider(body.provider);
+    const type = ['free', 'premium', 'sales_navigator'].includes(body.account_type) ? body.account_type : 'free';
+    const cfg = accountConfig(body.provider, { ignore_window: body.provider === 'simulation', ...body.config });
+    if (body.provider === 'unipile' && (!cfg.dsn || !cfg.account_id || !cfg.api_key_enc)) throw bad('DSN, identifiant de compte et clé API Unipile requis');
+    const { rows } = await db.query(
+      'INSERT INTO accounts (workspace_id, name, provider, account_type, config) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [ctx.state.ws.id, String(body.name || 'Mon compte LinkedIn').slice(0, 80), body.provider, type, JSON.stringify(cfg)],
+    );
+    return maskAccount(rows[0]);
+  });
+
+  router.patch('/api/accounts/:id', requireAuth, requireAdmin, async (ctx) => {
+    const body = await ctx.json();
+    const { rows } = await db.query('SELECT * FROM accounts WHERE id = $1 AND workspace_id = $2', [ctx.params.id, ctx.state.ws.id]);
+    const a = rows[0];
+    if (!a) throw notFound();
+    const cfg = accountConfig(a.provider, body.config || {}, a.config);
+    const status = ['active', 'paused'].includes(body.status) ? body.status : a.status;
+    const type = ['free', 'premium', 'sales_navigator'].includes(body.account_type) ? body.account_type : a.account_type;
+    const r = await db.query(
+      'UPDATE accounts SET name = $2, account_type = $3, config = $4, status = $5, status_detail = CASE WHEN $5 = \'active\' THEN NULL ELSE status_detail END WHERE id = $1 RETURNING *',
+      [a.id, String(body.name || a.name).slice(0, 80), type, JSON.stringify(cfg), status],
+    );
+    return maskAccount(r.rows[0]);
+  });
+
+  router.delete('/api/accounts/:id', requireAuth, requireAdmin, async (ctx) => {
+    await db.query('DELETE FROM accounts WHERE id = $1 AND workspace_id = $2', [ctx.params.id, ctx.state.ws.id]);
+    return { ok: true };
+  });
+
+  router.post('/api/accounts/:id/test', requireAuth, async (ctx) => {
+    const { rows } = await db.query('SELECT * FROM accounts WHERE id = $1 AND workspace_id = $2', [ctx.params.id, ctx.state.ws.id]);
+    if (!rows[0]) throw notFound();
+    const account = agent.decryptAccount(rows[0]);
+    try {
+      const res = await getProvider(account.provider).test(account);
+      if (res.ok && account.status === 'error') await db.query(`UPDATE accounts SET status = 'active', status_detail = NULL WHERE id = $1`, [account.id]);
+      return res;
+    } catch (e) {
+      return { ok: false, detail: e.message };
+    }
+  });
+
+  // ----------------------------------------------------------- campaigns
+  const campaignStats = `
+    (SELECT count(*)::int FROM prospects p WHERE p.campaign_id = c.id) AS prospects,
+    (SELECT count(*)::int FROM prospects p WHERE p.campaign_id = c.id AND p.status = 'qualified') AS waiting,
+    (SELECT count(*)::int FROM prospects p WHERE p.campaign_id = c.id AND p.invited_at IS NOT NULL) AS invited,
+    (SELECT count(*)::int FROM prospects p WHERE p.campaign_id = c.id AND p.connected_at IS NOT NULL) AS connected,
+    (SELECT count(*)::int FROM prospects p WHERE p.campaign_id = c.id AND p.last_reply_at IS NOT NULL) AS replied,
+    (SELECT count(*)::int FROM meetings m WHERE m.campaign_id = c.id AND m.status IN ('confirmed', 'done')) AS meetings`;
+
+  router.get('/api/campaigns', requireAuth, async (ctx) => {
+    const { rows } = await db.query(
+      `SELECT c.*, a.name AS account_name, a.provider AS account_provider, ${campaignStats}
+         FROM campaigns c LEFT JOIN accounts a ON a.id = c.account_id
+        WHERE c.workspace_id = $1 AND ($2::boolean OR c.status <> 'archived') ORDER BY c.created_at DESC`,
+      [ctx.state.ws.id, ctx.query.archived === '1'],
+    );
+    return rows.map((c) => ({ ...c, settings: { ...DEFAULT_CAMPAIGN_SETTINGS, ...c.settings } }));
+  });
+
+  function sanitizeSequence(seq) {
+    if (!Array.isArray(seq) || !seq.length) return DEFAULT_SEQUENCE;
+    const out = [{ type: 'invite', with_note: !!seq[0]?.with_note }];
+    out.push({ type: 'message', delay_hours: Math.max(0, Number(seq[1]?.delay_hours ?? 3)), instructions: String(seq[1]?.instructions || '').slice(0, 1000) });
+    for (const s of seq.slice(2, 10)) {
+      out.push({ type: 'followup', delay_days: Math.max(1, Number(s.delay_days) || 3), instructions: String(s.instructions || '').slice(0, 1000), media_id: s.media_id || null });
+    }
+    return out;
+  }
+
+  function sanitizeSettings(s = {}, prev = {}) {
+    const out = { ...DEFAULT_CAMPAIGN_SETTINGS, ...prev };
+    if (['none', 'first', 'all'].includes(s.validation)) out.validation = s.validation;
+    for (const k of ['setter_enabled', 'followups_enabled', 'auto_discovery']) if (s[k] !== undefined) out[k] = !!s[k];
+    if (s.language) out.language = String(s.language).slice(0, 10);
+    if (s.min_score !== undefined) out.min_score = Math.min(100, Math.max(0, parseInt(s.min_score, 10) || 0));
+    if (s.weekly_prospects !== undefined) out.weekly_prospects = Math.min(1000, Math.max(1, parseInt(s.weekly_prospects, 10) || 100));
+    return out;
+  }
+
+  router.post('/api/campaigns', requireAuth, requireAdmin, async (ctx) => {
+    const body = await ctx.json();
+    const ws = ctx.state.ws;
+    const icp = body.icp ? Object.fromEntries(Object.entries(body.icp).map(([k, v]) => [k, cleanList(v)])) : ws.settings.icp || {};
+    let accountId = body.account_id || null;
+    if (!accountId) {
+      const a = await db.query('SELECT id FROM accounts WHERE workspace_id = $1 ORDER BY created_at LIMIT 1', [ws.id]);
+      accountId = a.rows[0]?.id || null;
+    }
+    const { rows } = await db.query(
+      `INSERT INTO campaigns (workspace_id, account_id, name, goal, offer, icp, sequence, settings) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [ws.id, accountId, String(body.name || 'Nouvelle campagne').slice(0, 120), String(body.goal || 'meeting'), String(body.offer || ws.settings.offer?.summary || ''),
+        JSON.stringify(icp), JSON.stringify(sanitizeSequence(body.sequence)), JSON.stringify(sanitizeSettings(body.settings))],
+    );
+    return rows[0];
+  });
+
+  async function ownedCampaign(ctx) {
+    const { rows } = await db.query('SELECT * FROM campaigns WHERE id = $1 AND workspace_id = $2', [ctx.params.id, ctx.state.ws.id]);
+    if (!rows[0]) throw notFound('Campagne introuvable');
+    return rows[0];
+  }
+
+  router.get('/api/campaigns/:id', requireAuth, async (ctx) => {
+    await ownedCampaign(ctx);
+    const { rows } = await db.query(
+      `SELECT c.*, a.name AS account_name, a.provider AS account_provider, ${campaignStats} FROM campaigns c LEFT JOIN accounts a ON a.id = c.account_id WHERE c.id = $1`,
+      [ctx.params.id],
+    );
+    const c = rows[0];
+    return { ...c, settings: { ...DEFAULT_CAMPAIGN_SETTINGS, ...c.settings }, sequence: Array.isArray(c.sequence) && c.sequence.length ? c.sequence : DEFAULT_SEQUENCE };
+  });
+
+  router.patch('/api/campaigns/:id', requireAuth, requireAdmin, async (ctx) => {
+    const c = await ownedCampaign(ctx);
+    const body = await ctx.json();
+    const icp = body.icp ? Object.fromEntries(Object.entries(body.icp).map(([k, v]) => [k, cleanList(v)])) : c.icp;
+    const { rows } = await db.query(
+      `UPDATE campaigns SET name = $2, goal = $3, offer = $4, icp = $5, sequence = $6, settings = $7, account_id = $8, updated_at = now() WHERE id = $1 RETURNING *`,
+      [c.id, String(body.name ?? c.name).slice(0, 120), String(body.goal ?? c.goal), String(body.offer ?? c.offer),
+        JSON.stringify(icp), JSON.stringify(body.sequence ? sanitizeSequence(body.sequence) : c.sequence),
+        JSON.stringify(sanitizeSettings(body.settings || {}, c.settings)), body.account_id !== undefined ? body.account_id || null : c.account_id],
+    );
+    return rows[0];
+  });
+
+  router.post('/api/campaigns/:id/status', requireAuth, async (ctx) => {
+    const c = await ownedCampaign(ctx);
+    const { status } = await ctx.json();
+    if (!['active', 'paused', 'archived', 'draft'].includes(status)) throw bad('Statut invalide');
+    if (status === 'active' && !c.account_id) throw bad('Associez un compte LinkedIn avant d\'activer la campagne');
+    await db.query(`UPDATE campaigns SET status = $2, archived_at = CASE WHEN $2 = 'archived' THEN now() ELSE NULL END, updated_at = now() WHERE id = $1`, [c.id, status]);
+    if (status === 'active') {
+      // Kick off prospects waiting in this campaign.
+      await db.query(`UPDATE prospects SET next_action_at = now() WHERE campaign_id = $1 AND status IN ('qualified') AND next_action_at IS NULL`, [c.id]);
+    }
+    if (status === 'archived') {
+      await db.query(`UPDATE messages SET status = 'cancelled' WHERE campaign_id = $1 AND status IN ('queued', 'pending_approval')`, [c.id]);
+    }
+    await deps.activity.log(ctx.state.ws.id, `campaign.${status}`, { campaignId: c.id, data: { name: c.name } });
+    return { ok: true, status };
+  });
+
+  router.post('/api/campaigns/:id/discover', requireAuth, async (ctx) => {
+    const c = await agent.campaign((await ownedCampaign(ctx)).id);
+    const body = await ctx.json();
+    try {
+      return await agent.discover(ctx.state.ws, c, { limit: Math.min(50, Math.max(1, parseInt(body.limit, 10) || 15)) });
+    } catch (e) {
+      throw bad(e.message);
+    }
+  });
+
+  // Playground: generates sample messages for a real or synthetic prospect, nothing is sent.
+  router.post('/api/campaigns/:id/preview', requireAuth, async (ctx) => {
+    const c = await agent.campaign((await ownedCampaign(ctx)).id);
+    const body = await ctx.json();
+    const ws = await agent.workspace(ctx.state.ws.id);
+    let p;
+    if (body.prospect_id) p = await agent.prospect(body.prospect_id);
+    if (!p || p.workspace_id !== ws.id) p = { ...fakeProspects(c.icp, 1)[0], id: 'preview', setter_state: {} };
+    const kind = ['invite', 'first', 'followup'].includes(body.kind) ? body.kind : 'first';
+    const stepIdx = kind === 'invite' ? 0 : kind === 'first' ? 1 : Math.max(2, parseInt(body.step, 10) || 2);
+    const step = { ...(c.sequence[stepIdx] || {}), number: stepIdx - 1 };
+    const media = await agent.mediaLink(ws, step.media_id);
+    const text = await ai.writeMessage(ws, c, p, { kind, step, media });
+    let setter = null;
+    if (body.reply) {
+      const slots = await calendar.freeSlots(ws, { count: 3, spread: true });
+      setter = await ai.setterTurn(ws, c, { ...p, setter_state: {} }, {
+        history: [{ direction: 'out', body: text }, { direction: 'in', body: String(body.reply) }],
+        slots,
+        timezone: calendar.availability(ws).timezone,
+      });
+    }
+    return { prospect: { full_name: p.full_name, title: p.title, company: p.company, signals: p.signals }, text, setter, ai: ai.enabled(ws) };
+  });
+}

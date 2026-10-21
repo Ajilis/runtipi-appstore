@@ -34,7 +34,7 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 **Différence avec l'ancienne version :** le service Elasticsearch et son volume déclaré ont été retirés du Compose, et `ELASTICSEARCH_ENABLED=false` est appliqué à Zammad. La recherche plein texte indexée peut être indisponible. Sauvegarder les données avant une mise à jour ; ne pas supprimer les volumes PostgreSQL ou le stockage utilisateur.
 
-**Ports :** Chatwoot `8284` et Zammad `8285`, chacun à associer à un nom de domaine Cloudflare distinct.
+**Ports :** Chatwoot `8284`, Zammad `8285`, Postiz `8286` et Rendevo `8288`, chacun à associer à un nom de domaine Cloudflare distinct.
 
 **Installation sécurisée (version du catalogue 9) :** Zammad préserve les données et les fichiers de configuration lors des mises à jour et conserve le précontrôle de récupération après une installation inachevée (sauvegarde PostgreSQL avant réinitialisation limitée au cas sans utilisateur ni ticket). Le port `8285:8080/tcp` est accessible sur le LAN (par exemple `http://192.168.1.16:8285/`) et avec Cloudflare Tunnel (`http://127.0.0.1:8285` si cloudflared utilise le réseau hôte). Les connexions applicatives sont prévues sur le domaine public HTTPS canonique ; une adresse IP HTTP peut être redirigée. Ne pas publier ce port sur Internet ; aucun Traefik applicatif. Le port reste fixe à 8285.
 
@@ -55,3 +55,22 @@ Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob
 Cette version comprend **5 conteneurs** : Postiz, PostgreSQL Postiz, Redis, Temporal et PostgreSQL Temporal. **Aucun Elasticsearch** : Temporal utilise PostgreSQL pour sa base de visibilité. Les données persistent dans `APP_DATA_DIR`. Elle est destinée à une **nouvelle installation** ; une migration depuis une configuration Temporal/Elasticsearch existante nécessite un plan de sauvegarde. L'image Postiz est actuellement basée sur le tag `latest`, à surveiller avant les mises à jour.
 
 Documentation de l'application : [`apps/postiz-lite/metadata/description.md`](apps/postiz-lite/metadata/description.md).
+
+## Installer Rendevo (agent IA de prospection LinkedIn, Cloudflare Tunnel, sans Traefik)
+
+**Version du catalogue Runtipi : 1** · **Version du logiciel : Rendevo 0.1.0**
+
+Rendevo qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et réserve les rendez-vous dans vos créneaux libres. Deux conteneurs : l'application (Node.js, image `ghcr.io/ajilis/rendevo`) et PostgreSQL 17.
+
+1. **Image Docker :** elle est construite par GitHub Actions (`.github/workflows/rendevo-image.yml`) à chaque modification de `sources/rendevo/`. Au premier passage, vérifier dans **GitHub → Packages → rendevo → Package settings** que la visibilité est **Public**, sinon Runtipi ne pourra pas télécharger l'image.
+2. Dans **Runtipi → Settings → App Stores**, actualiser `https://github.com/Ajilis/runtipi-appstore`, puis installer **Rendevo** (port local **8288**).
+3. Renseigner l'**URL publique** exacte du tunnel, par exemple `https://rdv.exemple.fr` (sans slash final). Le secret de l'application et le mot de passe PostgreSQL sont générés par Runtipi.
+4. Dans Cloudflare Tunnel, créer un *Public Hostname* `rdv.exemple.fr` vers `http://IP_LAN_DU_SERVEUR:8288` (ou `http://127.0.0.1:8288` si `cloudflared` tourne sur l'hôte en réseau hôte).
+5. Accès local : `http://IP_LAN_DU_SERVEUR:8288`. Le premier compte créé devient administrateur ; un assistant configure l'offre, la cible, la voix, le compte LinkedIn (bac à sable, Unipile ou manuel) et les disponibilités.
+6. Ne pas ouvrir le port 8288 sur le routeur. Aucun port PostgreSQL n'est publié et aucun routage Traefik n'est utilisé (`exposable: false`).
+
+Données persistantes dans `APP_DATA_DIR/data/` : `config/rendevo.yml` (fichier de configuration créé au premier démarrage : budgets LinkedIn, rythme d'envoi, IA par défaut), `uploads/` (vidéos et documents) et `postgres/` (base de données). Ne jamais changer le secret de l'application après l'installation.
+
+Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/description.md) · Sources et feuille de route : [`sources/rendevo`](sources/rendevo/README.md).
+
+**À valider :** l'image est construite automatiquement après le push ; le déploiement sur une instance Runtipi réelle reste à tester. L'automatisation de LinkedIn par un service tiers est restreinte par les conditions de LinkedIn : utiliser des budgets prudents et la pause en un clic.

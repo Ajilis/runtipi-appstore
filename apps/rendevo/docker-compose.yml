@@ -1,0 +1,61 @@
+# Rendevo pour Runtipi 4.x (App Store Ajilis) - Cloudflare Tunnel, sans Traefik.
+#
+# Accès réseau : Runtipi publie le port hôte ${APP_PORT} (8288 par défaut) vers le
+# port interne 3000 du service principal (x-runtipi.internal_port), sur toutes les
+# interfaces de l'hôte :
+#   - réseau local      : http://IP_DU_SERVEUR:8288
+#   - Cloudflare Tunnel : service http://IP_DU_SERVEUR:8288
+#                         (ou http://127.0.0.1:8288 si cloudflared tourne sur l'hôte)
+# "exposable": false dans config.json : aucun domaine ni routage Traefik n'est proposé.
+# Ne redirigez pas le port 8288 depuis votre box : seul le tunnel doit être public.
+#
+# Persistance (dossier de l'application dans Runtipi, ${APP_DATA_DIR}) :
+#   data/config   -> fichier de configuration rendevo.yml (+ secret de secours)
+#   data/uploads  -> vidéos et documents envoyés aux prospects
+#   data/postgres -> base de données PostgreSQL
+services:
+  rendevo:
+    image: ghcr.io/ajilis/rendevo:0.1.0
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgres://rendevo:${RENDEVO_DB_PASSWORD}@rendevo-db:5432/rendevo"
+      APP_SECRET: "${RENDEVO_APP_SECRET}"
+      PUBLIC_URL: "${RENDEVO_PUBLIC_URL}"
+      ALLOW_SIGNUP: "${RENDEVO_ALLOW_SIGNUP:-false}"
+      TZ: "${TZ:-Europe/Paris}"
+      PORT: "3000"
+      DATA_DIR: "/data"
+    volumes:
+      - ${APP_DATA_DIR}/data/config:/data/config
+      - ${APP_DATA_DIR}/data/uploads:/data/uploads
+    depends_on:
+      rendevo-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    x-runtipi:
+      is_main: true
+      internal_port: 3000
+
+  rendevo-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rendevo
+      POSTGRES_PASSWORD: "${RENDEVO_DB_PASSWORD}"
+      POSTGRES_DB: rendevo
+    volumes:
+      - ${APP_DATA_DIR}/data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rendevo -d rendevo"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+x-runtipi:
+  schema_version: 2
