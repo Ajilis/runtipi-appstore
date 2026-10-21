@@ -151,6 +151,7 @@ function Accounts({ limits }) {
               </div>
             </div>
             {a.status_detail && <div className="alert warn small">{a.status_detail}</div>}
+            {a.provider === "linkedin_cookie" && a.config?.has_session && <LinkedInAccountProfile accountId={a.id} onChecked={reload} />}
             <div className="row wrap small soft" style={{ gap: 18 }}>
               <span>Invitations aujourd'hui : <strong className="num">{a.invites_today}</strong> / {lim.invites_per_day}</span>
               <span>Cette semaine : <strong className="num">{a.invites_week}</strong> / {lim.invites_per_week}</span>
