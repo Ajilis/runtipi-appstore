@@ -21,6 +21,14 @@ export function classifyLinkedinRedirect(location) {
       || /^\/uas\/checkpoint(\/|$)/.test(path)) return 'security_check';
     if (host === 'login.linkedin.com' || /^\/(login|authwall|signup)(\/|$)/.test(path)
       || /^\/uas\/(login|authwall)(\/|$)/.test(path)) return 'login';
+    // These are route families, not guarantees that authentication is required.
+    // Query parameters (including session_redirect) are deliberately ignored.
+    if (/^\/(oauth|sso|saml|uas\/(oauth|sso|authenticate|authorize))(\/|$)/.test(path)
+      || /^\/authorization(\/|$)/.test(path)) return 'auth_indirect';
+    if (path === '/' || /^\/(feed|home)(\/|$)/.test(path)) return 'feed';
+    if (/^\/(in|pub|company\/[^/]+\/people)(\/|$)/.test(path)
+      || /^\/mwlite\/in(\/|$)/.test(path)) return 'profile';
+    if (/^\/voyager(\/|$)/.test(path)) return 'voyager';
     return 'linkedin_other';
   } catch {
     return 'unknown';
@@ -30,6 +38,10 @@ export function classifyLinkedinRedirect(location) {
 const REDIRECT_DETAILS = Object.freeze({
   login: 'LinkedIn redirige vers une page de connexion. Vérifiez votre session dans votre navigateur.',
   security_check: 'LinkedIn demande une étape de vérification de sécurité dans votre navigateur.',
+  auth_indirect: 'LinkedIn redirige vers un parcours d’authentification ou d’autorisation. Le contrôle reste non concluant.',
+  feed: 'LinkedIn redirige vers son accueil ou son fil d’actualité. Le contrôle de session reste non concluant.',
+  profile: 'LinkedIn redirige vers une page de profil. Le contrôle de session reste non concluant.',
+  voyager: 'LinkedIn redirige vers un autre chemin de son API interne Voyager. Le contrôle reste non concluant.',
   linkedin_other: 'LinkedIn redirige vers une autre de ses pages. Le contrôle du profil reste non concluant.',
   external: 'La destination de redirection est externe ou non HTTPS. Elle ne sera pas contactée.',
   unknown: 'Destination de redirection absente ou non interprétable. Aucun lien suivi.',
