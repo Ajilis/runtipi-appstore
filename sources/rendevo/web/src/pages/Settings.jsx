@@ -5,6 +5,7 @@ import { useSession } from '../session.js';
 import { OfferEditor, VoiceEditor, IcpEditor, AvailabilityEditor, ScheduleEditor } from '../components/Editors.jsx';
 import { AccountForm, emptyAccount } from '../components/AccountForm.jsx';
 import { LinkedInAccountProfile } from '../components/LinkedInAccountProfile.jsx';
+import { LinkedInAccountDiagnostics } from '../components/LinkedInAccountDiagnostics.jsx';
 
 const SECTIONS = [
   ['general', 'Général'],
@@ -128,15 +129,23 @@ function Accounts({ limits }) {
   const [edit, setEdit] = useState(null);
   const [run, busy] = useAction();
   const toast = useToast();
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} />;
-  const test = (a) => run(async () => { const r = await api(`/api/accounts/${a.id}/test`, { method: 'POST' }); toast(!r.ok && a.provider === 'linkedin_cookie' ? `${r.detail} Statut du compte inchangé.` : r.detail, r.ok ? 'ok' : 'err'); reload(); });
+  const test = (a) => run(async () => { const r = await api(`/api/accounts/${a.id}/test`, { method: 'POST' }); toast(r.detail, r.ok ? 'ok' : r.cooldown ? 'info' : 'err'); reload(); });
   const toggle = (a) => run(async () => { await api(`/api/accounts/${a.id}`, { method: 'PATCH', body: { status: a.status === 'paused' ? 'active' : 'paused' } }); reload(); }, a.status === 'paused' ? 'Compte réactivé' : 'Compte en pause');
   return (
     <div className="stack" style={{ '--gap': '16px' }}>
       <div className="row spread"><p className="soft">Chaque compte a son propre budget d'actions, partagé entre ses campagnes.</p><button className="btn primary" onClick={() => setDraft(emptyAccount())}><LuPlus />Ajouter un compte</button></div>
       {data.map((a) => {
         const lim = a.limits || limits?.[a.account_type] || {};
+        const checkedAt = Date.parse(a.config?.verification?.last_attempt_at || '');
+        const cooldownSeconds = a.provider === 'linkedin_cookie' && Number.isFinite(checkedAt)
+          ? Math.max(0, Math.ceil((checkedAt + 90000 - clock) / 1000)) : 0;
         return (
           <div key={a.id} className="panel panel-pad stack" style={{ '--gap': '12px' }}>
             <div className="row spread wrap">
@@ -145,13 +154,14 @@ function Accounts({ limits }) {
                 <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
               </div>
               <div className="row">
-                <button className="btn sm" disabled={busy} onClick={() => test(a)}><LuPlugZap />Tester</button>
+                <button className="btn sm" disabled={busy || cooldownSeconds > 0} onClick={() => test(a)}><LuPlugZap />{cooldownSeconds ? `Tester (${cooldownSeconds}s)` : "Tester"}</button>
                 <button className="btn sm" disabled={busy} onClick={() => toggle(a)}>{a.status === 'paused' ? <><LuPlay />Réactiver</> : <><LuPause />Pause</>}</button>
                 <button className="btn sm" onClick={() => setEdit({ ...a, config: { ...a.config } })}>Modifier</button>
               </div>
             </div>
             {a.status_detail && <div className="alert warn small">{a.status_detail}</div>}
             {a.provider === "linkedin_cookie" && a.config?.has_session && <LinkedInAccountProfile key={a.config.profile?.photo_url || a.id} profile={a.config.profile} />}
+            {a.provider === "linkedin_cookie" && <LinkedInAccountDiagnostics verification={a.config?.verification} hasSession={a.config?.has_session} cooldownSeconds={cooldownSeconds} />}
             <div className="row wrap small soft" style={{ gap: 18 }}>
               <span>Invitations aujourd'hui : <strong className="num">{a.invites_today}</strong> / {lim.invites_per_day}</span>
               <span>Cette semaine : <strong className="num">{a.invites_week}</strong> / {lim.invites_per_week}</span>

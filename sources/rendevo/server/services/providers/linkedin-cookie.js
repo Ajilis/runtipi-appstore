@@ -26,7 +26,15 @@ export default {
   capabilities: { search: false, invite: false, message: false },
 
   async test(account, { fetcher = fetch } = {}) {
-    const { liAt, jsession } = normalizeLinkedinCookies(account.config?.li_at, account.config?.jsessionid);
+    let liAt, jsession;
+    try {
+      ({ liAt, jsession } = normalizeLinkedinCookies(account.config?.li_at, account.config?.jsessionid));
+    } catch {
+      return {
+        ok: false, error_code: 'credentials_unavailable',
+        detail: 'Identifiants LinkedIn indisponibles ou illisibles sur le serveur. Vérifiez la configuration et la clé de chiffrement.',
+      };
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 12000);
     try {
@@ -42,24 +50,50 @@ export default {
           'user-agent': LINKEDIN_USER_AGENT,
         },
       });
-      if (res.status === 401 || res.status === 403 || res.status === 999) {
+      if ([401, 403, 999].includes(res.status)) {
         return {
-          ok: false,
-          detail: 'LinkedIn refuse ce contrôle (HTTP ' + res.status + '). Le dernier état vérifié reste conservé. Vérifiez votre session dans le navigateur ; évitez de répéter les tests immédiatement.',
+          ok: false, error_code: 'http_rejected', http_status: res.status,
+          detail: 'LinkedIn a refusé la vérification (HTTP ' + res.status + '). Dernier état validé conservé ; réessayez plus tard.',
         };
       }
-      if (!res.ok) return { ok: false, detail: `LinkedIn n'a pas pu être vérifié (HTTP ${res.status}).` };
+      if (res.status === 429) {
+        return {
+          ok: false, error_code: 'rate_limited', http_status: 429,
+          detail: 'LinkedIn limite les requêtes (HTTP 429). Évitez les tests répétés.',
+        };
+      }
+      if (!res.ok) return {
+        ok: false, error_code: 'http_error', http_status: res.status,
+        detail: 'LinkedIn indisponible pour ce contrôle (HTTP ' + res.status + ').',
+      };
       const type = res.headers.get('content-type') || '';
       if (!type.toLowerCase().includes('json')) {
-        return { ok: false, detail: 'Réponse LinkedIn inattendue : impossible de confirmer la session.' };
+        return {
+          ok: false, error_code: 'unexpected_response', http_status: res.status,
+          detail: 'LinkedIn a renvoyé une réponse non JSON : contrôle non concluant.',
+        };
       }
       const data = await res.json().catch(() => null);
-      if (!data || typeof data !== 'object' || !Object.keys(data).length) {
-        return { ok: false, detail: 'Réponse LinkedIn vide : impossible de confirmer la session.' };
+      if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.keys(data).length) {
+        return {
+          ok: false, error_code: 'unexpected_response', http_status: res.status,
+          detail: 'LinkedIn a renvoyé une réponse JSON inexploitable : contrôle non concluant.',
+        };
       }
-      return { ok: true, detail: 'Session LinkedIn reconnue. Connexion expérimentale en lecture seule : envois et recherche restent manuels.', profile: profileDisplay(data) };
-    } catch {
-      return { ok: false, detail: 'Vérification LinkedIn impossible (réseau, cookies expirés ou accès bloqué).' };
+      return {
+        ok: true, http_status: res.status,
+        detail: 'Session LinkedIn reconnue (lecture seule ; messages et recherche manuels).',
+        profile: profileDisplay(data),
+      };
+    } catch (error) {
+      if (ctrl.signal.aborted) return {
+        ok: false, error_code: 'timeout',
+        detail: 'Le contrôle LinkedIn a dépassé 12 secondes. Aucun identifiant supprimé.',
+      };
+      return {
+        ok: false, error_code: 'network_error',
+        detail: 'Vérification LinkedIn impossible (réseau ou connexion interrompue).',
+      };
     } finally {
       clearTimeout(timer);
     }

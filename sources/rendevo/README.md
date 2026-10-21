@@ -41,6 +41,8 @@ Après la connexion, **Réglages → Comptes LinkedIn** affiche le nom, l'intitu
 
 Le contrôle en lecture seule utilise un en-tête User-Agent de **Chrome 143 sur macOS**, mais reste une requête Node.js ponctuelle, pas un navigateur réel. Ce changement ne garantit pas que LinkedIn autorise ou reconnaisse la session.
 
+**Diagnostic de session (0.1.6) :** Réglages → Comptes LinkedIn affiche la présence (mais non la valeur) des cookies chiffrés, la dernière vérification réussie et la dernière vérification échouée, le code HTTP et une catégorie d'erreur autorisée. Les requêtes ne sont effectuées qu'après clic sur **Tester** ; un verrou atomique PostgreSQL impose **90 secondes** entre deux tests par compte et indique le délai restant. Un échec ne déconnecte pas le compte et ne modifie pas ses cookies. Remplacer les cookies efface les anciennes informations de profil et de diagnostic. Aucun navigateur dédié n'est utilisé et le dernier succès ne garantit pas que la session soit toujours valide.
+
 **Limite volontaire :** le test réalise seulement une requête HTTPS de lecture sur
 `www.linkedin.com/voyager/api/me` pour vérifier la session. L'API Voyager est interne,
 non documentée et peut changer ou refuser l'accès à tout moment. Le connecteur
