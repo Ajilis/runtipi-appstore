@@ -130,7 +130,7 @@ function Accounts({ limits }) {
   const toast = useToast();
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} />;
-  const test = (a) => run(async () => { const r = await api(`/api/accounts/${a.id}/test`, { method: 'POST' }); toast(r.detail, r.ok ? 'ok' : 'err'); reload(); });
+  const test = (a) => run(async () => { const r = await api(`/api/accounts/${a.id}/test`, { method: 'POST' }); toast(!r.ok && a.provider === 'linkedin_cookie' ? `${r.detail} Statut du compte inchangé.` : r.detail, r.ok ? 'ok' : 'err'); reload(); });
   const toggle = (a) => run(async () => { await api(`/api/accounts/${a.id}`, { method: 'PATCH', body: { status: a.status === 'paused' ? 'active' : 'paused' } }); reload(); }, a.status === 'paused' ? 'Compte réactivé' : 'Compte en pause');
   return (
     <div className="stack" style={{ '--gap': '16px' }}>
@@ -141,7 +141,7 @@ function Accounts({ limits }) {
           <div key={a.id} className="panel panel-pad stack" style={{ '--gap': '12px' }}>
             <div className="row spread wrap">
               <div>
-                <div className="row" style={{ gap: 8 }}><strong>{a.name}</strong><span className={`badge ${a.status === 'active' ? 'ok' : a.status === 'error' ? 'err' : 'warn'}`}>{{ active: 'Actif', paused: 'En pause', error: 'À reconnecter' }[a.status] || a.status}</span></div>
+                <div className="row" style={{ gap: 8 }}><strong>{a.name}</strong><span className={`badge ${a.status === 'active' ? 'ok' : a.status === 'error' ? 'err' : 'warn'}`}>{(a.provider === 'linkedin_cookie' ? { active: 'Dernier test OK', paused: 'En pause', error: 'À vérifier' } : { active: 'Actif', paused: 'En pause', error: 'À reconnecter' })[a.status] || a.status}</span></div>
                 <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
               </div>
               <div className="row">
