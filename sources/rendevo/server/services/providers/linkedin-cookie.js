@@ -7,6 +7,41 @@ const LINKEDIN_ME = 'https://www.linkedin.com/voyager/api/me';
 // This is only an HTTP header: it does not turn Node.js fetch into Chrome.
 export const LINKEDIN_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 
+// Convert only known, non-sensitive transport error codes to fixed labels.
+// Neither the exception message nor the redirect target is persisted or sent to clients.
+export function classifyLinkedinTransportError(error, aborted = false) {
+  if (aborted) return {
+    error_code: 'timeout',
+    detail: 'Le contrôle LinkedIn a dépassé 12 secondes. Aucun identifiant supprimé.',
+  };
+  const code = error?.cause?.code || error?.code;
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return {
+    error_code: 'dns_error',
+    detail: 'Impossible de résoudre le nom de domaine LinkedIn depuis le serveur (DNS).',
+  };
+  if (['CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'DEPTH_ZERO_SELF_SIGNED_CERT',
+    'ERR_TLS_CERT_ALTNAME_INVALID', 'SELF_SIGNED_CERT_IN_CHAIN',
+    'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'EPROTO'].includes(code)
+    || (typeof code === 'string' && (code.startsWith('ERR_TLS_') || code.startsWith('ERR_SSL_')))) return {
+    error_code: 'tls_error',
+    detail: 'La connexion HTTPS à LinkedIn a échoué lors de la vérification TLS/certificat.',
+  };
+  if (['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
+    'UND_ERR_BODY_TIMEOUT'].includes(code)) return {
+    error_code: 'timeout',
+    detail: 'La connexion à LinkedIn a dépassé le délai de réponse.',
+  };
+  if (['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE',
+    'UND_ERR_SOCKET'].includes(code)) return {
+    error_code: 'connection_error',
+    detail: 'La connexion réseau à LinkedIn a été refusée, coupée ou est inaccessible.',
+  };
+  return {
+    error_code: 'network_error',
+    detail: 'Impossible de terminer la vérification LinkedIn (cause réseau non déterminée).',
+  };
+}
+
 export function normalizeLinkedinCookies(liAtInput, jsessionInput) {
   const liAt = String(liAtInput || '').trim();
   const jsession = String(jsessionInput || '').trim().replace(/^"|"$/g, '');
@@ -40,7 +75,7 @@ export default {
     try {
       const res = await fetcher(LINKEDIN_ME, {
         method: 'GET',
-        redirect: 'error',
+        redirect: 'manual', // Observe 3xx safely; never follow a redirect with session cookies.
         signal: ctrl.signal,
         headers: {
           'Cookie': `li_at=${liAt}; JSESSIONID="${jsession}"`,
@@ -50,6 +85,13 @@ export default {
           'user-agent': LINKEDIN_USER_AGENT,
         },
       });
+      if ([301, 302, 303, 307, 308].includes(res.status)) {
+        return {
+          ok: false, error_code: 'redirect_detected', http_status: res.status,
+          detail: 'LinkedIn a demandé une redirection (HTTP ' + res.status
+            + '). Elle n\'a pas été suivie : vérifiez votre session depuis votre navigateur.',
+        };
+      }
       if ([401, 403, 999].includes(res.status)) {
         return {
           ok: false, error_code: 'http_rejected', http_status: res.status,
@@ -86,14 +128,7 @@ export default {
         profile: profileDisplay(data),
       };
     } catch (error) {
-      if (ctrl.signal.aborted) return {
-        ok: false, error_code: 'timeout',
-        detail: 'Le contrôle LinkedIn a dépassé 12 secondes. Aucun identifiant supprimé.',
-      };
-      return {
-        ok: false, error_code: 'network_error',
-        detail: 'Vérification LinkedIn impossible (réseau ou connexion interrompue).',
-      };
+      return { ok: false, ...classifyLinkedinTransportError(error, ctrl.signal.aborted) };
     } finally {
       clearTimeout(timer);
     }

@@ -39,6 +39,19 @@ test('les diagnostics n’enregistrent pas de messages arbitraires ou des entêt
   assert.ok(!JSON.stringify(result).includes('private'));
 });
 
+test('redirections et erreurs réseau catégorisées sont persistées sans détails privés', () => {
+  for (const error_code of ['redirect_detected', 'dns_error', 'tls_error', 'connection_error']) {
+    const saved = linkedinCheckPatch({
+      ok: false, error_code, http_status: error_code === 'redirect_detected' ? 302 : null,
+      location: 'https://example.invalid/?li_at=private',
+      cause: { message: 'private session cookie' },
+    }, new Date('2026-10-20T09:00:00.000Z'));
+    assert.equal(saved.last_error_code, error_code);
+    assert.equal(saved.last_http_status, error_code === 'redirect_detected' ? 302 : null);
+    assert.doesNotMatch(JSON.stringify(saved), /example\\.invalid|private|location|cause/);
+  }
+});
+
 test('le délai serveur empêche deux tests dans la même fenêtre de 90 secondes', () => {
   const t = Date.parse('2026-10-20T09:00:00.000Z');
   const diagnostic = { last_attempt_at: new Date(t).toISOString() };

@@ -8,7 +8,11 @@ const ERROR_LABELS = {
   rate_limited: 'Limitation des requêtes',
   unexpected_response: 'Réponse LinkedIn inattendue',
   timeout: 'Délai de réponse dépassé (12 s)',
-  network_error: 'Erreur réseau',
+  network_error: 'Erreur réseau non déterminée',
+  dns_error: 'Résolution DNS impossible',
+  tls_error: 'Erreur TLS / certificat HTTPS',
+  connection_error: 'Connexion refusée ou interrompue',
+  redirect_detected: 'Redirection LinkedIn détectée (non suivie)',
   credentials_unavailable: 'Cookies manquants ou impossibles à déchiffrer',
   unexpected_error: 'Échec de vérification',
 };
