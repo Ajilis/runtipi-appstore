@@ -26,7 +26,7 @@ export function classifyLinkedinRedirect(location) {
     if (/^\/(oauth|sso|saml|uas\/(oauth|sso|authenticate|authorize))(\/|$)/.test(path)
       || /^\/authorization(\/|$)/.test(path)) return 'auth_indirect';
     if (path === '/' || /^\/(feed|home)(\/|$)/.test(path)) return 'feed';
-    if (/^\/(in|pub|company\/[^/]+\/people)(\/|$)/.test(path)
+    if (/^\/(in|pub|profile)(\/|$)/.test(path)
       || /^\/mwlite\/in(\/|$)/.test(path)) return 'profile';
     if (/^\/voyager(\/|$)/.test(path)) return 'voyager';
     return 'linkedin_other';
