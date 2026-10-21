@@ -3,6 +3,7 @@ import { readWebsite } from '../services/website.js';
 import { providerList, getProvider } from '../services/providers/index.js';
 import { DEFAULT_SEQUENCE, DEFAULT_CAMPAIGN_SETTINGS } from '../services/agent.js';
 import { fakeProspects } from '../services/providers/simulation.js';
+import { normalizeLinkedinCookies } from '../services/providers/linkedin-cookie.js';
 
 const SECTIONS = ['offer', 'icp', 'voice', 'availability', 'schedule', 'goal', 'ai', 'public_url', 'onboarding_done'];
 
@@ -18,9 +19,9 @@ function maskSettings(s) {
 function maskAccount(a) {
   const cfg = { ...a.config };
   const hasKey = !!cfg.api_key_enc;
-  delete cfg.api_key_enc;
-  delete cfg.api_key;
-  return { ...a, config: { ...cfg, has_api_key: hasKey } };
+  const hasSession = !!(cfg.li_at_enc && cfg.jsessionid_enc);
+  for (const name of ['api_key_enc', 'api_key', 'li_at_enc', 'jsessionid_enc', 'li_at', 'jsessionid']) delete cfg[name];
+  return { ...a, config: { ...cfg, has_api_key: hasKey, has_session: hasSession } };
 }
 
 function cleanList(v) {
@@ -123,9 +124,16 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
       if (input.account_id !== undefined) cfg.account_id = String(input.account_id).trim();
       if (input.api_key) cfg.api_key_enc = vault.encrypt(String(input.api_key).trim());
     }
+    if (provider === 'linkedin_cookie' && (input.li_at || input.jsessionid)) {
+      let credentials;
+      try { credentials = normalizeLinkedinCookies(input.li_at, input.jsessionid); }
+      catch (e) { throw bad(e.message); }
+      cfg.li_at_enc = vault.encrypt(credentials.liAt);
+      cfg.jsessionid_enc = vault.encrypt(credentials.jsession);
+    }
     if (input.ignore_window !== undefined) cfg.ignore_window = !!input.ignore_window;
     if (input.limits) cfg.limits = Object.fromEntries(Object.entries(input.limits).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, Math.max(0, parseInt(v, 10) || 0)]));
-    delete cfg.api_key;
+    for (const name of ['api_key', 'li_at', 'jsessionid']) delete cfg[name];
     return cfg;
   }
 
@@ -135,6 +143,7 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const type = ['free', 'premium', 'sales_navigator'].includes(body.account_type) ? body.account_type : 'free';
     const cfg = accountConfig(body.provider, { ignore_window: body.provider === 'simulation', ...body.config });
     if (body.provider === 'unipile' && (!cfg.dsn || !cfg.account_id || !cfg.api_key_enc)) throw bad('DSN, identifiant de compte et clé API Unipile requis');
+    if (body.provider === 'linkedin_cookie' && (!cfg.li_at_enc || !cfg.jsessionid_enc)) throw bad('Cookies li_at et JSESSIONID requis');
     const { rows } = await db.query(
       'INSERT INTO accounts (workspace_id, name, provider, account_type, config) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [ctx.state.ws.id, String(body.name || 'Mon compte LinkedIn').slice(0, 80), body.provider, type, JSON.stringify(cfg)],
