@@ -13,6 +13,11 @@ const PROVIDERS = [
     text: "Automatisation réelle à rythme humain. Connectez votre LinkedIn dans Unipile, puis collez ici vos accès API.",
   },
   {
+    id: 'linkedin_cookie',
+    title: 'Mon LinkedIn (cookie)',
+    text: "Connexion expérimentale avec les cookies de votre session. Vérification uniquement : les messages et invitations restent manuels.",
+  },
+  {
     id: 'manual',
     title: 'Manuel',
     text: "Rendevo prépare chaque message, vous l'envoyez depuis LinkedIn et collez la réponse. Aucune automatisation.",
@@ -47,6 +52,23 @@ export function AccountForm({ value, onChange, existing }) {
           </select>
         </Field>
       </div>
+      {v.provider === 'linkedin_cookie' && (
+        <>
+          <div className="alert warn small">
+            Expérimental : cette méthode utilise l'API interne non officielle de LinkedIn. LinkedIn interdit l'utilisation de cookies copiés et l'automatisation non autorisée, et peut restreindre votre compte. Aucun message, invitation ou scraping automatique ne sera réalisé via ce connecteur.
+          </div>
+          <div className="alert info small">
+            Récupérez uniquement vos propres cookies de session depuis votre navigateur connecté à LinkedIn : <code>li_at</code> et <code>JSESSIONID</code>. Ne les transmettez jamais par e-mail ou messagerie. Ils sont équivalents à un mot de passe, chiffrés côté serveur et jamais affichés après enregistrement.
+          </div>
+          <Field label="Cookie d'identification li_at" hint={existing && v.config?.has_session ? "Deux cookies enregistrés. Laissez les deux champs vides pour les conserver." : "Valeur du cookie li_at de votre propre session LinkedIn."}>
+            <input className="input" type="password" autoComplete="off" spellCheck={false} value={v.config?.li_at || ''} onChange={setCfg('li_at')} placeholder="Coller le cookie li_at" />
+          </Field>
+          <Field label="Cookie de session JSESSIONID" hint="Nécessaire au jeton CSRF ; collez la valeur complète, avec ou sans guillemets.">
+            <input className="input" type="password" autoComplete="off" spellCheck={false} value={v.config?.jsessionid || ''} onChange={setCfg('jsessionid')} placeholder="ajax:..." />
+          </Field>
+          <p className="small soft">Après l'ajout, utilisez « Tester » pour vérifier la session. Rendevo fonctionnera en mode d'envoi manuel avec ce connecteur.</p>
+        </>
+      )}
       {v.provider === 'unipile' && (
         <>
           <div className="alert info small">
