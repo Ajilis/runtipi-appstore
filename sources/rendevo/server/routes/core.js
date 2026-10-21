@@ -5,6 +5,7 @@ import { DEFAULT_SEQUENCE, DEFAULT_CAMPAIGN_SETTINGS } from '../services/agent.j
 import { fakeProspects } from '../services/providers/simulation.js';
 import { normalizeLinkedinCookies } from '../services/providers/linkedin-cookie.js';
 import { linkedinVerificationChange } from '../services/providers/linkedin-status.js';
+import { linkedinCheckPatch, linkedinRetrySeconds, LINKEDIN_CHECK_COOLDOWN_SECONDS } from '../services/providers/linkedin-diagnostics.js';
 
 const SECTIONS = ['offer', 'icp', 'voice', 'availability', 'schedule', 'goal', 'ai', 'public_url', 'onboarding_done'];
 
@@ -132,6 +133,7 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
       cfg.li_at_enc = vault.encrypt(credentials.liAt);
       cfg.jsessionid_enc = vault.encrypt(credentials.jsession);
       delete cfg.profile; // A different session may refer to another member.
+      delete cfg.verification; // The previous test results belong to the old credentials.
     }
     if (input.ignore_window !== undefined) cfg.ignore_window = !!input.ignore_window;
     if (input.limits) cfg.limits = Object.fromEntries(Object.entries(input.limits).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, Math.max(0, parseInt(v, 10) || 0)]));
@@ -179,18 +181,74 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
   router.post('/api/accounts/:id/test', requireAuth, async (ctx) => {
     const { rows } = await db.query('SELECT * FROM accounts WHERE id = $1 AND workspace_id = $2', [ctx.params.id, ctx.state.ws.id]);
     if (!rows[0]) throw notFound();
-    const account = agent.decryptAccount(rows[0]);
+    const saved = rows[0];
+
+    if (saved.provider === 'linkedin_cookie') {
+      // Claim the next check atomically in PostgreSQL to prevent concurrent
+      // requests or page reloads from circumventing the cooldown.
+      // This statement touches only the verification metadata, not credentials.
+      const { rows: claimed } = await db.query(
+        `UPDATE accounts SET config = jsonb_set(
+           config, '{verification}',
+           coalesce(config->'verification', '{}'::jsonb) || jsonb_build_object('last_attempt_at', now()), true)
+         WHERE id = $1 AND workspace_id = $2 AND provider = 'linkedin_cookie'
+           AND (config->'verification'->>'last_attempt_at' IS NULL
+                OR (config->'verification'->>'last_attempt_at')::timestamptz
+                   <= now() - ($3::integer * interval '1 second'))
+         RETURNING *`,
+        [saved.id, ctx.state.ws.id, LINKEDIN_CHECK_COOLDOWN_SECONDS],
+      );
+      if (!claimed.length) {
+        const recent = await db.query(
+          "SELECT config->'verification' AS verification FROM accounts WHERE id = $1 AND workspace_id = $2",
+          [saved.id, ctx.state.ws.id],
+        );
+        return {
+          ok: false, cooldown: true,
+          retry_after_seconds: linkedinRetrySeconds(recent.rows[0]?.verification),
+          detail: 'Test trop rapproché : attendez avant de vérifier à nouveau. Aucun appel LinkedIn effectué.',
+        };
+      }
+
+      const account = agent.decryptAccount(claimed[0]);
+      let res;
+      try {
+        res = await getProvider('linkedin_cookie').test(account);
+      } catch {
+        res = { ok: false, error_code: 'unexpected_error', detail: 'Contrôle interrompu. Les cookies restent enregistrés.' };
+      }
+      const patch = JSON.stringify(linkedinCheckPatch(res));
+      // Guard against a user replacing the credentials while the check is running:
+      // the outcome of the old session must not affect the new one.
+      const match = " AND config->>'li_at_enc' = $3 AND config->>'jsessionid_enc' = $4";
+      const keys = [account.id, patch, claimed[0].config.li_at_enc, claimed[0].config.jsessionid_enc];
+      if (res.ok) {
+        const change = linkedinVerificationChange(account, res);
+        await db.query(
+          `UPDATE accounts SET
+             status = CASE WHEN status = 'paused' THEN 'paused' ELSE 'active' END,
+             status_detail = NULL,
+             config = jsonb_set(
+               jsonb_set(config, '{verification}', coalesce(config->'verification', '{}'::jsonb) || $2::jsonb, true),
+               '{profile}', $5::jsonb, true)
+           WHERE id = $1${match}`,
+          [...keys, JSON.stringify(change.profile)],
+        );
+      } else {
+        await db.query(
+          `UPDATE accounts SET config = jsonb_set(
+              config, '{verification}', coalesce(config->'verification', '{}'::jsonb) || $2::jsonb, true)
+            WHERE id = $1${match}`,
+          keys,
+        );
+      }
+      return res;
+    }
+
+    const account = agent.decryptAccount(saved);
     try {
       const res = await getProvider(account.provider).test(account);
-      if (account.provider === 'linkedin_cookie') {
-        const change = linkedinVerificationChange(account, res);
-        if (change) {
-          await db.query(
-            "UPDATE accounts SET status = $2, status_detail = $3, config = jsonb_set(config, '{profile}', $4::jsonb, true) WHERE id = $1",
-            [account.id, change.status, change.detail, JSON.stringify(change.profile)],
-          );
-        }
-      } else if (res.ok && account.status === 'error') {
+      if (res.ok && account.status === 'error') {
         await db.query(`UPDATE accounts SET status = 'active', status_detail = NULL WHERE id = $1`, [account.id]);
       }
       return res;
