@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import linkedinCookie, { normalizeLinkedinCookies } from '../server/services/providers/linkedin-cookie.js';
+import linkedinCookie, { normalizeLinkedinCookies, LINKEDIN_USER_AGENT } from '../server/services/providers/linkedin-cookie.js';
 
 const valid = {
   li_at: 'AQED0000000000000000000000',
@@ -24,6 +24,9 @@ test('le test de session n’envoie les identifiants qu’à www.linkedin.com et
       assert.equal(opts.method, 'GET');
       assert.equal(opts.redirect, 'error');
       assert.equal(opts.headers['csrf-token'], 'ajax:1234567890');
+      assert.equal(opts.headers['user-agent'], LINKEDIN_USER_AGENT);
+      assert.match(opts.headers['user-agent'], /^Mozilla\/5\.0 \(Macintosh; Intel Mac OS X 10_15_7\).*Chrome\/143\.0\.0\.0 Safari\/537\.36$/);
+      assert.notEqual(opts.headers['user-agent'], 'Mozilla/5.0');
       assert.match(opts.headers.Cookie, /^li_at=/);
       assert.ok(!opts.body);
       return new Response(JSON.stringify({ data: { publicIdentifier: 'example' } }), {
