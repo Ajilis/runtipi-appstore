@@ -45,7 +45,7 @@ export function Inbox({ openId }) {
               <div className="row" style={{ gap: 6, marginTop: 3 }}>
                 {it.needs_human && <span className="badge warn">Pour vous</span>}
                 {it.pending > 0 && <span className="badge info">À valider</span>}
-                {it.last?.status === 'queued' && <span className="badge">Programmé</span>}
+                {it.last?.status === 'queued' && <span className="badge">{['manual', 'linkedin_cookie'].includes(it.last.provider) ? 'À envoyer manuellement' : 'Programmé'}</span>}
               </div>
               {it.last && <div className="preview">{it.last.direction === 'in' ? '' : 'Vous : '}{it.last.body || 'Invitation'}</div>}
             </button>
