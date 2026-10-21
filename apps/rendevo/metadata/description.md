@@ -1,6 +1,6 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 2** · **Version Rendevo : 0.1.1**
+**Version du catalogue Runtipi : 3** · **Version Rendevo : 0.1.2**
 
 Rendevo est un agent de prospection LinkedIn auto-hébergé. Il trouve les prospects qui correspondent à votre offre, repère leurs signaux d'achat (nouveau poste, recrutement, levée de fonds, visite de profil, réaction à un post), leur écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres.
 
@@ -21,7 +21,7 @@ Rendevo est un agent de prospection LinkedIn auto-hébergé. Il trouve les prosp
 | Type | Usage |
 | --- | --- |
 | **Bac à sable** | Simule un compte LinkedIn (acceptations, réponses, réservations). Idéal pour tester messages et setter sans rien envoyer. |
-| **Cookie (expérimental)** | Validation de sa propre session LinkedIn avec les cookies li_at et JSESSIONID chiffrés. Aucun envoi, scraping ou synchronisation automatique ; risque de restriction du compte et non-conformité aux conditions LinkedIn. |
+| **Cookie (expérimental)** | Validation de sa propre session LinkedIn et affichage du nom, de l'intitulé et de la photo du profil depuis les paramètres avec les cookies li_at et JSESSIONID chiffrés. Aucun envoi, scraping ou synchronisation automatique ; risque de restriction du compte et non-conformité aux conditions LinkedIn. |
 | **Unipile** | Automatisation réelle via l'infrastructure tierce [Unipile](https://www.unipile.com) : DSN, jeton API et identifiant du compte connecté. Mot de passe LinkedIn jamais stocké. |
 | **Manuel** | Rendevo prépare chaque message ; vous l'envoyez depuis LinkedIn et collez la réponse. Aucune automatisation. |
 
@@ -53,4 +53,4 @@ Sauvegarder ce dossier (ou utiliser la sauvegarde Runtipi) avant toute mise à j
 
 ## Image Docker
 
-`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.1.1`.
+`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.1.2`.
