@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'sources/rendevo/**'
+      - 'apps/rendevo/**'
       - '.github/workflows/rendevo-image.yml'
   pull_request:
     paths:
       - 'sources/rendevo/**'
+      - 'apps/rendevo/**'
       - '.github/workflows/rendevo-image.yml'
   workflow_dispatch:
 
@@ -35,6 +37,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Validate Runtipi catalog manifest
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const app = require("./apps/rendevo/config.json");
+            const pkg = require("./sources/rendevo/package.json");
+            const compose = fs.readFileSync("./apps/rendevo/docker-compose.yml", "utf8");
+            for (const field of ["created_at", "updated_at"]) {
+              if (!Number.isInteger(app[field]) || app[field] >= Date.now()) {
+                throw new Error(field + " must be an earlier Unix millisecond timestamp");
+              }
+            }
+            if (app.version !== pkg.version || !compose.includes("ghcr.io/ajilis/rendevo:" + app.version)) {
+              throw new Error("Catalog, package and Docker image versions must match");
+            }
+          '
 
       - name: Check server sources
         working-directory: sources/rendevo
