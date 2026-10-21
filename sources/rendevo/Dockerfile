@@ -2,7 +2,7 @@
 # Aucune dépendance npm à l'exécution : serveur Node.js natif + interface déjà compilée (web/dist).
 FROM node:22-alpine
 
-ARG APP_VERSION=0.1.6
+ARG APP_VERSION=0.1.7
 LABEL org.opencontainers.image.title="Rendevo" \
       org.opencontainers.image.description="Agent IA de prospection LinkedIn auto-hébergé" \
       org.opencontainers.image.source="https://github.com/Ajilis/runtipi-appstore" \
