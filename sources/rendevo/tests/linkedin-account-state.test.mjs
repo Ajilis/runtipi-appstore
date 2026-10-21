@@ -26,19 +26,47 @@ test('un succès restaure le compte et conserve le profil entre les rechargement
   assert.deepEqual(linkedinVerificationChange(account, { ok: true }).profile, account.config.profile);
 });
 
-test('seule une expiration explicite peut marquer le compte comme à reconnecter', () => {
-  assert.deepEqual(linkedinVerificationChange(account, {
-    ok: false, invalid_session: true, detail: 'Session refusée',
-  }), { status: 'error', detail: 'Session refusée', profile: account.config.profile });
+test('aucun échec de contrôle, même HTTP 401, ne révoque un statut validé', () => {
+  for (const code of [401, 403, 999, 500]) {
+    assert.equal(linkedinVerificationChange(account, {
+      ok: false, invalid_session: code === 401, detail: 'HTTP ' + code,
+    }), null);
+    assert.equal(linkedinVerificationChange({ ...account, status: 'paused' }, {
+      ok: false, invalid_session: code === 401,
+    }), null);
+  }
 });
 
-test('codes LinkedIn 403 et 999 sont des refus temporaires, 401 est non autorisé', async () => {
+test('deux clics Tester : succès puis refus LinkedIn ne déconnecte pas', async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response(JSON.stringify({ data: { publicIdentifier: 'camille-martin' } }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })
+      : new Response('', { status: 401 });
+  };
+  const first = await cookieProvider.test(credentials, { fetcher });
+  assert.equal(first.ok, true);
+  const change = linkedinVerificationChange({ ...account, status: 'error' }, first);
+  assert.equal(change.status, 'active');
+
+  const second = await cookieProvider.test(credentials, { fetcher });
+  assert.equal(second.ok, false);
+  assert.match(second.detail, /HTTP 401/);
+  assert.equal(linkedinVerificationChange({ ...account, status: change.status }, second), null);
+  assert.equal(calls, 2);
+});
+
+test('les refus 401, 403 et 999 restent des erreurs de vérification, non des déconnexions', async () => {
   for (const code of [401, 403, 999, 500]) {
     const result = await cookieProvider.test(credentials, {
       fetcher: async () => new Response('', { status: code }),
     });
     assert.equal(result.ok, false);
-    assert.equal(result.invalid_session === true, code === 401);
+    assert.notEqual(result.invalid_session, true);
+    assert.equal(linkedinVerificationChange(account, result), null);
   }
 });
 

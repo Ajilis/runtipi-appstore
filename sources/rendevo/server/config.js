@@ -130,6 +130,6 @@ export function loadConfig(env = process.env) {
     configFile,
     uploadsDir,
     staticDir: env.STATIC_DIR || path.resolve(path.dirname(new URL(import.meta.url).pathname), '../web/dist'),
-    version: env.APP_VERSION || '0.1.3',
+    version: env.APP_VERSION || '0.1.4',
   };
 }
