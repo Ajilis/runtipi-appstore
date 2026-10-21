@@ -52,7 +52,9 @@ test('le délai serveur empêche deux tests dans la même fenêtre de 90 seconde
 test('catégorise les codes de refus et réponses invalides sans exposer la réponse HTML', async () => {
   for (const status of [401, 403, 999, 429, 500]) {
     const response = await cookieProvider.test(account, {
-      fetcher: async () => new Response('private cookie information', { status }),
+      fetcher: async () => status === 999
+        ? { status: 999, ok: false, headers: new Headers() }
+        : new Response('private cookie information', { status }),
     });
     assert.equal(response.ok, false);
     assert.equal(response.http_status, status);
