@@ -16,8 +16,8 @@ export function registerInbox(router, deps, { requireAuth }) {
     }[filter] || 'true';
     const { rows } = await db.query(
       `SELECT p.id, p.full_name, p.title, p.company, p.heat, p.status, p.needs_human, p.human_reason, p.last_reply_at,
-              (SELECT row_to_json(x) FROM (SELECT id, direction, kind, body, status, coalesce(sent_at, scheduled_at, created_at) AS at FROM messages
-                 WHERE prospect_id = p.id AND status <> 'cancelled' ORDER BY coalesce(sent_at, scheduled_at, created_at) DESC LIMIT 1) x) AS last,
+              (SELECT row_to_json(x) FROM (SELECT m.id, m.direction, m.kind, m.body, m.status, a.provider, coalesce(m.sent_at, m.scheduled_at, m.created_at) AS at FROM messages m
+                 LEFT JOIN accounts a ON a.id = m.account_id WHERE m.prospect_id = p.id AND m.status <> 'cancelled' ORDER BY coalesce(m.sent_at, m.scheduled_at, m.created_at) DESC LIMIT 1) x) AS last,
               (SELECT count(*)::int FROM messages WHERE prospect_id = p.id AND status = 'pending_approval') AS pending
          FROM prospects p
         WHERE p.workspace_id = $1 AND ${cond}
