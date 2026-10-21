@@ -81,9 +81,9 @@ export function Onboarding() {
       const accounts = await api('/api/accounts');
       const camp = await api('/api/campaigns', {
         method: 'POST',
-        body: { name: `${settings.offer?.offer_name || 'Prospection'} : ${settings.icp?.titles?.[0] || 'cible principale'}`, account_id: accounts[0]?.id, icp: settings.icp, settings: { validation: validate ? 'first' : 'none', auto_discovery: accounts[0]?.provider !== 'manual' } },
+        body: { name: `${settings.offer?.offer_name || 'Prospection'} : ${settings.icp?.titles?.[0] || 'cible principale'}`, account_id: accounts[0]?.id, icp: settings.icp, settings: { validation: validate ? 'first' : 'none', auto_discovery: !['manual', 'linkedin_cookie'].includes(accounts[0]?.provider) } },
       });
-      if (accounts[0] && accounts[0].provider !== 'manual') {
+      if (accounts[0] && !['manual', 'linkedin_cookie'].includes(accounts[0].provider)) {
         try { await api(`/api/campaigns/${camp.id}/discover`, { method: 'POST', body: { limit: 15 } }); } catch (e) { toast(e.message, 'err'); }
       }
       if (launch) {
@@ -148,7 +148,7 @@ export function Onboarding() {
         <div className="row spread" style={{ marginTop: 18 }}>
           <button className="btn ghost" disabled={step === 0} onClick={() => setStep(step - 1)}><LuArrowLeft />Retour</button>
           {step < 5 ? (
-            <button className="btn primary lg" onClick={next} disabled={busy || (step === 3 && !hasAccount && account.provider === 'unipile' && (!account.config.dsn || !account.config.api_key || !account.config.account_id))}>Continuer</button>
+            <button className="btn primary lg" onClick={next} disabled={busy || (step === 3 && !hasAccount && ((account.provider === 'unipile' && (!account.config.dsn || !account.config.api_key || !account.config.account_id)) || (account.provider === 'linkedin_cookie' && (!account.config.li_at || !account.config.jsessionid))))}>Continuer</button>
           ) : (
             <div className="row">
               <button className="btn" onClick={() => finish(false)} disabled={busy}>Créer sans lancer</button>
