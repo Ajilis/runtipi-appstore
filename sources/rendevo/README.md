@@ -15,7 +15,7 @@ Navigateur ──HTTP──> rendevo (Node.js 22, port 3000) ──> PostgreSQL 
                              ├─ file d'envoi à rythme humain (fenêtre, budgets, délais aléatoires)
                              ├─ rappels de RDV, relances datées, recherche automatique
                              └─ webhooks signés
-Fournisseurs LinkedIn : simulation (bac à sable) · Unipile · manuel
+Fournisseurs LinkedIn : simulation (bac à sable) · Unipile · manuel · cookie (profil uniquement)
 IA : API compatible OpenAI ou Anthropic, sinon modèles et règles intégrés
 ```
 
@@ -36,6 +36,8 @@ Renseigner **les deux valeurs** `li_at` et `JSESSIONID` de votre propre navigate
 puis cliquer sur **Ajouter** et **Tester**. Ces informations sont des identifiants de session
 équivalents à un mot de passe : ne les communiquez jamais par chat, e-mail ou ticket.
 Rendevo chiffre les deux valeurs avec le secret applicatif et ne les renvoie pas dans son API.
+
+Après la connexion, **Réglages → Comptes LinkedIn** affiche le nom, l'intitulé du profil, la photo (si disponible) et le lien vers le profil, avec un bouton d'actualisation. La lecture est ponctuelle : elle est effectuée à l'ouverture de la page et sur demande. Aucun cookie n'est envoyé au navigateur.
 
 **Limite volontaire :** le test réalise seulement une requête HTTPS de lecture sur
 `www.linkedin.com/voyager/api/me` pour vérifier la session. L'API Voyager est interne,
