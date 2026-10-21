@@ -93,11 +93,30 @@ export function registerInbox(router, deps, { requireAuth }) {
     return { body: text };
   });
 
-  // Manual mode: the user sent it from LinkedIn and confirms here.
+  // Only the human who ACTUALLY sent a message on LinkedIn can confirm it.
+  // Never allow this endpoint to shortcut approval or mark a queued API send as sent.
   router.post('/api/messages/:id/mark-sent', requireAuth, async (ctx) => {
     const m = await ownedMessage(ctx);
-    if (!['queued', 'pending_approval', 'failed'].includes(m.status)) throw bad('Déjà envoyé');
-    await agent.onSent(m.id, {});
+    const body = await ctx.json();
+    if (body.confirmed !== true) throw bad('Confirmez l’envoi effectif depuis LinkedIn');
+    if (m.status !== 'queued') throw bad('Validez le brouillon avant de confirmer son envoi');
+    const { rows: accounts } = await db.query(
+      'SELECT provider FROM accounts WHERE id = $1 AND workspace_id = $2',
+      [m.account_id, ctx.state.ws.id],
+    );
+    if (!['linkedin_cookie', 'manual'].includes(accounts[0]?.provider)) {
+      throw bad('Cette confirmation est réservée aux envois manuels');
+    }
+    const text = body.body === undefined ? m.body : String(body.body).trim();
+    if (!text && m.kind !== 'invite') throw bad('Message vide');
+    if (text.length > (m.kind === 'invite' ? 300 : 8000)) throw bad('Message trop long');
+    const edited = await db.query(
+      "UPDATE messages SET body = $2 WHERE id = $1 AND workspace_id = $3 AND status = 'queued' RETURNING id",
+      [m.id, text, ctx.state.ws.id],
+    );
+    if (!edited.rows.length) throw bad('Message déjà traité');
+    const sent = await agent.onSent(m.id, {});
+    if (!sent) throw bad('Message déjà traité');
     return { ok: true };
   });
 
