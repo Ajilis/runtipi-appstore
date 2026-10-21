@@ -3,6 +3,9 @@ import { profileDisplay } from './profile-display.js';
 // A session cookie is a bearer credential: never log it, send it to other hosts,
 // or expose it through the Rendevo API.
 const LINKEDIN_ME = 'https://www.linkedin.com/voyager/api/me';
+// Reduced Chrome desktop User-Agent on macOS, documented by MDN/Chromium.
+// This is only an HTTP header: it does not turn Node.js fetch into Chrome.
+export const LINKEDIN_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 
 export function normalizeLinkedinCookies(liAtInput, jsessionInput) {
   const liAt = String(liAtInput || '').trim();
@@ -36,7 +39,7 @@ export default {
           'csrf-token': jsession,
           'x-restli-protocol-version': '2.0.0',
           'accept': 'application/vnd.linkedin.normalized+json+2.1',
-          'user-agent': 'Mozilla/5.0',
+          'user-agent': LINKEDIN_USER_AGENT,
         },
       });
       if (res.status === 401 || res.status === 403 || res.status === 999) {

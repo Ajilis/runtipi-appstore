@@ -39,6 +39,8 @@ Rendevo chiffre les deux valeurs avec le secret applicatif et ne les renvoie pas
 
 Après la connexion, **Réglages → Comptes LinkedIn** affiche le nom, l'intitulé du profil, la photo (si disponible) et le lien vers le profil. Le bouton **Tester** lance explicitement la vérification et mémorise les informations publiques du profil dans la configuration du compte. Le simple chargement ou rafraîchissement de la page n'appelle jamais LinkedIn et ne modifie jamais le statut du compte. Un contrôle échoué, même en cas de réponse HTTP 401, ne modifie jamais l'état d'un compte déjà vérifié. L'échec reste visible dans la notification : il ne garantit ni l'expiration ni la validité de la session. Seul un contrôle réussi marque un compte Actif. Le statut « Dernier test OK » désigne le dernier contrôle positif, et non une garantie de validité permanente. Aucun cookie n'est envoyé au navigateur.
 
+Le contrôle en lecture seule utilise un en-tête User-Agent de **Chrome 143 sur macOS**, mais reste une requête Node.js ponctuelle, pas un navigateur réel. Ce changement ne garantit pas que LinkedIn autorise ou reconnaisse la session.
+
 **Limite volontaire :** le test réalise seulement une requête HTTPS de lecture sur
 `www.linkedin.com/voyager/api/me` pour vérifier la session. L'API Voyager est interne,
 non documentée et peut changer ou refuser l'accès à tout moment. Le connecteur
