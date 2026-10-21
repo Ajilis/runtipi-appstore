@@ -34,7 +34,7 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 **Différence avec l'ancienne version :** le service Elasticsearch et son volume déclaré ont été retirés du Compose, et `ELASTICSEARCH_ENABLED=false` est appliqué à Zammad. La recherche plein texte indexée peut être indisponible. Sauvegarder les données avant une mise à jour ; ne pas supprimer les volumes PostgreSQL ou le stockage utilisateur.
 
-**Ports :** Chatwoot `8284`, Zammad `8285`, Postiz `8286` et Fil CRM `8287`, chacun à associer à un nom de domaine Cloudflare distinct.
+**Ports :** Chatwoot `8284` et Zammad `8285`, chacun à associer à un nom de domaine Cloudflare distinct.
 
 **Installation sécurisée (version du catalogue 9) :** Zammad préserve les données et les fichiers de configuration lors des mises à jour et conserve le précontrôle de récupération après une installation inachevée (sauvegarde PostgreSQL avant réinitialisation limitée au cas sans utilisateur ni ticket). Le port `8285:8080/tcp` est accessible sur le LAN (par exemple `http://192.168.1.16:8285/`) et avec Cloudflare Tunnel (`http://127.0.0.1:8285` si cloudflared utilise le réseau hôte). Les connexions applicatives sont prévues sur le domaine public HTTPS canonique ; une adresse IP HTTP peut être redirigée. Ne pas publier ce port sur Internet ; aucun Traefik applicatif. Le port reste fixe à 8285.
 
@@ -55,18 +55,3 @@ Logo Zammad issu de [la source officielle](https://github.com/zammad/zammad/blob
 Cette version comprend **5 conteneurs** : Postiz, PostgreSQL Postiz, Redis, Temporal et PostgreSQL Temporal. **Aucun Elasticsearch** : Temporal utilise PostgreSQL pour sa base de visibilité. Les données persistent dans `APP_DATA_DIR`. Elle est destinée à une **nouvelle installation** ; une migration depuis une configuration Temporal/Elasticsearch existante nécessite un plan de sauvegarde. L'image Postiz est actuellement basée sur le tag `latest`, à surveiller avant les mises à jour.
 
 Documentation de l'application : [`apps/postiz-lite/metadata/description.md`](apps/postiz-lite/metadata/description.md).
-
-## Installer Fil CRM (Cloudflare Tunnel, sans Traefik)
-
-**Version du catalogue Runtipi : 2** · **Version du logiciel : Fil CRM 0.2.0** (image `ghcr.io/ajilis/crm:sha-052d6ac`, amd64 et arm64). La v2 corrige l'arrêt du worker (et donc l'état « arrêté » dans Runtipi) quand l'envoi d'emails n'est pas encore configuré.
-
-1. Dans **Runtipi → Settings → App Stores**, actualiser `https://github.com/Ajilis/runtipi-appstore`.
-2. Installer **Fil CRM** (identifiant `fil-crm`, port local **8287**) sans activer l'exposition de domaine Runtipi, en laissant **Port ouvert** coché.
-3. Renseigner l'**URL publique HTTPS** exacte, sans slash final (par exemple `https://crm.exemple.fr`). Le secret de signature et le mot de passe PostgreSQL sont générés par Runtipi.
-4. Dans Cloudflare Tunnel, créer un *Public Hostname* vers `http://IP_LAN_DU_SERVEUR:8287` (ou `http://127.0.0.1:8287` si `cloudflared` tourne sur le serveur en réseau hôte), sans réécriture de l'en-tête Host.
-5. Ouvrir l'URL publique et créer l'espace de l'entreprise (premier compte administrateur). Le site répond aussi sur `http://IP_DU_SERVEUR:8287` depuis le réseau local, connexion comprise.
-6. Compléter `APP_DATA_DIR/config/fil.env` pour les emails (`BREVO_API_KEY`, `NOTIFICATIONS_FROM_EMAIL`) et l'assistant vocal (`RETELL_API_KEY`), puis redémarrer l'application. Tant que la clé Brevo est vide, le worker reste en attente sans rien envoyer.
-
-Le déploiement comprend **3 conteneurs** : le site, qui applique les migrations à chaque démarrage, le worker (relances et notifications par email) et PostgreSQL 16, sans port publié. Les données persistent dans `APP_DATA_DIR` : `config/fil.env` (configuration, jamais écrasée) et `postgres/`. **Ne pas ouvrir le port 8287 sur le routeur.** Validé avec le code de Runtipi 4.9.1, pas encore testé sur une instance Runtipi réelle.
-
-Documentation de l'application : [`apps/fil-crm/metadata/description.md`](apps/fil-crm/metadata/description.md).
