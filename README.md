@@ -58,7 +58,7 @@ Documentation de l'application : [`apps/postiz-lite/metadata/description.md`](ap
 
 ## Installer Rendevo (agent IA de prospection LinkedIn, Cloudflare Tunnel, sans Traefik)
 
-**Version du catalogue Runtipi : 2** · **Version du logiciel : Rendevo 0.1.1**
+**Version du catalogue Runtipi : 3** · **Version du logiciel : Rendevo 0.1.2**
 
 Rendevo qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et réserve les rendez-vous dans vos créneaux libres. Deux conteneurs : l'application (Node.js, image `ghcr.io/ajilis/rendevo`) et PostgreSQL 17.
 
@@ -71,7 +71,7 @@ Rendevo qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'ach
 
 Données persistantes dans `APP_DATA_DIR/data/` : `config/rendevo.yml` (fichier de configuration créé au premier démarrage : budgets LinkedIn, rythme d'envoi, IA par défaut), `uploads/` (vidéos et documents) et `postgres/` (base de données). Ne jamais changer le secret de l'application après l'installation.
 
-Le connecteur optionnel **Mon LinkedIn (cookie)** valide uniquement une session de votre propre compte avec `li_at` et `JSESSIONID`, enregistrés chiffrés. Il ne réalise pas de prospection automatique ; l'utilisation de cookies copiés est interdite par LinkedIn et peut entraîner une restriction du compte.
+Le connecteur optionnel **Mon LinkedIn (cookie)** valide et affiche le nom, la photo disponible et le lien du profil de son propre compte à partir de sa session de votre propre compte avec `li_at` et `JSESSIONID`, enregistrés chiffrés. Il ne réalise pas de prospection automatique ; l'utilisation de cookies copiés est interdite par LinkedIn et peut entraîner une restriction du compte.
 
 Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/description.md) · Sources et feuille de route : [`sources/rendevo`](sources/rendevo/README.md).
 
