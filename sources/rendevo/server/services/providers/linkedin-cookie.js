@@ -6,6 +6,34 @@ const LINKEDIN_ME = 'https://www.linkedin.com/voyager/api/me';
 // Reduced Chrome desktop User-Agent on macOS, documented by MDN/Chromium.
 // This is only an HTTP header: it does not turn Node.js fetch into Chrome.
 export const LINKEDIN_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
+ 
+// Read Location for diagnostics ONLY. Never follow it or return its raw value.
+// Ignore path query strings, fragments and credentials; emit a fixed category.
+export function classifyLinkedinRedirect(location) {
+  if (typeof location !== 'string' || !location || location.length > 2048) return 'unknown';
+  try {
+    const url = new URL(location, LINKEDIN_ME);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return 'external';
+    const host = url.hostname.toLowerCase();
+    if (host !== 'linkedin.com' && !host.endsWith('.linkedin.com')) return 'external';
+    const path = url.pathname.toLowerCase();
+    if (host === 'checkpoint.linkedin.com' || /^\/(checkpoint|challenge|security)(\/|$)/.test(path)
+      || /^\/uas\/checkpoint(\/|$)/.test(path)) return 'security_check';
+    if (host === 'login.linkedin.com' || /^\/(login|authwall|signup)(\/|$)/.test(path)
+      || /^\/uas\/(login|authwall)(\/|$)/.test(path)) return 'login';
+    return 'linkedin_other';
+  } catch {
+    return 'unknown';
+  }
+}
+
+const REDIRECT_DETAILS = Object.freeze({
+  login: 'LinkedIn redirige vers une page de connexion. Vérifiez votre session dans votre navigateur.',
+  security_check: 'LinkedIn demande une étape de vérification de sécurité dans votre navigateur.',
+  linkedin_other: 'LinkedIn redirige vers une autre de ses pages. Le contrôle du profil reste non concluant.',
+  external: 'La destination de redirection est externe ou non HTTPS. Elle ne sera pas contactée.',
+  unknown: 'Destination de redirection absente ou non interprétable. Aucun lien suivi.',
+});
 
 // Convert only known, non-sensitive transport error codes to fixed labels.
 // Neither the exception message nor the redirect target is persisted or sent to clients.
@@ -86,10 +114,12 @@ export default {
         },
       });
       if ([301, 302, 303, 307, 308].includes(res.status)) {
+        const redirectKind = classifyLinkedinRedirect(res.headers?.get('location'));
         return {
           ok: false, error_code: 'redirect_detected', http_status: res.status,
-          detail: 'LinkedIn a demandé une redirection (HTTP ' + res.status
-            + '). Elle n\'a pas été suivie : vérifiez votre session depuis votre navigateur.',
+          redirect_kind: redirectKind,
+          detail: 'Redirection LinkedIn (HTTP ' + res.status + '). '
+            + REDIRECT_DETAILS[redirectKind] + ' Redirection non suivie.',
         };
       }
       if ([401, 403, 999].includes(res.status)) {

@@ -2,6 +2,14 @@ import React from 'react';
 
 // Only public, bounded server-generated diagnostics. No credentials or
 // upstream response bodies reach this component.
+const REDIRECT_LABELS = {
+  login: 'Page de connexion LinkedIn',
+  security_check: 'Vérification de sécurité LinkedIn',
+  linkedin_other: 'Autre page LinkedIn',
+  external: 'Destination externe ou non sécurisée (non visitée)',
+  unknown: 'Destination absente ou non reconnue',
+};
+
 const ERROR_LABELS = {
   http_rejected: 'Accès refusé par LinkedIn',
   http_error: 'Erreur HTTP LinkedIn',
@@ -37,6 +45,8 @@ export function LinkedInAccountDiagnostics({ verification, hasSession, cooldownS
       <div>Dernier test échoué : <strong>{dateLabel(d.last_failure_at)}</strong></div>
       <div>Dernier résultat : <strong>{outcome}</strong></div>
       {d.last_outcome === 'failure' && <div>Motif : {failureLabel}{Number.isInteger(d.last_http_status) ? ' (HTTP ' + d.last_http_status + ')' : ''}</div>}
+      {d.last_outcome === 'failure' && d.last_error_code === 'redirect_detected' &&
+        <div>Destination : <strong>{REDIRECT_LABELS[d.last_redirect_kind] || REDIRECT_LABELS.unknown}</strong> — redirection non suivie</div>}
       {cooldownSeconds > 0 && <div>Prochaine vérification possible dans {cooldownSeconds} s.</div>}
       <div>Le statut reflète la dernière vérification positive, et non une session LinkedIn permanente.</div>
     </div>

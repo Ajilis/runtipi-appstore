@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  LINKEDIN_CHECK_COOLDOWN_SECONDS, LINKEDIN_ERROR_CODES,
+  LINKEDIN_CHECK_COOLDOWN_SECONDS, LINKEDIN_ERROR_CODES, LINKEDIN_REDIRECT_KINDS,
   linkedinCheckPatch, linkedinRetrySeconds,
 } from '../server/services/providers/linkedin-diagnostics.js';
 import cookieProvider from '../server/services/providers/linkedin-cookie.js';
@@ -24,7 +24,7 @@ test('historique : succès, puis échec sans effacer le succès ni le profil', (
   assert.deepEqual(saved, {
     last_success_at: t1.toISOString(), last_outcome: 'failure',
     last_failure_at: t2.toISOString(), last_error_code: 'http_rejected',
-    last_http_status: 401,
+    last_http_status: 401, last_redirect_kind: null,
   });
   assert.equal(linkedinVerificationChange(account, { ok: false, error_code: 'http_rejected' }), null);
   assert.doesNotMatch(JSON.stringify(saved), /secret|li_at|cookie|detail/);
@@ -50,6 +50,29 @@ test('redirections et erreurs réseau catégorisées sont persistées sans déta
     assert.equal(saved.last_http_status, error_code === 'redirect_detected' ? 302 : null);
     assert.doesNotMatch(JSON.stringify(saved), /example\\.invalid|private|location|cause/);
   }
+});
+
+test('ne persiste que les catégories autorisées, jamais la cible brute', () => {
+  for (const kind of LINKEDIN_REDIRECT_KINDS) {
+    const patch = linkedinCheckPatch({
+      ok: false, error_code: 'redirect_detected', http_status: 302,
+      redirect_kind: kind, location: 'https://www.linkedin.com/login?token=secret',
+      headers: { location: 'https://evil.example/?li_at=private' },
+    });
+    assert.equal(patch.last_redirect_kind, kind);
+    assert.equal(patch.last_http_status, 302);
+    assert.doesNotMatch(JSON.stringify(patch), /token=secret|evil\.example|li_at|private|headers|location/);
+  }
+  const malformed = linkedinCheckPatch({
+    ok: false, error_code: 'redirect_detected', redirect_kind: 'login?token=secret',
+  });
+  assert.equal(malformed.last_redirect_kind, null);
+  const other = linkedinCheckPatch({
+    ok: false, error_code: 'network_error', redirect_kind: 'login',
+  });
+  assert.equal(other.last_redirect_kind, null);
+  const success = linkedinCheckPatch({ ok: true, redirect_kind: 'login' });
+  assert.equal(success.last_redirect_kind, null);
 });
 
 test('le délai serveur empêche deux tests dans la même fenêtre de 90 secondes', () => {

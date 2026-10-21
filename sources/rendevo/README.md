@@ -45,6 +45,8 @@ Le contrôle en lecture seule utilise un en-tête User-Agent de **Chrome 143 sur
 
 **Diagnostic réseau (0.1.7) :** la vérification utilise `redirect: 'manual'` pour distinguer les redirections LinkedIn HTTP 301/302/303/307/308 des erreurs de transport, sans jamais suivre une redirection avec les cookies. Les catégories DNS, TLS/certificat, connexion coupée/refusée, délai dépassé et panne réseau indéterminée sont affichées séparément. Ni URL de redirection, ni message d'exception, ni cookie ne sont enregistrés dans le diagnostic. Une redirection peut indiquer une étape de connexion ou de contrôle côté LinkedIn, mais le diagnostic ne prouve pas la validité de la session. Le délai minimal de 90 secondes entre tests et la conservation du dernier état validé restent inchangés.
 
+**Analyse des redirections (0.1.8) :** lorsque LinkedIn renvoie HTTP 301/302/303/307/308, Rendevo examine **sans suivre** l'en-tête Location pour classifier uniquement la destination : page de connexion LinkedIn, vérification de sécurité, autre page LinkedIn, destination externe/non HTTPS ou cible absente/inconnue. Seule la catégorie autorisée est renvoyée au navigateur et enregistrée dans PostgreSQL ; l'URL complète, les paramètres, les cookies et les en-têtes bruts ne sont jamais exposés ni conservés dans le diagnostic. Une redirection seule ne prouve pas l'expiration des cookies. Les vérifications restent manuelles, espacées de 90 secondes, et préservent le dernier résultat positif.
+
 **Limite volontaire :** le test réalise seulement une requête HTTPS de lecture sur
 `www.linkedin.com/voyager/api/me` pour vérifier la session. L'API Voyager est interne,
 non documentée et peut changer ou refuser l'accès à tout moment. Le connecteur
