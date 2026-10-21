@@ -9,9 +9,9 @@
     "automation",
     "social"
   ],
-  "description": "Version du catalogue Runtipi : 7 | Version Rendevo : 0.1.6. Connexion LinkedIn par cookies avec historique de vérification, délai entre les tests et User-Agent Chrome macOS et affichage du profil enregistré (lecture seule, expérimentale) et Unipile. Agent de prospection auto-hébergé : il qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres. Node.js + PostgreSQL, données et fichier de configuration persistants. Accès local http://IP:8288 et Cloudflare Tunnel, sans Traefik.",
-  "tipi_version": 7,
-  "version": "0.1.6",
+  "description": "Version du catalogue Runtipi : 8 | Version Rendevo : 0.1.7. Connexion LinkedIn par cookies avec diagnostic réseau/DNS/TLS/redirections, historique des vérifications, tests espacés et User-Agent Chrome macOS et affichage du profil enregistré (lecture seule, expérimentale) et Unipile. Agent de prospection auto-hébergé : il qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres. Node.js + PostgreSQL, données et fichier de configuration persistants. Accès local http://IP:8288 et Cloudflare Tunnel, sans Traefik.",
+  "tipi_version": 8,
+  "version": "0.1.7",
   "source": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
   "website": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
   "exposable": false,
