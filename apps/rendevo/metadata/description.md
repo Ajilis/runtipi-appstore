@@ -1,6 +1,6 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 7** · **Version Rendevo : 0.1.6**
+**Version du catalogue Runtipi : 8** · **Version Rendevo : 0.1.7**
 
 Rendevo est un agent de prospection LinkedIn auto-hébergé. Il trouve les prospects qui correspondent à votre offre, repère leurs signaux d'achat (nouveau poste, recrutement, levée de fonds, visite de profil, réaction à un post), leur écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres.
 
@@ -53,4 +53,4 @@ Sauvegarder ce dossier (ou utiliser la sauvegarde Runtipi) avant toute mise à j
 
 ## Image Docker
 
-`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.1.6`.
+`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.1.7`.
