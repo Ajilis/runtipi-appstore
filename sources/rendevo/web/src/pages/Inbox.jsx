@@ -45,7 +45,7 @@ export function Inbox({ openId }) {
               <div className="row" style={{ gap: 6, marginTop: 3 }}>
                 {it.needs_human && <span className="badge warn">Pour vous</span>}
                 {it.pending > 0 && <span className="badge info">À valider</span>}
-                {it.last?.status === 'queued' && <span className="badge">Programmé</span>}
+                {it.last?.status === 'queued' && <span className="badge">{['manual', 'linkedin_cookie'].includes(it.last.provider) ? 'À envoyer manuellement' : 'Programmé'}</span>}
               </div>
               {it.last && <div className="preview">{it.last.direction === 'in' ? '' : 'Vous : '}{it.last.body || 'Invitation'}</div>}
             </button>
@@ -74,9 +74,18 @@ function Thread({ id, onBack, onChange }) {
   const refresh = () => { reload(); onChange(); };
 
   const act = (fn, msg) => run(async () => { await fn(); refresh(); }, msg);
-  const approve = (m) => act(() => api(`/api/messages/${m.id}/approve`, { method: 'POST', body: { body: edit[m.id] ?? m.body } }), 'Message validé, envoi au prochain créneau');
+  const approve = (m) => act(() => api(`/api/messages/${m.id}/approve`, { method: 'POST', body: { body: edit[m.id] ?? m.body } }), manual ? 'Brouillon validé. Copiez-le dans LinkedIn depuis « À envoyer ».' : 'Message validé, envoi au prochain créneau');
   const reject = (m) => act(() => api(`/api/messages/${m.id}/reject`, { method: 'POST' }), 'Message écarté');
-  const markSent = (m) => act(() => api(`/api/messages/${m.id}/mark-sent`, { method: 'POST' }), 'Marqué comme envoyé');
+  const markSent = (m) => {
+    if (!window.confirm('Confirmez-vous avoir réellement envoyé ce message depuis LinkedIn ? Rendevo ne l’enverra pas à votre place.')) return;
+    return act(() => api(`/api/messages/${m.id}/mark-sent`, {
+      method: 'POST', body: { confirmed: true, body: edit[m.id] ?? m.body },
+    }), 'Envoi manuel enregistré');
+  };
+  const markAccepted = () => act(
+    () => api(`/api/prospects/${p.id}/accepted`, { method: 'POST' }),
+    'Invitation acceptée enregistrée',
+  );
   const regenerate = (m) => run(async () => { const r = await api(`/api/messages/${m.id}/regenerate`, { method: 'POST', body: {} }); setEdit({ ...edit, [m.id]: r.body }); reload(); });
   const send = () => act(async () => { await api(`/api/prospects/${p.id}/reply`, { method: 'POST', body: { text: draft, resolve: true } }); setDraft(''); }, manual ? 'Message ajouté à « À envoyer »' : 'Message programmé');
   const suggest = () => run(async () => { const r = await api(`/api/prospects/${p.id}/suggest`, { method: 'POST' }); setDraft(r.text || ''); if (r.handoff_reason) toast(`Conseil : ${r.handoff_reason}`); });
@@ -94,6 +103,9 @@ function Thread({ id, onBack, onChange }) {
           </div>
         </div>
         <div className="row">
+          {manual && p.status === 'invited' && (
+            <button className="btn sm" disabled={busy} onClick={markAccepted}><LuCheck />Invitation acceptée</button>
+          )}
           {p.campaign?.settings?.setter_enabled !== false && (
             setterPaused || p.needs_human
               ? <button className="btn sm" disabled={busy} onClick={() => act(() => api(`/api/prospects/${p.id}/setter`, { method: 'POST' }), 'Le setter IA reprend la conversation')}><LuBot />Rendre la main au setter</button>
@@ -114,9 +126,9 @@ function Thread({ id, onBack, onChange }) {
                 <div className="row wrap" style={{ marginTop: 8 }}>
                   {manual && m.status === 'queued' ? (
                     <>
-                      <button className="btn sm" onClick={() => copy(edit[m.id] ?? m.body, toast)}><LuCopy />Copier</button>
+                      {!!(edit[m.id] ?? m.body) && <button className="btn sm" onClick={() => copy(edit[m.id] ?? m.body, toast)}><LuCopy />Copier</button>}
                       {p.linkedin_url && <a className="btn sm" href={p.linkedin_url} target="_blank" rel="noreferrer">Ouvrir LinkedIn</a>}
-                      <button className="btn sm primary" disabled={busy} onClick={() => markSent(m)}><LuCheck />Marquer envoyé</button>
+                      <button className="btn sm primary" disabled={busy} onClick={() => markSent(m)}><LuCheck />J’ai envoyé sur LinkedIn</button>
                     </>
                   ) : (
                     <>

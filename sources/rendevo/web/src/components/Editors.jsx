@@ -150,16 +150,24 @@ export function ScheduleEditor({ value = {}, onChange }) {
   );
 }
 
-export function CampaignToggles({ value, onChange }) {
+export function CampaignToggles({ value, onChange, assisted = false }) {
   const set = (k) => (v) => onChange({ ...value, [k]: v });
   return (
     <div className="stack" style={{ '--gap': '14px' }}>
-      <Field label="Validation humaine" hint="Les messages à valider attendent dans Messages.">
-        <div><Seg value={value.validation} onChange={set('validation')} options={[{ value: 'none', label: 'Pilote automatique' }, { value: 'first', label: 'Premiers messages' }, { value: 'all', label: 'Tous les messages' }]} /></div>
-      </Field>
-      <Switch checked={value.setter_enabled} onChange={set('setter_enabled')} label="Setter IA : répond aux prospects et réserve les rendez-vous" />
-      <Switch checked={value.followups_enabled} onChange={set('followups_enabled')} label="Relances automatiques tant que le prospect ne répond pas" />
-      <Switch checked={value.auto_discovery} onChange={set('auto_discovery')} label="Recherche automatique de nouveaux prospects" />
+      {assisted ? (
+        <div className="alert info small">
+          Compte LinkedIn par cookies : validation humaine obligatoire de chaque invitation et de chaque message. Rendevo ne les envoie jamais automatiquement. Vous copiez le brouillon dans LinkedIn, puis confirmez ici l’envoi effectué.
+        </div>
+      ) : (
+        <Field label="Validation humaine" hint="Les messages à valider attendent dans Messages.">
+          <div><Seg value={value.validation} onChange={set('validation')} options={[{ value: 'none', label: 'Pilote automatique' }, { value: 'first', label: 'Premiers messages' }, { value: 'all', label: 'Tous les messages' }]} /></div>
+        </Field>
+      )}
+      <Switch checked={value.setter_enabled} onChange={set('setter_enabled')} label={assisted ? "Setter IA : prépare des réponses et propositions de rendez-vous (envoi manuel)" : "Setter IA : répond aux prospects et réserve les rendez-vous"} />
+      <Switch checked={value.followups_enabled} onChange={set('followups_enabled')} label={assisted ? "Préparer les brouillons de relance (envoi manuel)" : "Relances automatiques tant que le prospect ne répond pas"} />
+      {assisted ? (
+        <p className="small soft">Recherche LinkedIn automatique désactivée pour ce connecteur. Importez des URLs de profils ou un fichier CSV.</p>
+      ) : <Switch checked={value.auto_discovery} onChange={set('auto_discovery')} label="Recherche automatique de nouveaux prospects" />}
     </div>
   );
 }

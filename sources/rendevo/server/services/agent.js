@@ -2,6 +2,7 @@
 // and the MCP connector.
 import { qualify, normalizeSignal } from './scoring.js';
 import { normalizeLinkedinUrl, splitName, rand, addMinutes, startOfIsoWeek, formatSlotFr } from '../lib/util.js';
+import { assistedMessageApproval } from './providers/linkedin-assisted.js';
 
 export const DEFAULT_SEQUENCE = [
   { type: 'invite', with_note: false },
@@ -48,7 +49,7 @@ export class Agent {
 
   async campaign(id) {
     if (!id) return null;
-    const { rows } = await this.db.query('SELECT * FROM campaigns WHERE id = $1', [id]);
+    const { rows } = await this.db.query('SELECT c.*, a.provider AS account_provider FROM campaigns c LEFT JOIN accounts a ON a.id = c.account_id WHERE c.id = $1', [id]);
     const c = rows[0];
     if (c) {
       c.settings = { ...DEFAULT_CAMPAIGN_SETTINGS, ...c.settings };
@@ -178,7 +179,7 @@ export class Agent {
   }
 
   async enqueue(ws, p, { kind, body, campaign, accountId, scheduledAt, approval, meta = {} }) {
-    const needs = approval ?? this.needsApproval(campaign, kind);
+    const needs = assistedMessageApproval(campaign?.account_provider, kind, approval ?? this.needsApproval(campaign, kind));
     const { rows } = await this.db.query(
       `INSERT INTO messages (workspace_id, prospect_id, campaign_id, account_id, direction, kind, body, status, scheduled_at, meta)
        VALUES ($1, $2, $3, $4, 'out', $5, $6, $7, $8, $9) RETURNING *`,
@@ -246,7 +247,7 @@ export class Agent {
   /** Bookkeeping after a message has actually been sent (automatically or by hand). */
   async onSent(messageId, providerResult = {}) {
     const { rows } = await this.db.query(
-      `UPDATE messages SET status = 'sent', sent_at = now(), error = NULL, provider_message_id = coalesce($2, provider_message_id) WHERE id = $1 RETURNING *`,
+      `UPDATE messages SET status = 'sent', sent_at = now(), error = NULL, provider_message_id = coalesce($2, provider_message_id) WHERE id = $1 AND status IN ('queued','sending') RETURNING *`,
       [messageId, providerResult.message_id || null],
     );
     const m = rows[0];
@@ -294,6 +295,7 @@ export class Agent {
         await this.activity.log(p.workspace_id, 'message.sent', { prospectId: p.id, campaignId: p.campaign_id, data: { kind: m.kind } });
     }
     await this.updateProspect(p.id, updates);
+    return m;
   }
 
   async updateProspect(id, fields) {

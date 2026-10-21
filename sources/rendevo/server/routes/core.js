@@ -6,6 +6,7 @@ import { fakeProspects } from '../services/providers/simulation.js';
 import { normalizeLinkedinCookies } from '../services/providers/linkedin-cookie.js';
 import { linkedinVerificationChange } from '../services/providers/linkedin-status.js';
 import { linkedinCheckPatch, linkedinRetrySeconds, LINKEDIN_CHECK_COOLDOWN_SECONDS } from '../services/providers/linkedin-diagnostics.js';
+import { assistedCampaignSettings } from '../services/providers/linkedin-assisted.js';
 
 const SECTIONS = ['offer', 'icp', 'voice', 'availability', 'schedule', 'goal', 'ai', 'public_url', 'onboarding_done'];
 
@@ -296,6 +297,16 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     return out;
   }
 
+  async function campaignAccountProvider(accountId, workspaceId) {
+    if (!accountId) return null;
+    const { rows } = await db.query(
+      'SELECT provider FROM accounts WHERE id = $1 AND workspace_id = $2',
+      [accountId, workspaceId],
+    );
+    if (!rows.length) throw bad('Compte LinkedIn non trouvé dans cet espace');
+    return rows[0].provider;
+  }
+
   router.post('/api/campaigns', requireAuth, requireAdmin, async (ctx) => {
     const body = await ctx.json();
     const ws = ctx.state.ws;
@@ -305,10 +316,11 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
       const a = await db.query('SELECT id FROM accounts WHERE workspace_id = $1 ORDER BY created_at LIMIT 1', [ws.id]);
       accountId = a.rows[0]?.id || null;
     }
+    const provider = await campaignAccountProvider(accountId, ws.id);
     const { rows } = await db.query(
       `INSERT INTO campaigns (workspace_id, account_id, name, goal, offer, icp, sequence, settings) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [ws.id, accountId, String(body.name || 'Nouvelle campagne').slice(0, 120), String(body.goal || 'meeting'), String(body.offer || ws.settings.offer?.summary || ''),
-        JSON.stringify(icp), JSON.stringify(sanitizeSequence(body.sequence)), JSON.stringify(sanitizeSettings(body.settings))],
+        JSON.stringify(icp), JSON.stringify(sanitizeSequence(body.sequence)), JSON.stringify(assistedCampaignSettings(sanitizeSettings(body.settings), provider))],
     );
     return rows[0];
   });
@@ -333,11 +345,13 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const c = await ownedCampaign(ctx);
     const body = await ctx.json();
     const icp = body.icp ? Object.fromEntries(Object.entries(body.icp).map(([k, v]) => [k, cleanList(v)])) : c.icp;
+    const accountId = body.account_id !== undefined ? body.account_id || null : c.account_id;
+    const provider = await campaignAccountProvider(accountId, ctx.state.ws.id);
     const { rows } = await db.query(
       `UPDATE campaigns SET name = $2, goal = $3, offer = $4, icp = $5, sequence = $6, settings = $7, account_id = $8, updated_at = now() WHERE id = $1 RETURNING *`,
       [c.id, String(body.name ?? c.name).slice(0, 120), String(body.goal ?? c.goal), String(body.offer ?? c.offer),
         JSON.stringify(icp), JSON.stringify(body.sequence ? sanitizeSequence(body.sequence) : c.sequence),
-        JSON.stringify(sanitizeSettings(body.settings || {}, c.settings)), body.account_id !== undefined ? body.account_id || null : c.account_id],
+        JSON.stringify(assistedCampaignSettings(sanitizeSettings(body.settings || {}, c.settings), provider)), accountId],
     );
     return rows[0];
   });
