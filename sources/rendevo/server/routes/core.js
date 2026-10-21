@@ -144,9 +144,11 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const cfg = accountConfig(body.provider, { ignore_window: body.provider === 'simulation', ...body.config });
     if (body.provider === 'unipile' && (!cfg.dsn || !cfg.account_id || !cfg.api_key_enc)) throw bad('DSN, identifiant de compte et clé API Unipile requis');
     if (body.provider === 'linkedin_cookie' && (!cfg.li_at_enc || !cfg.jsessionid_enc)) throw bad('Cookies li_at et JSESSIONID requis');
+    const needsVerification = body.provider === 'linkedin_cookie';
     const { rows } = await db.query(
-      'INSERT INTO accounts (workspace_id, name, provider, account_type, config) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [ctx.state.ws.id, String(body.name || 'Mon compte LinkedIn').slice(0, 80), body.provider, type, JSON.stringify(cfg)],
+      'INSERT INTO accounts (workspace_id, name, provider, account_type, config, status, status_detail) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [ctx.state.ws.id, String(body.name || 'Mon compte LinkedIn').slice(0, 80), body.provider, type, JSON.stringify(cfg),
+        needsVerification ? 'error' : 'active', needsVerification ? 'Session à vérifier : cliquez sur Tester.' : null],
     );
     return maskAccount(rows[0]);
   });
@@ -157,11 +159,12 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const a = rows[0];
     if (!a) throw notFound();
     const cfg = accountConfig(a.provider, body.config || {}, a.config);
-    const status = ['active', 'paused'].includes(body.status) ? body.status : a.status;
+    const sessionUpdated = a.provider === 'linkedin_cookie' && (body.config?.li_at || body.config?.jsessionid);
+    const status = sessionUpdated ? 'error' : ['active', 'paused'].includes(body.status) ? body.status : a.status;
     const type = ['free', 'premium', 'sales_navigator'].includes(body.account_type) ? body.account_type : a.account_type;
     const r = await db.query(
-      'UPDATE accounts SET name = $2, account_type = $3, config = $4, status = $5, status_detail = CASE WHEN $5 = \'active\' THEN NULL ELSE status_detail END WHERE id = $1 RETURNING *',
-      [a.id, String(body.name || a.name).slice(0, 80), type, JSON.stringify(cfg), status],
+      'UPDATE accounts SET name = $2, account_type = $3, config = $4, status = $5, status_detail = CASE WHEN $6 THEN \'Session à vérifier : cliquez sur Tester.\' WHEN $5 = \'active\' THEN NULL ELSE status_detail END WHERE id = $1 RETURNING *',
+      [a.id, String(body.name || a.name).slice(0, 80), type, JSON.stringify(cfg), status, !!sessionUpdated],
     );
     return maskAccount(r.rows[0]);
   });
@@ -177,7 +180,12 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const account = agent.decryptAccount(rows[0]);
     try {
       const res = await getProvider(account.provider).test(account);
-      if (res.ok && account.status === 'error') await db.query(`UPDATE accounts SET status = 'active', status_detail = NULL WHERE id = $1`, [account.id]);
+      if (account.provider === 'linkedin_cookie') {
+        await db.query('UPDATE accounts SET status = $2, status_detail = $3 WHERE id = $1',
+          [account.id, res.ok ? 'active' : 'error', res.ok ? null : res.detail]);
+      } else if (res.ok && account.status === 'error') {
+        await db.query(`UPDATE accounts SET status = 'active', status_detail = NULL WHERE id = $1`, [account.id]);
+      }
       return res;
     } catch (e) {
       return { ok: false, detail: e.message };
