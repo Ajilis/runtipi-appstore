@@ -4,6 +4,7 @@ import { providerList, getProvider } from '../services/providers/index.js';
 import { DEFAULT_SEQUENCE, DEFAULT_CAMPAIGN_SETTINGS } from '../services/agent.js';
 import { fakeProspects } from '../services/providers/simulation.js';
 import { normalizeLinkedinCookies } from '../services/providers/linkedin-cookie.js';
+import { linkedinVerificationChange } from '../services/providers/linkedin-status.js';
 
 const SECTIONS = ['offer', 'icp', 'voice', 'availability', 'schedule', 'goal', 'ai', 'public_url', 'onboarding_done'];
 
@@ -130,6 +131,7 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
       catch (e) { throw bad(e.message); }
       cfg.li_at_enc = vault.encrypt(credentials.liAt);
       cfg.jsessionid_enc = vault.encrypt(credentials.jsession);
+      delete cfg.profile; // A different session may refer to another member.
     }
     if (input.ignore_window !== undefined) cfg.ignore_window = !!input.ignore_window;
     if (input.limits) cfg.limits = Object.fromEntries(Object.entries(input.limits).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, Math.max(0, parseInt(v, 10) || 0)]));
@@ -181,8 +183,13 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     try {
       const res = await getProvider(account.provider).test(account);
       if (account.provider === 'linkedin_cookie') {
-        await db.query('UPDATE accounts SET status = $2, status_detail = $3 WHERE id = $1',
-          [account.id, res.ok ? 'active' : 'error', res.ok ? null : res.detail]);
+        const change = linkedinVerificationChange(account, res);
+        if (change) {
+          await db.query(
+            "UPDATE accounts SET status = $2, status_detail = $3, config = jsonb_set(config, '{profile}', $4::jsonb, true) WHERE id = $1",
+            [account.id, change.status, change.detail, JSON.stringify(change.profile)],
+          );
+        }
       } else if (res.ok && account.status === 'error') {
         await db.query(`UPDATE accounts SET status = 'active', status_detail = NULL WHERE id = $1`, [account.id]);
       }

@@ -9,9 +9,9 @@
     "automation",
     "social"
   ],
-  "description": "Version du catalogue Runtipi : 3 | Version Rendevo : 0.1.2. Connexion LinkedIn par cookies et affichage du profil (lecture seule, expérimentale) et Unipile. Agent de prospection auto-hébergé : il qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres. Node.js + PostgreSQL, données et fichier de configuration persistants. Accès local http://IP:8288 et Cloudflare Tunnel, sans Traefik.",
-  "tipi_version": 3,
-  "version": "0.1.2",
+  "description": "Version du catalogue Runtipi : 4 | Version Rendevo : 0.1.3. Connexion LinkedIn par cookies avec test manuel et affichage du profil enregistré (lecture seule, expérimentale) et Unipile. Agent de prospection auto-hébergé : il qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres. Node.js + PostgreSQL, données et fichier de configuration persistants. Accès local http://IP:8288 et Cloudflare Tunnel, sans Traefik.",
+  "tipi_version": 4,
+  "version": "0.1.3",
   "source": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
   "website": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
   "exposable": false,

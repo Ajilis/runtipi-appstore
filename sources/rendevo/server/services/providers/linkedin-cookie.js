@@ -40,7 +40,7 @@ export default {
         },
       });
       if (res.status === 401 || res.status === 403 || res.status === 999) {
-        return { ok: false, detail: 'Session refusée ou vérification supplémentaire demandée par LinkedIn. Renouvelez les cookies dans votre propre navigateur.' };
+        return { ok: false, invalid_session: res.status === 401, detail: 'Session refusée ou vérification supplémentaire demandée par LinkedIn. Vérifiez la session dans votre navigateur avant de renouveler les cookies.' };
       }
       if (!res.ok) return { ok: false, detail: `LinkedIn n'a pas pu être vérifié (HTTP ${res.status}).` };
       const type = res.headers.get('content-type') || '';
