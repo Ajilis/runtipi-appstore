@@ -39,12 +39,12 @@ test('les brouillons liés à un compte cookie attendent une validation, même s
     await agent.enqueue({ id: 'workspace1' }, { id: 'prospect1', campaign_id: campaign.id },
       { kind, body: kind === 'invite' ? '' : 'Bonjour', campaign, approval });
     const last = args.at(-1)[1];
-    assert.equal(last[7], 'pending_approval', kind);
+    assert.equal(last[6], 'pending_approval', kind);
     assert.equal(last[3], 'account1');
   }
   await agent.enqueue({ id: 'workspace1' }, { id: 'prospect1', campaign_id: campaign.id },
     { kind: 'manual', body: 'Un message écrit par un humain', campaign, approval: false });
-  assert.equal(args.at(-1)[1][7], 'queued');
+  assert.equal(args.at(-1)[1][6], 'queued');
 });
 
 test('la confirmation ne contourne pas la validation et ne double pas les compteurs', () => {
