@@ -4,6 +4,7 @@ import { api, useApi, useRouter, Loading, ErrorBox, Field, Modal, Switch, useAct
 import { useSession } from '../session.js';
 import { OfferEditor, VoiceEditor, IcpEditor, AvailabilityEditor, ScheduleEditor } from '../components/Editors.jsx';
 import { AccountForm, emptyAccount } from '../components/AccountForm.jsx';
+import { LinkedInAccountProfile } from '../components/LinkedInAccountProfile.jsx';
 
 const SECTIONS = [
   ['general', 'Général'],
