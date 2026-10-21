@@ -71,6 +71,8 @@ Rendevo qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'ach
 
 Données persistantes dans `APP_DATA_DIR/data/` : `config/rendevo.yml` (fichier de configuration créé au premier démarrage : budgets LinkedIn, rythme d'envoi, IA par défaut), `uploads/` (vidéos et documents) et `postgres/` (base de données). Ne jamais changer le secret de l'application après l'installation.
 
-Le connecteur optionnel **Mon LinkedIn (cookie)** valide uniquement une session de votre propre compte avec `li_at` et `JSESSIONID`, enregistrés chiffrés. Il ne réalise pas de prospection automatique ; l'utilisation de cookies copiés est interdite par LinkedIn et peut entraîner une restriction du compte.\n\nDocumentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/description.md) · Sources et feuille de route : [`sources/rendevo`](sources/rendevo/README.md).
+Le connecteur optionnel **Mon LinkedIn (cookie)** valide uniquement une session de votre propre compte avec `li_at` et `JSESSIONID`, enregistrés chiffrés. Il ne réalise pas de prospection automatique ; l'utilisation de cookies copiés est interdite par LinkedIn et peut entraîner une restriction du compte.
+
+Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/description.md) · Sources et feuille de route : [`sources/rendevo`](sources/rendevo/README.md).
 
 **À valider :** l'image est construite automatiquement après le push ; le déploiement sur une instance Runtipi réelle reste à tester. L'automatisation de LinkedIn par un service tiers est restreinte par les conditions de LinkedIn : utiliser des budgets prudents et la pause en un clic.
