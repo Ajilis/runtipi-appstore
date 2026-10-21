@@ -145,7 +145,7 @@ function Accounts({ limits }) {
                 <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
               </div>
               <div className="row">
-                <button className="btn sm" disabled={busy} onClick={() => test(a)}><LuPlugZap />Tester</button>
+                {a.provider !== 'linkedin_cookie' && <button className="btn sm" disabled={busy} onClick={() => test(a)}><LuPlugZap />Tester</button>}
                 <button className="btn sm" disabled={busy} onClick={() => toggle(a)}>{a.status === 'paused' ? <><LuPlay />Réactiver</> : <><LuPause />Pause</>}</button>
                 <button className="btn sm" onClick={() => setEdit({ ...a, config: { ...a.config } })}>Modifier</button>
               </div>
