@@ -1,3 +1,4 @@
+import { profileDisplay } from './profile-display.js';
 // Experimental LinkedIn browser-session connector (read-only verification).
 // A session cookie is a bearer credential: never log it, send it to other hosts,
 // or expose it through the Rendevo API.
@@ -50,7 +51,7 @@ export default {
       if (!data || typeof data !== 'object' || !Object.keys(data).length) {
         return { ok: false, detail: 'Réponse LinkedIn vide : impossible de confirmer la session.' };
       }
-      return { ok: true, detail: 'Session LinkedIn reconnue. Connexion expérimentale en lecture seule : envois et recherche restent manuels.' };
+      return { ok: true, detail: 'Session LinkedIn reconnue. Connexion expérimentale en lecture seule : envois et recherche restent manuels.', profile: profileDisplay(data) };
     } catch {
       return { ok: false, detail: 'Vérification LinkedIn impossible (réseau, cookies expirés ou accès bloqué).' };
     } finally {
