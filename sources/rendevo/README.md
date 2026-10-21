@@ -47,6 +47,8 @@ Le contrôle en lecture seule utilise un en-tête User-Agent de **Chrome 143 sur
 
 **Analyse des redirections (0.1.8) :** lorsque LinkedIn renvoie HTTP 301/302/303/307/308, Rendevo examine **sans suivre** l'en-tête Location pour classifier uniquement la destination : page de connexion LinkedIn, vérification de sécurité, autre page LinkedIn, destination externe/non HTTPS ou cible absente/inconnue. Seule la catégorie autorisée est renvoyée au navigateur et enregistrée dans PostgreSQL ; l'URL complète, les paramètres, les cookies et les en-têtes bruts ne sont jamais exposés ni conservés dans le diagnostic. Une redirection seule ne prouve pas l'expiration des cookies. Les vérifications restent manuelles, espacées de 90 secondes, et préservent le dernier résultat positif.
 
+**Familles de redirection détaillées (0.1.9) :** la destination HTTP 301/302/303/307/308 est désormais classée, sans jamais suivre la redirection, entre connexion directe, vérification de sécurité, authentification/autorisation indirecte, accueil/fil d’actualité, page de profil, chemin d’API Voyager, autre page LinkedIn, destination externe ou destination inconnue. La classification inspecte uniquement le protocole, le domaine et la famille du **chemin**. Les paramètres d’URL, fragments, chemins complets, cibles de redirection et cookies ne sont ni exposés ni enregistrés ; seule une catégorie fixe est persistée. Ces étiquettes sont des indices, pas une preuve de validité ou d’expiration de session.
+
 **Limite volontaire :** le test réalise seulement une requête HTTPS de lecture sur
 `www.linkedin.com/voyager/api/me` pour vérifier la session. L'API Voyager est interne,
 non documentée et peut changer ou refuser l'accès à tout moment. Le connecteur

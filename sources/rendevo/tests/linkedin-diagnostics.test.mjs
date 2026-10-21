@@ -75,6 +75,22 @@ test('ne persiste que les catégories autorisées, jamais la cible brute', () =>
   assert.equal(success.last_redirect_kind, null);
 });
 
+test('les cinq familles utiles sont conservées comme étiquettes sans URL brute', () => {
+  for (const kind of ['feed', 'profile', 'voyager', 'auth_indirect', 'linkedin_other']) {
+    assert.ok(LINKEDIN_REDIRECT_KINDS.includes(kind));
+    const patch = linkedinCheckPatch({
+      ok: false, error_code: 'redirect_detected', http_status: 302,
+      redirect_kind: kind, location: 'https://www.linkedin.com/secret?li_at=hidden',
+    });
+    assert.equal(patch.last_redirect_kind, kind);
+    assert.doesNotMatch(JSON.stringify(patch), /linkedin\.com|hidden|li_at=/);
+  }
+  const ui = fs.readFileSync(new URL('../web/src/components/LinkedInAccountDiagnostics.jsx', import.meta.url), 'utf8');
+  for (const kind of ['feed', 'profile', 'voyager', 'auth_indirect', 'linkedin_other']) {
+    assert.match(ui, new RegExp('\\b' + kind + ':'));
+  }
+});
+
 test('le délai serveur empêche deux tests dans la même fenêtre de 90 secondes', () => {
   const t = Date.parse('2026-10-20T09:00:00.000Z');
   const diagnostic = { last_attempt_at: new Date(t).toISOString() };

@@ -5,6 +5,10 @@ import React from 'react';
 const REDIRECT_LABELS = {
   login: 'Page de connexion LinkedIn',
   security_check: 'Vérification de sécurité LinkedIn',
+  auth_indirect: 'Authentification ou autorisation indirecte LinkedIn',
+  feed: 'Accueil / fil d’actualité LinkedIn',
+  profile: 'Page de profil LinkedIn',
+  voyager: 'API interne Voyager LinkedIn',
   linkedin_other: 'Autre page LinkedIn',
   external: 'Destination externe ou non sécurisée (non visitée)',
   unknown: 'Destination absente ou non reconnue',

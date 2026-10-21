@@ -1,7 +1,7 @@
 // A bounded, display-only verification record. Never copy upstream headers,
 // response bodies, cookie values or exception messages into the database.
 export const LINKEDIN_CHECK_COOLDOWN_SECONDS = 90;
-export const LINKEDIN_REDIRECT_KINDS = Object.freeze(['login', 'security_check', 'linkedin_other', 'external', 'unknown']);
+export const LINKEDIN_REDIRECT_KINDS = Object.freeze(['login', 'security_check', 'auth_indirect', 'feed', 'profile', 'voyager', 'linkedin_other', 'external', 'unknown']);
 export const LINKEDIN_ERROR_CODES = Object.freeze([
   'http_rejected', 'http_error', 'rate_limited', 'unexpected_response',
   'timeout', 'network_error', 'dns_error', 'tls_error', 'connection_error',
