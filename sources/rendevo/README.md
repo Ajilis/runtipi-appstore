@@ -29,6 +29,28 @@ Aucune dépendance npm à l'exécution : serveur HTTP, client PostgreSQL (SCRAM-
 | `server/db/migrations` | Schéma SQL appliqué au démarrage |
 | `web/src` | Interface React (tableau de bord, prospects, campagnes, messages, agenda, médias, réglages, pages publiques) |
 
+## Connexion expérimentale à son propre LinkedIn par cookies
+
+Dans **Réglages → Comptes LinkedIn → Ajouter un compte**, choisir **Mon LinkedIn (cookie)**.
+Renseigner **les deux valeurs** `li_at` et `JSESSIONID` de votre propre navigateur déjà connecté,
+puis cliquer sur **Ajouter** et **Tester**. Ces informations sont des identifiants de session
+équivalents à un mot de passe : ne les communiquez jamais par chat, e-mail ou ticket.
+Rendevo chiffre les deux valeurs avec le secret applicatif et ne les renvoie pas dans son API.
+
+**Limite volontaire :** le test réalise seulement une requête HTTPS de lecture sur
+`www.linkedin.com/voyager/api/me` pour vérifier la session. L'API Voyager est interne,
+non documentée et peut changer ou refuser l'accès à tout moment. Le connecteur
+n'effectue **aucun envoi automatique, invitation, recherche ni synchronisation** ;
+les campagnes avec ce compte doivent être opérées manuellement. Ce connecteur ne
+donne accès ni à une API LinkedIn officiellement prise en charge ni à un OAuth approuvé.
+Pour l'automatisation prévue par Rendevo, l'intégration Unipile reste distincte.
+
+**Risque et conformité :** LinkedIn interdit l'utilisation de cookies copiés et les
+méthodes automatisées non autorisées. Votre compte peut être restreint. N'utilisez
+pas ce connecteur pour contourner un contrôle de connexion. Pour invalider la
+session, déconnectez-la dans LinkedIn ; supprimer le compte Rendevo supprime
+sa copie locale des cookies.
+
 ## Développement
 
 ```bash

@@ -81,7 +81,7 @@ export function Dashboard() {
   const todos = [
     q.approval > 0 && { n: q.approval, label: q.approval > 1 ? 'messages à valider' : 'message à valider', to: '/messages?filter=approval' },
     q.human > 0 && { n: q.human, label: q.human > 1 ? 'conversations attendent votre réponse' : 'conversation attend votre réponse', to: '/messages?filter=human' },
-    data.accounts.some((a) => a.provider === 'manual') && { n: '', label: 'Messages préparés à envoyer depuis LinkedIn', to: '/messages?filter=to_send' },
+    data.accounts.some((a) => ['manual', 'linkedin_cookie'].includes(a.provider)) && { n: '', label: 'Messages préparés à envoyer depuis LinkedIn', to: '/messages?filter=to_send' },
   ].filter(Boolean);
 
   return (

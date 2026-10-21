@@ -71,6 +71,8 @@ export class Agent {
   decryptAccount(a) {
     const cfg = { ...a.config };
     if (cfg.api_key_enc) cfg.api_key = this.ai.vault.decrypt(cfg.api_key_enc);
+    if (cfg.li_at_enc) cfg.li_at = this.ai.vault.decrypt(cfg.li_at_enc);
+    if (cfg.jsessionid_enc) cfg.jsessionid = this.ai.vault.decrypt(cfg.jsessionid_enc);
     return { ...a, config: cfg };
   }
 

@@ -70,7 +70,7 @@ function Thread({ id, onBack, onChange }) {
 
   if (loading && !p) return <div className="thread"><Loading /></div>;
   if (error) return <div className="thread"><ErrorBox error={error} /></div>;
-  const manual = p.account?.provider === 'manual';
+  const manual = ['manual', 'linkedin_cookie'].includes(p.account?.provider);
   const refresh = () => { reload(); onChange(); };
 
   const act = (fn, msg) => run(async () => { await fn(); refresh(); }, msg);

@@ -141,7 +141,7 @@ function Accounts({ limits }) {
             <div className="row spread wrap">
               <div>
                 <div className="row" style={{ gap: 8 }}><strong>{a.name}</strong><span className={`badge ${a.status === 'active' ? 'ok' : a.status === 'error' ? 'err' : 'warn'}`}>{{ active: 'Actif', paused: 'En pause', error: 'À reconnecter' }[a.status] || a.status}</span></div>
-                <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
+                <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
               </div>
               <div className="row">
                 <button className="btn sm" disabled={busy} onClick={() => test(a)}><LuPlugZap />Tester</button>
