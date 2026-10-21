@@ -145,13 +145,13 @@ function Accounts({ limits }) {
                 <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
               </div>
               <div className="row">
-                {a.provider !== 'linkedin_cookie' && <button className="btn sm" disabled={busy} onClick={() => test(a)}><LuPlugZap />Tester</button>}
+                <button className="btn sm" disabled={busy} onClick={() => test(a)}><LuPlugZap />Tester</button>
                 <button className="btn sm" disabled={busy} onClick={() => toggle(a)}>{a.status === 'paused' ? <><LuPlay />Réactiver</> : <><LuPause />Pause</>}</button>
                 <button className="btn sm" onClick={() => setEdit({ ...a, config: { ...a.config } })}>Modifier</button>
               </div>
             </div>
             {a.status_detail && <div className="alert warn small">{a.status_detail}</div>}
-            {a.provider === "linkedin_cookie" && a.config?.has_session && <LinkedInAccountProfile accountId={a.id} onChecked={reload} />}
+            {a.provider === "linkedin_cookie" && a.config?.has_session && <LinkedInAccountProfile key={a.config.profile?.photo_url || a.id} profile={a.config.profile} />}
             <div className="row wrap small soft" style={{ gap: 18 }}>
               <span>Invitations aujourd'hui : <strong className="num">{a.invites_today}</strong> / {lim.invites_per_day}</span>
               <span>Cette semaine : <strong className="num">{a.invites_week}</strong> / {lim.invites_per_week}</span>
