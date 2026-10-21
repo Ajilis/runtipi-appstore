@@ -23,7 +23,7 @@ export function classifyLinkedinRedirect(location) {
       || /^\/uas\/(login|authwall)(\/|$)/.test(path)) return 'login';
     // These are route families, not guarantees that authentication is required.
     // Query parameters (including session_redirect) are deliberately ignored.
-    if (/^\/(oauth|sso|saml|uas\/(oauth|sso|authenticate|authorize))(\/|$)/.test(path)
+    if (/^\/(oauth|sso|saml|uas\/(oauth|oauth2|sso|authenticate|authorize))(\/|$)/.test(path)
       || /^\/authorization(\/|$)/.test(path)) return 'auth_indirect';
     if (path === '/' || /^\/(feed|home)(\/|$)/.test(path)) return 'feed';
     if (/^\/(in|pub|profile)(\/|$)/.test(path)
