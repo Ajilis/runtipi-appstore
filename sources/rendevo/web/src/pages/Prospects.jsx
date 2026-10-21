@@ -12,7 +12,7 @@ export function Prospects({ openId }) {
   const [filters, setFilters] = useState({ q: '', heat: query.heat || '', status: '', campaign: query.campaign || '', needs_human: '' });
   const [view, setView] = useState('list');
   const [selected, setSelected] = useState(new Set());
-  const [modal, setModal] = useState(null);
+  const [modal, setModal] = useState(query.import === '1' ? 'import' : null);
   const qs = useMemo(() => new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString(), [filters]);
   const { data, error, loading, reload } = useApi(`/api/prospects?limit=300&${qs}`);
   const campaigns = useApi('/api/campaigns');
@@ -128,7 +128,7 @@ export function Prospects({ openId }) {
       )}
       {data && items.length > 0 && view === 'pipeline' && <Pipeline items={items} stages={data.stages} onMove={async (id, stage) => { await api(`/api/prospects/${id}`, { method: 'PATCH', body: { stage } }); reload(); }} onOpen={(id) => navigate(`/prospects/${id}`)} />}
 
-      {modal === 'import' && <ImportModal campaigns={campaigns.data || []} onClose={() => setModal(null)} onDone={(r) => { setModal(null); reload(); toast(`${r.created} importés, ${r.duplicates} doublons ignorés${r.invalid ? `, ${r.invalid} lignes invalides` : ''}.`); }} />}
+      {modal === 'import' && <ImportModal campaigns={campaigns.data || []} initialCampaign={filters.campaign} onClose={() => setModal(null)} onDone={(r) => { setModal(null); reload(); toast(`${r.created} importés, ${r.duplicates} doublons ignorés${r.invalid ? `, ${r.invalid} lignes invalides` : ''}.`); }} />}
       {modal === 'add' && <AddModal campaigns={campaigns.data || []} onClose={() => setModal(null)} onDone={(id) => { setModal(null); reload(); navigate(`/prospects/${id}`); }} />}
       {modal === 'discover' && <DiscoverModal campaigns={campaigns.data || []} onClose={() => setModal(null)} onDone={(r) => { setModal(null); reload(); toast(`${r.created} nouveaux prospects qualifiés sur ${r.found} trouvés.`); }} />}
       {openId && <ProspectDrawer id={openId} campaigns={campaigns.data || []} onClose={() => navigate('/prospects')} onChange={reload} />}
@@ -170,12 +170,12 @@ function CampaignSelect({ campaigns, value, onChange, allowNone = true }) {
   );
 }
 
-function ImportModal({ campaigns, onClose, onDone }) {
+function ImportModal({ campaigns, initialCampaign, onClose, onDone }) {
   const [mode, setMode] = useState('csv');
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState('');
   const [urls, setUrls] = useState('');
-  const [campaign, setCampaign] = useState(campaigns[0]?.id || '');
+  const [campaign, setCampaign] = useState(initialCampaign && initialCampaign !== 'none' ? initialCampaign : campaigns[0]?.id || '');
   const [signal, setSignal] = useState('');
   const [signalDetail, setSignalDetail] = useState('');
   const [run, busy] = useAction();
@@ -199,7 +199,7 @@ function ImportModal({ campaigns, onClose, onDone }) {
             {fileName && <div className="small soft">{fileName} : {Math.max(0, csv.split(/\r?\n/).filter(Boolean).length - 1)} lignes</div>}
           </Field>
         ) : (
-          <Field label="URLs de profils" hint="Une par ligne. Idéal pour les personnes qui ont réagi à un post (vôtre ou d'un concurrent).">
+          <Field label="URLs de profils" hint="Une par ligne. Rendevo prépare les brouillons, sans lire automatiquement les profils ni envoyer de messages. Ajoutez ensuite le poste et l'entreprise si besoin.">
             <textarea className="textarea" value={urls} onChange={(e) => setUrls(e.target.value)} placeholder={'https://www.linkedin.com/in/…\nhttps://www.linkedin.com/in/…'} />
           </Field>
         )}
@@ -253,7 +253,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
       <button className="btn primary" disabled={busy || !campaign} onClick={() => run(async () => onDone(await api(`/api/campaigns/${campaign}/discover`, { method: 'POST', body: { limit } })))}>{busy ? <span className="spinner" /> : <LuSparkles />}Lancer la recherche</button>
     </>}>
       {usable.length === 0 ? (
-        <div className="alert warn">La recherche automatique demande une campagne liée à un compte LinkedIn (Unipile) ou au bac à sable. Avec un compte manuel, importez vos prospects.</div>
+        <div className="alert warn">La recherche automatique n'est pas disponible avec votre session LinkedIn par cookies. Pour une campagne sans Unipile, importez des profils depuis des URLs ou un CSV.</div>
       ) : (
         <div className="stack" style={{ '--gap': '12px' }}>
           <p className="soft">L'agent cherche des profils correspondant à la cible de la campagne, les enrichit et les qualifie. Les exclusions et doublons sont écartés.</p>
