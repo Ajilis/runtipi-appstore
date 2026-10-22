@@ -1,19 +1,22 @@
 'use strict';
 
-// No content script, no fetch, no LinkedIn cookies and no background polling.
-// The popup reads the active tab URL only after the user opens it.
-const baseInput = document.getElementById('base');
-const profileEl = document.getElementById('profile');
-const statusEl = document.getElementById('status');
-const saveBtn = document.getElementById('save');
-const importBtn = document.getElementById('import');
-const messagesBtn = document.getElementById('messages');
+// Direct Rendevo communication uses a *scoped* device token obtained through a
+// short-lived pairing code. No LinkedIn cookies, DOM access or LinkedIn API calls.
+const byId = (id) => document.getElementById(id);
+const base = byId('base'), code = byId('paircode'), campaign = byId('campaign');
+const profile = byId('profile'), statusEl = byId('status');
+const save = byId('save'), connect = byId('connect');
+const pairing = byId('pairing'), connected = byId('connected');
+const importBtn = byId('import'), refresh = byId('refresh');
+const messages = byId('messages'), disconnect = byId('disconnect');
 let rendevoOrigin = '';
+let deviceToken = '';
 let profileUrl = null;
+let busy = false;
 
 function localOrigin(input) {
   try {
-    const parsed = new URL(input.trim());
+    const parsed = new URL(String(input || '').trim());
     if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
     if (parsed.pathname !== '/' && parsed.pathname !== '') return null;
     const host = parsed.hostname.toLowerCase();
@@ -23,9 +26,7 @@ function localOrigin(input) {
       || /^172\.(1[6-9]|2\d|3[01])\.(\d{1,3})\.(\d{1,3})$/.test(host);
     if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && privateHttp)) return null;
     return parsed.origin;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function normalizedLinkedinProfileUrl(input) {
@@ -35,53 +36,151 @@ function normalizedLinkedinProfileUrl(input) {
     if (parsed.protocol !== 'https:' || !['www.linkedin.com', 'linkedin.com'].includes(parsed.hostname.toLowerCase())
       || parsed.username || parsed.password || parsed.port) return null;
     const matched = /^\/in\/([a-z0-9][a-z0-9_.%-]{0,199})\/?$/i.exec(parsed.pathname);
-    if (!matched) return null;
-    return 'https://www.linkedin.com/in/' + matched[1] + '/';
+    return matched ? 'https://www.linkedin.com/in/' + matched[1] + '/' : null;
   } catch { return null; }
 }
 
-function status(message) { statusEl.textContent = message; }
-function refreshButtons() {
-  importBtn.disabled = !rendevoOrigin || !profileUrl;
-  messagesBtn.disabled = !rendevoOrigin;
+function say(message) { statusEl.textContent = message; }
+function update() {
+  pairing.hidden = !!deviceToken;
+  connected.hidden = !deviceToken;
+  connect.disabled = busy || !rendevoOrigin || !code.value.trim() || !!deviceToken;
+  importBtn.disabled = busy || !deviceToken || !profileUrl;
+  refresh.disabled = busy || !deviceToken;
+  save.disabled = busy;
+  disconnect.disabled = busy;
+  messages.disabled = busy;
+}
+function setBusy(next) { busy = next; update(); }
+
+async function api(path, { method = 'GET', body, token = deviceToken } = {}) {
+  if (!rendevoOrigin) throw new Error('Renseigne ton instance Rendevo');
+  const url = new URL(path, rendevoOrigin);
+  const response = await fetch(url.href, {
+    method,
+    cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'error',
+    headers: {
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 && token) {
+      deviceToken = '';
+      await chrome.storage.local.remove('companionToken');
+      update();
+    }
+    throw new Error(result.error || 'Erreur Rendevo HTTP ' + response.status);
+  }
+  return result;
+}
+
+async function loadCampaigns() {
+  const [state, list] = await Promise.all([
+    api('/api/companion/status'), api('/api/companion/campaigns'),
+  ]);
+  byId('workspace').textContent = state.workspace || 'Rendevo';
+  const previous = campaign.value;
+  campaign.replaceChildren();
+  const none = document.createElement('option');
+  none.value = ''; none.textContent = 'Sans campagne (à classer plus tard)';
+  campaign.append(none);
+  for (const item of list.items || []) {
+    const opt = document.createElement('option');
+    opt.value = item.id;
+    opt.textContent = item.name;
+    campaign.append(opt);
+  }
+  if (Array.from(campaign.options).some((x) => x.value === previous)) campaign.value = previous;
+  update();
 }
 
 async function init() {
-  const stored = await chrome.storage.local.get('rendevoOrigin');
-  rendevoOrigin = localOrigin(stored.rendevoOrigin || '') || '';
-  baseInput.value = rendevoOrigin;
+  const stored = await chrome.storage.local.get(['rendevoOrigin', 'companionToken']);
+  rendevoOrigin = localOrigin(stored.rendevoOrigin) || '';
+  deviceToken = String(stored.companionToken || '');
+  base.value = rendevoOrigin;
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   profileUrl = normalizedLinkedinProfileUrl(tabs[0]?.url);
-  profileEl.textContent = profileUrl
-    || "Ouvre une page de profil LinkedIn (linkedin.com/in/…), puis rouvre l'extension.";
-  refreshButtons();
+  profile.textContent = profileUrl || 'Ouvre une URL de profil LinkedIn /in/… puis rouvre l’extension.';
+  update();
+  if (deviceToken) {
+    try { await loadCampaigns(); }
+    catch (err) { say(err.message); }
+  }
 }
 
-saveBtn.addEventListener('click', async () => {
-  const origin = localOrigin(baseInput.value);
-  if (!origin) {
-    status("Utilise une adresse HTTPS Rendevo, ou HTTP uniquement sur un réseau local privé.");
-    return;
+save.addEventListener('click', async () => {
+  const origin = localOrigin(base.value);
+  if (!origin) { say('Adresse HTTPS requise (HTTP autorisé seulement sur réseau privé).'); return; }
+  // Chrome requests access to this specific Rendevo origin, not all websites.
+  const granted = await chrome.permissions.request({ origins: [origin + '/*'] });
+  if (!granted) { say("L'autorisation de communiquer avec Rendevo a été refusée."); return; }
+  if (origin !== rendevoOrigin) {
+    deviceToken = '';
+    await chrome.storage.local.remove('companionToken');
   }
-  await chrome.storage.local.set({ rendevoOrigin: origin });
   rendevoOrigin = origin;
-  baseInput.value = origin;
-  status("Adresse enregistrée. Connecte-toi à Rendevo dans le navigateur.");
-  refreshButtons();
+  base.value = origin;
+  await chrome.storage.local.set({ rendevoOrigin: origin });
+  say('Instance autorisée. Crée un code dans Rendevo → Réglages → Intégrations.');
+  update();
+});
+
+code.addEventListener('input', update);
+
+connect.addEventListener('click', async () => {
+  if (!rendevoOrigin || deviceToken || busy) return;
+  setBusy(true);
+  try {
+    const result = await api('/api/companion/exchange', {
+      method: 'POST', body: { code: code.value.trim(), device_name: 'Chrome Companion' }, token: '',
+    });
+    deviceToken = result.token;
+    await chrome.storage.local.set({ companionToken: deviceToken });
+    code.value = '';
+    await loadCampaigns();
+    say('Extension associée directement à Rendevo.');
+  } catch (err) { say(err.message); }
+  finally { setBusy(false); }
+});
+
+refresh.addEventListener('click', async () => {
+  if (!deviceToken || busy) return;
+  setBusy(true);
+  try { await loadCampaigns(); say('Campagnes actualisées.'); }
+  catch (err) { say(err.message); }
+  finally { setBusy(false); }
 });
 
 importBtn.addEventListener('click', async () => {
-  if (!rendevoOrigin || !profileUrl) return;
-  const link = new URL('/prospects', rendevoOrigin);
-  link.searchParams.set('import', '1');
-  link.searchParams.set('companion_url', profileUrl);
-  await chrome.tabs.create({ url: link.href });
-  status("Import à confirmer dans Rendevo.");
+  if (!deviceToken || !profileUrl || busy) return;
+  setBusy(true);
+  try {
+    const result = await api('/api/companion/prospects', {
+      method: 'POST',
+      body: { linkedin_url: profileUrl, campaign_id: campaign.value || null },
+    });
+    say(result.created ? 'Profil ajouté dans Rendevo.' : result.duplicates
+      ? 'Ce prospect existe déjà dans Rendevo.' : 'Profil non importé : données insuffisantes.');
+  } catch (err) { say(err.message); }
+  finally { setBusy(false); }
 });
 
-messagesBtn.addEventListener('click', async () => {
-  if (!rendevoOrigin) return;
-  await chrome.tabs.create({ url: new URL('/messages', rendevoOrigin).href });
+messages.addEventListener('click', async () => {
+  if (rendevoOrigin) await chrome.tabs.create({ url: new URL('/messages', rendevoOrigin).href });
 });
 
-init().catch(() => status("Chrome n'a pas autorisé l'accès à l'onglet actif."));
+disconnect.addEventListener('click', async () => {
+  deviceToken = '';
+  await chrome.storage.local.remove('companionToken');
+  byId('workspace').textContent = '';
+  update();
+  say("Extension dissociée localement. Pour révoquer l'ancien jeton, ouvre Rendevo → Réglages → Intégrations.");
+});
+
+init().catch((err) => say(err.message || 'Impossible de lire les réglages Chrome.'));

@@ -16,6 +16,7 @@ import { registerInbox } from './routes/inbox.js';
 import { registerMeetings } from './routes/meetings.js';
 import { registerMisc } from './routes/misc.js';
 import { registerMcp } from './routes/mcp.js';
+import { registerCompanion } from './routes/companion.js';
 
 const logger = console;
 
@@ -41,6 +42,7 @@ async function main() {
   registerInbox(router, deps, auth);
   registerMeetings(router, deps, auth);
   registerMisc(router, deps, auth);
+  registerCompanion(router, deps, auth);
   registerMcp(router, deps);
 
   const server = createServer({ router, staticDir: config.staticDir, logger });

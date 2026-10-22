@@ -29,11 +29,15 @@ Aucune dépendance npm à l'exécution : serveur HTTP, client PostgreSQL (SCRAM-
 | `server/db/migrations` | Schéma SQL appliqué au démarrage |
 | `web/src` | Interface React (tableau de bord, prospects, campagnes, messages, agenda, médias, réglages, pages publiques) |
 
+## Rendevo Companion connecté directement (0.2.4 / Runtipi V15)
+
+Depuis V15, l'extension Chrome communique directement avec une API Rendevo **limitée et révocable**, sans onglet intermédiaire pour l'import. Créez un code d'association à usage unique (5 minutes) dans **Réglages → Intégrations** ; saisissez-le dans l'extension après avoir autorisé l'origine HTTPS de votre propre Rendevo. L'extension reçoit un jeton Companion valable 90 jours, uniquement autorisé à consulter les campagnes Companion et à importer sur clic une URL de profil LinkedIn. Le serveur ne stocke que les hashes des codes et jetons. Les dispositifs sont révocables dans les réglages. Une migration non destructive `002_companion.sql` initialise les tables nécessaires. Aucune lecture de cookies LinkedIn, aucun scraping et aucun envoi de messages.
+
 ## Rendevo Companion pour Chrome (0.2.3 / Runtipi V14)
 
 **Alternative sans copie de cookies**. Le fournisseur « LinkedIn Companion (Chrome) » n'exécute aucun appel à LinkedIn depuis Rendevo. Le moteur de campagne impose l'import manuel de prospects et la validation humaine des brouillons ; l'envoi reste à la charge de l'utilisateur dans LinkedIn.
 
-**Installer l'extension :** téléchargez l'artefact `Rendevo-Companion-V14` depuis le workflow [Rendevo image](https://github.com/Ajilis/runtipi-appstore/actions/workflows/rendevo-image.yml), extrayez le fichier ZIP et sélectionnez le dossier contenant `manifest.json` dans `chrome://extensions` → Mode développeur → Charger l'extension non empaquetée.
+**Installer l'extension :** téléchargez l'artefact `Rendevo-Companion-V15` depuis le workflow [Rendevo image](https://github.com/Ajilis/runtipi-appstore/actions/workflows/rendevo-image.yml), extrayez le fichier ZIP et sélectionnez le dossier contenant `manifest.json` dans `chrome://extensions` → Mode développeur → Charger l'extension non empaquetée.
 
 **Associer l'application :** ouvrir l'extension et enregistrer l'URL HTTPS de votre instance (voir **Réglages → Intégrations**). L'extension conserve uniquement cette origine dans le stockage local Chrome, sans token ni cookie. Dans le même navigateur, connectez-vous normalement à Rendevo. Créez un compte « LinkedIn Companion (Chrome) », associez-le à une campagne assistée. Depuis une page de profil LinkedIn `/in/…`, cliquez sur l'extension puis « Préparer l'import » : le formulaire d'import de Rendevo s'ouvre avec l'URL préremplie, mais **aucune importation n'est faite sans cliquer « Importer »**.
 
