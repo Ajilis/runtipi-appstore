@@ -352,14 +352,73 @@ function Team() {
 }
 
 function MyAccount() {
-  const [f, setF] = useState({ current: '', next: '' });
+  const { session, refresh } = useSession();
+  const [profile, setProfile] = useState({
+    name: session.user.name || '',
+    email: session.user.email || '',
+    current_password: '',
+  });
+  const [password, setPassword] = useState({ current: '', next: '' });
   const [run, busy] = useAction();
+  const emailChanged = profile.email.trim().toLowerCase() !== session.user.email;
+  const changed = emailChanged || profile.name.trim() !== session.user.name;
+  const set = (key) => (e) => setProfile((p) => ({ ...p, [key]: e.target.value }));
+
+  const saveProfile = () => run(async () => {
+    const result = await api('/api/me/profile', {
+      method: 'PATCH',
+      body: {
+        name: profile.name,
+        email: profile.email,
+        current_password: emailChanged ? profile.current_password : undefined,
+      },
+    });
+    setProfile({ name: result.user.name, email: result.user.email, current_password: '' });
+    await refresh();
+  }, 'Profil enregistré');
+
   return (
-    <div className="panel panel-pad stack" style={{ '--gap': '12px', maxWidth: 480 }}>
-      <div className="section-title">Changer de mot de passe</div>
-      <Field label="Mot de passe actuel"><input className="input" type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></Field>
-      <Field label="Nouveau mot de passe" hint="10 caractères minimum. Vos autres sessions seront déconnectées."><input className="input" type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} /></Field>
-      <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={busy || f.next.length < 10} onClick={() => run(async () => { await api('/api/me/password', { method: 'POST', body: f }); setF({ current: '', next: '' }); }, 'Mot de passe modifié')}>Modifier</button>
+    <div className="stack" style={{ '--gap': '16px', maxWidth: 520 }}>
+      <div className="panel panel-pad stack" style={{ '--gap': '12px' }}>
+        <div className="section-title">Mon profil</div>
+        <Field label="Nom">
+          <input className="input" value={profile.name} onChange={set('name')}
+            autoComplete="name" maxLength={120} />
+        </Field>
+        <Field label="Adresse e-mail de connexion">
+          <input className="input" type="email" value={profile.email} onChange={set('email')}
+            autoComplete="email" maxLength={254} />
+        </Field>
+        {emailChanged && (
+          <>
+            <Field label="Mot de passe actuel" hint="Obligatoire uniquement pour changer l'adresse e-mail.">
+              <input className="input" type="password" value={profile.current_password}
+                onChange={set('current_password')} autoComplete="current-password" />
+            </Field>
+            <p className="small soft">La nouvelle adresse sera utilisée immédiatement pour vous connecter. Aucun e-mail de vérification n'est envoyé.</p>
+          </>
+        )}
+        <button className="btn primary" style={{ alignSelf: 'flex-start' }}
+          disabled={busy || !changed || !profile.name.trim() || !profile.email.trim() || (emailChanged && !profile.current_password)}
+          onClick={saveProfile}>Enregistrer mon profil</button>
+      </div>
+      <div className="panel panel-pad stack" style={{ '--gap': '12px' }}>
+        <div className="section-title">Changer de mot de passe</div>
+        <Field label="Mot de passe actuel">
+          <input className="input" type="password" autoComplete="current-password"
+            value={password.current} onChange={(e) => setPassword({ ...password, current: e.target.value })} />
+        </Field>
+        <Field label="Nouveau mot de passe" hint="10 caractères minimum. Vos autres sessions seront déconnectées.">
+          <input className="input" type="password" autoComplete="new-password"
+            value={password.next} onChange={(e) => setPassword({ ...password, next: e.target.value })} />
+        </Field>
+        <button className="btn primary" style={{ alignSelf: 'flex-start' }}
+          disabled={busy || password.next.length < 10}
+          onClick={() => run(async () => {
+            await api('/api/me/password', { method: 'POST', body: password });
+            setPassword({ current: '', next: '' });
+          }, 'Mot de passe modifié')}>Modifier le mot de passe</button>
+      </div>
     </div>
   );
 }
