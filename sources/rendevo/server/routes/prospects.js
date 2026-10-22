@@ -1,6 +1,7 @@
 import { bad, notFound } from '../lib/http.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
+import { normalizeDiscoveryCriteria, discoverPublicProfiles } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
   p.status, p.stage, p.tags, p.signals, p.campaign_id, p.needs_human, p.human_reason, p.last_reply_at, p.last_contact_at, p.created_at, p.updated_at, p.source, p.callback_at`;
@@ -14,8 +15,53 @@ export const STAGES = [
   { id: 'perdu', label: 'Perdu' },
 ];
 
-export function registerProspects(router, deps, { requireAuth }) {
-  const { db, agent } = deps;
+export function registerProspects(router, deps, { requireAuth, requireAdmin }, { fetcher = fetch } = {}) {
+  const { db, agent, vault } = deps;
+  const recentSearches = new Map();
+
+  // Only encrypted API keys are persisted; neither this endpoint nor /api/settings
+  // should expose a search provider credential.
+  router.get('/api/discovery/config', requireAuth, async (ctx) => ({
+    provider: 'brave',
+    has_api_key: !!ctx.state.ws.settings?.discovery?.brave_api_key_enc,
+  }));
+
+  router.post('/api/discovery/config', requireAuth, requireAdmin, async (ctx) => {
+    const body = await ctx.json(4096);
+    const previous = ctx.state.ws.settings?.discovery || {};
+    let encrypted = previous.brave_api_key_enc || '';
+    if (body.clear_key === true) encrypted = '';
+    else if (body.api_key) {
+      const key = String(body.api_key).trim();
+      if (!/^[^\\s]{8,512}$/.test(key)) throw bad('Clé API Brave invalide');
+      encrypted = vault.encrypt(key);
+    }
+    await db.query(
+      "UPDATE workspaces SET settings = jsonb_set(settings, '{discovery}', $2::jsonb, true) WHERE id = $1",
+      [ctx.state.ws.id, JSON.stringify({ brave_api_key_enc: encrypted })],
+    );
+    return { provider: 'brave', has_api_key: !!encrypted };
+  });
+
+  router.post('/api/discovery/search', requireAuth, async (ctx) => {
+    const settings = ctx.state.ws.settings?.discovery || {};
+    const key = vault.decrypt(settings.brave_api_key_enc || '');
+    if (!key) throw bad('Configurez une clé API Brave Search pour activer la recherche web');
+    const input = await ctx.json(4096);
+    let criteria;
+    try { criteria = normalizeDiscoveryCriteria(input, ctx.state.ws.settings?.icp || {}); }
+    catch (err) { throw bad(err.message); }
+    const id = ctx.state.user.id;
+    const last = recentSearches.get(id) || 0;
+    if (Date.now() - last < 10000) throw bad('Une recherche toutes les 10 secondes au maximum');
+    if (recentSearches.size > 2000) recentSearches.clear();
+    recentSearches.set(id, Date.now());
+    try {
+      const items = await discoverPublicProfiles({ apiKey: key, criteria, fetcher });
+      return { items, found: items.length, query: criteria.searchQuery, provider: 'brave' };
+    } catch (err) { throw bad(err.message); }
+  });
+
 
   function filters(ctx) {
     const q = ctx.query;
