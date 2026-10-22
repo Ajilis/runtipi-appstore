@@ -247,9 +247,10 @@ function AddModal({ campaigns, onClose, onDone }) {
 
 function DiscoverModal({ campaigns, onClose, onDone }) {
   const automatic = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
+  const assisted = campaigns.filter((c) => ['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
   const config = useApi('/api/discovery/config');
   const [mode, setMode] = useState('web');
-  const [campaign, setCampaign] = useState(campaigns[0]?.id || '');
+  const [campaign, setCampaign] = useState(assisted[0]?.id || '');
   const [limit, setLimit] = useState(10);
   const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
   const [key, setKey] = useState('');
@@ -310,7 +311,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
       </button>}
     </>}>
       <div className="stack" style={{ '--gap': '14px' }}>
-        {automatic.length > 0 && <Seg value={mode} onChange={(next) => { setMode(next); setCampaign(next === 'provider' ? automatic[0]?.id || '' : campaigns[0]?.id || ''); }}
+        {automatic.length > 0 && <Seg value={mode} onChange={(next) => { setMode(next); setCampaign(next === 'provider' ? automatic[0]?.id || '' : assisted[0]?.id || ''); }}
           options={[{ value: 'web', label: 'Recherche web publique' }, { value: 'provider', label: 'Connecteur automatique' }]} />}
         {mode === 'provider' ? (
           <div className="stack" style={{ '--gap': '12px' }}>
@@ -327,7 +328,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               certains postes ou entreprises peuvent être anciens.
             </div>
             <Field label="Campagne de destination">
-              <CampaignSelect campaigns={campaigns} value={campaign} onChange={(id) => { setCampaign(id); setResults(null); }} />
+              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); setResults(null); }} />
             </Field>
             <div className="grid-2">
               {[
