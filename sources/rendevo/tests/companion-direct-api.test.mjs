@@ -34,7 +34,7 @@ function harness() {
       return { rows: [{ id: device.id, workspace_id: device.workspace_id,
         user_id: device.user_id, expires_at: device.expires_at }] };
     }
-    if (q.startsWith('SELECT c.id, c.name FROM campaigns')) {
+    if (q.startsWith('SELECT c.id, c.name, c.icp FROM campaigns')) {
       return { rows: [{ id: 'campaign-1', name: 'Campagne Companion', icp: { titles: ['Directeur commercial'], industries: ['SaaS'], locations: ['Paris'] } }] };
     }
     if (q.startsWith('SELECT 1 FROM campaigns c JOIN accounts')) {
@@ -160,7 +160,7 @@ test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’acc�
     && x.options.download === 'Rendevo-Companion-V18.zip'));
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V16\.zip"/);
+  assert.match(ui, /download="Rendevo-Companion-V18\.zip"/);
   assert.doesNotMatch(ui, /Télécharger Companion \(GitHub Actions\)/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /COPY extension \/extension/);
