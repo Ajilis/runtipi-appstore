@@ -1,7 +1,8 @@
 'use strict';
 
 // Direct Rendevo communication uses a *scoped* device token obtained through a
-// short-lived pairing code. No LinkedIn cookies, DOM access or LinkedIn API calls.
+// short-lived pairing code. LinkedIn DOM is read only on explicit user request;
+// no LinkedIn cookies, external search API calls or background crawling.
 const byId = (id) => document.getElementById(id);
 const base = byId('base'), code = byId('paircode'), campaign = byId('campaign');
 const profile = byId('profile'), statusEl = byId('status');
@@ -12,9 +13,11 @@ const messages = byId('messages'), disconnect = byId('disconnect');
 const searchTerms = byId('searchterms'), searchLinkedin = byId('searchLinkedin');
 const bulkUrls = byId('bulkUrls'), analyzeBulk = byId('analyzeBulk');
 const bulkPreview = byId('bulkPreview'), submitBulk = byId('submitBulk');
+const readLinkedinPage = byId('readLinkedinPage');
 let rendevoOrigin = '';
 let deviceToken = '';
 let profileUrl = null;
+let searchPageUrl = null;
 let busy = false;
 let campaignSuggestions = new Map();
 let preparedBulk = [];
@@ -45,6 +48,16 @@ function normalizedLinkedinProfileUrl(input) {
   } catch { return null; }
 }
 
+function isLinkedinPeopleSearchPage(input) {
+  try {
+    const url = new URL(input);
+    return url.protocol === 'https:'
+      && ['www.linkedin.com', 'linkedin.com'].includes(url.hostname.toLowerCase())
+      && !url.username && !url.password && !url.port
+      && /^\/search\/results\/people\/?$/.test(url.pathname);
+  } catch { return false; }
+}
+
 function say(message) { statusEl.textContent = message; }
 function update() {
   pairing.hidden = !!deviceToken;
@@ -54,6 +67,7 @@ function update() {
   refresh.disabled = busy || !deviceToken;
   searchLinkedin.disabled = busy || !deviceToken || !searchTerms.value.trim();
   analyzeBulk.disabled = busy || !deviceToken || !bulkUrls.value.trim();
+  readLinkedinPage.disabled = busy || !deviceToken || !searchPageUrl;
   submitBulk.disabled = busy || !deviceToken || !preparedBulk.length;
   save.disabled = busy;
   disconnect.disabled = busy;
@@ -119,6 +133,7 @@ async function init() {
   base.value = rendevoOrigin;
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   profileUrl = normalizedLinkedinProfileUrl(tabs[0]?.url);
+  searchPageUrl = isLinkedinPeopleSearchPage(tabs[0]?.url) ? tabs[0].url : null;
   profile.textContent = profileUrl || 'Ouvre une URL de profil LinkedIn /in/… puis rouvre l’extension.';
   update();
   if (deviceToken) {
@@ -205,6 +220,57 @@ submitBulk.addEventListener('click', async () => {
     say('Import groupé terminé dans Rendevo.');
   } catch (err) { say(err.message); }
   finally { setBusy(false); }
+});
+
+readLinkedinPage.addEventListener('click', async () => {
+  if (!deviceToken || !searchPageUrl || busy) return;
+  setBusy(true);
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !isLinkedinPeopleSearchPage(tab.url)) {
+      throw new Error('Ouvre la page LinkedIn de recherche Personnes, puis rouvre Companion.');
+    }
+    // Only runs after this click, on this LinkedIn tab (activeTab + scripting).
+    // No cookies, network request, infinite scroll or pagination.
+    const [execution] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const main = document.querySelector('main') || document.querySelector('[role="main"]');
+        if (!main) return [];
+        const urls = [];
+        for (const link of main.querySelectorAll('a[href*="/in/"]')) {
+          if (!link.closest('li, .entity-result, .reusable-search__result-container')) continue;
+          if (!link.getClientRects().length) continue;
+          urls.push(link.href);
+        }
+        return urls;
+      },
+    });
+    const candidates = execution?.result;
+    if (!Array.isArray(candidates) || !candidates.length) {
+      throw new Error('Aucun profil sur cette page. Vérifie que les résultats sont chargés.');
+    }
+    const profiles = [], seen = new Set();
+    for (const candidate of candidates) {
+      const valid = normalizedLinkedinProfileUrl(candidate);
+      if (!valid || seen.has(valid.toLowerCase())) continue;
+      seen.add(valid.toLowerCase());
+      profiles.push(valid);
+    }
+    if (!profiles.length) throw new Error('Aucun lien de profil LinkedIn valide détecté.');
+    if (profiles.length > 100) throw new Error('Plus de 100 profils : réduis les résultats avant de continuer.');
+    // The existing V19 reviewed batch-import flow remains unchanged.
+    // Editing the textarea invalidates the approval and requires a new preview.
+    preparedBulk = profiles;
+    bulkUrls.value = profiles.join('\n');
+    bulkPreview.textContent = profiles.length + ' profil(s) trouvés sur la page active, à vérifier :\n'
+      + profiles.join('\n');
+    say('Liste préparée localement : vérifie les liens, puis confirme pour importer.');
+  } catch (err) {
+    preparedBulk = [];
+    bulkPreview.textContent = 'Lecture impossible. Aucun prospect importé.';
+    say(err.message || 'Impossible de lire les résultats LinkedIn.');
+  } finally { setBusy(false); }
 });
 
 searchLinkedin.addEventListener('click', async () => {
