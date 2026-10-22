@@ -8,20 +8,36 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V14 • mode assisté</span></header>
+  <header><strong>Rendevo Companion</strong><span>V15 • connexion directe</span></header>
   <main>
     <label for="base">Adresse de ton Rendevo</label>
     <input id="base" type="url" spellcheck="false" autocomplete="off"
       placeholder="https://rendevo.exemple.fr">
-    <button id="save" type="button" class="secondary">Enregistrer l'adresse</button>
+    <button id="save" type="button" class="secondary">Autoriser cette instance Rendevo</button>
     <hr>
-    <p class="label">Profil LinkedIn de l'onglet actif</p>
-    <p id="profile" class="profile">Ouvre un profil LinkedIn puis clique sur cette extension.</p>
-    <button id="import" type="button" disabled>Préparer l'import dans Rendevo</button>
-    <button id="messages" type="button" class="secondary" disabled>Ouvrir mes messages Rendevo</button>
+    <section id="pairing">
+      <label for="paircode">Code d’association (depuis Rendevo → Réglages → Intégrations)</label>
+      <input id="paircode" type="text" spellcheck="false" autocomplete="off"
+        placeholder="Colle le code à usage unique" maxlength="64">
+      <button id="connect" type="button" disabled>Associer directement l’extension</button>
+    </section>
+    <section id="connected" hidden>
+      <p class="connected">Connectée à <strong id="workspace"></strong></p>
+      <button id="disconnect" type="button" class="secondary">Dissocier cette extension</button>
+      <hr>
+      <label for="campaign">Campagne Rendevo</label>
+      <select id="campaign" aria-label="Campagne Rendevo">
+        <option value="">Sans campagne (à classer plus tard)</option>
+      </select>
+      <button id="refresh" type="button" class="secondary">Actualiser les campagnes</button>
+      <p class="label">Profil LinkedIn de l’onglet actif</p>
+      <p id="profile" class="profile">Ouvre un profil LinkedIn puis clique sur cette extension.</p>
+      <button id="import" type="button" disabled>Ajouter ce profil directement à Rendevo</button>
+      <button id="messages" type="button" class="secondary">Ouvrir les messages dans Rendevo</button>
+    </section>
     <p id="status" role="status" aria-live="polite"></p>
-    <p class="notice">Aucun cookie, message, contenu de page ou jeton LinkedIn n'est lu.
-       Tu confirmes toi-même l'import dans Rendevo et les envois dans LinkedIn.</p>
+    <p class="notice">L’extension transmet uniquement l’URL du profil choisi à ton serveur Rendevo.
+       Elle ne lit pas les cookies LinkedIn et n’envoie aucun message ou invitation.</p>
   </main>
 </body>
 </html>
