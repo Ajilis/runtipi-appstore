@@ -184,7 +184,7 @@ export function makeAuth(deps) {
       const name = String(body.name ?? ctx.state.user.name).trim();
       const email = String(body.email ?? ctx.state.user.email).trim().toLowerCase();
       if (!name || name.length > 120) throw bad('Le nom doit contenir entre 1 et 120 caractères');
-      if (email.length > 254 || !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) {
+      if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
         throw bad('Adresse e-mail invalide');
       }
 
