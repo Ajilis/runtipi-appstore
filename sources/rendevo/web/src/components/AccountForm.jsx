@@ -66,7 +66,19 @@ export function AccountForm({ value, onChange, existing }) {
           <Field label="Cookie de session JSESSIONID" hint="Nécessaire au jeton CSRF ; collez la valeur complète, avec ou sans guillemets.">
             <input className="input" type="password" autoComplete="off" spellCheck={false} value={v.config?.jsessionid || ''} onChange={setCfg('jsessionid')} placeholder="ajax:..." />
           </Field>
-          <p className="small soft">Après l'ajout, utilisez « Tester » pour vérifier la session. Rendevo fonctionnera en mode d'envoi manuel avec ce connecteur.</p>
+          <div className="grid-2">
+            <Field label="Nom du cookie supplémentaire" hint="Facultatif. Nom prérempli, modifiable.">
+              <input className="input" value={v.config?.extra_cookie_name ?? 'TEST'}
+                onChange={setCfg('extra_cookie_name')} placeholder="TEST" maxLength={64} spellCheck={false} />
+            </Field>
+            <Field label="Valeur du cookie supplémentaire" hint={existing && v.config?.has_extra_cookie ? 'Une valeur chiffrée est enregistrée ; laissez vide pour la conserver.' : 'Facultative : laisser vide pour ne rien enregistrer.'}>
+              <input className="input" type="password" autoComplete="off" spellCheck={false}
+                value={v.config?.extra_cookie_value || ''} onChange={setCfg('extra_cookie_value')}
+                placeholder="" />
+            </Field>
+          </div>
+          <p className="small soft">Le cookie supplémentaire, s'il est renseigné, est stocké chiffré. Il n'est pas envoyé à LinkedIn par le bouton « Tester ».</p>
+                    <p className="small soft">Après l'ajout, utilisez « Tester » pour vérifier la session. Rendevo fonctionnera en mode d'envoi manuel avec ce connecteur.</p>
         </>
       )}
       {v.provider === 'unipile' && (
