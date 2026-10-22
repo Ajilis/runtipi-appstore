@@ -35,7 +35,7 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     ctx.header('Cache-Control', 'no-store');
     await ctx.sendFile(path.join(deps.config.staticDir, 'Rendevo-Companion.zip'), {
       cache: 'no-store',
-      download: 'Rendevo-Companion-V19.zip',
+      download: 'Rendevo-Companion-V20.zip',
     });
   });
 
@@ -123,8 +123,9 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     return { items: rows.map(({ id, name, icp }) => ({ id, name, search_keywords: companionSearchTerms(icp) })) };
   });
 
-  // Explicitly pasted, user-reviewed profile URL list. No browser DOM scraping,
-  // LinkedIn session access, network requests or automatic search-result import.
+  // Explicitly reviewed profile URLs from manually pasted links or the current
+  // LinkedIn search page, read on request in Chrome. Nothing is imported until
+  // confirmation; the server never accesses the LinkedIn session or DOM.
   router.post('/api/companion/prospects/batch', requireDevice, async (ctx) => {
     const body = await ctx.json(48 * 1024);
     const raw = body.items;

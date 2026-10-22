@@ -9,18 +9,19 @@ import { assistedCampaignSettings, assistedMessageApproval } from '../server/ser
 const extensionFile = new URL('../extension/popup.js', import.meta.url);
 const manifest = JSON.parse(fs.readFileSync(new URL('../extension/manifest.json', import.meta.url), 'utf8'));
 
-test('extension MV3 sans cookies, scripts, ni permissions d’hôtes permanentes', () => {
+test('extension MV3 : lecture ponctuelle de l’onglet sans cookies ni permission LinkedIn permanente', () => {
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions, ['activeTab', 'storage', 'permissions']);
+  assert.deepEqual(manifest.permissions, ['activeTab', 'scripting', 'storage', 'permissions']);
   assert.deepEqual(manifest.optional_host_permissions, ['https://*/*', 'http://*/*']);
   assert.equal(manifest.host_permissions, undefined);
   assert.equal(manifest.content_scripts, undefined);
   assert.equal(manifest.background, undefined);
   const js = fs.readFileSync(extensionFile, 'utf8');
-  for (const forbidden of ['document.cookie', 'chrome.cookies', 'chrome.scripting',
-    'executeScript', 'chrome.webRequest', 'innerHTML']) {
+  for (const forbidden of ['document.cookie', 'chrome.cookies',
+    'chrome.webRequest', 'innerHTML']) {
     assert.equal(js.includes(forbidden), false, forbidden);
   }
+  assert.match(js, /chrome\.scripting\.executeScript/);
   assert.match(js, /chrome\.permissions\.request/);
   assert.match(js, /credentials: 'omit'/);
 });
@@ -59,7 +60,7 @@ test('compte Companion n’effectue aucun appel externe et interdit les envois e
   assert.match(inbox, /body\.confirmed !== true/);
 });
 
-async function simulatePopup(currentTabUrl) {
+async function simulatePopup(currentTabUrl, pageUrls = []) {
   const elements = new Map();
   function elem(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -70,7 +71,7 @@ async function simulatePopup(currentTabUrl) {
     });
     return elements.get(id);
   }
-  const createdTabs = [], requests = [], permissions = [], storage = {};
+  const createdTabs = [], requests = [], permissions = [], executions = [], storage = {};
   const context = {
     document: { getElementById: elem, createElement: () => ({ value: '', textContent: '' }) },
     chrome: {
@@ -81,8 +82,23 @@ async function simulatePopup(currentTabUrl) {
         remove: async (k) => { delete storage[k]; },
       } },
       tabs: {
-        query: async () => [{ url: currentTabUrl }],
+        query: async () => [{ id: 12, url: currentTabUrl }],
         create: async (opts) => createdTabs.push(opts.url),
+      },
+      scripting: {
+        executeScript: async ({ target, func }) => {
+          executions.push(target);
+          const main = {
+            querySelectorAll: () => pageUrls.map((href) => ({
+              href,
+              closest: () => ({}),
+              getClientRects: () => [{}],
+            })),
+          };
+          const pageDocument = { querySelector: (selector) => selector === 'main' ? main : null };
+          const result = vm.runInNewContext('(' + func.toString() + ')()', { document: pageDocument });
+          return [{ result }];
+        },
       },
     },
     URL,
@@ -102,7 +118,7 @@ async function simulatePopup(currentTabUrl) {
   };
   vm.runInNewContext(fs.readFileSync(extensionFile, 'utf8'), context, { filename: 'popup.js' });
   for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
-  return { elem, storage, createdTabs, requests, permissions };
+  return { elem, storage, createdTabs, requests, permissions, executions };
 }
 
 test('l’extension échange directement le code, lit les campagnes, importe uniquement sur clic', async () => {
@@ -198,7 +214,8 @@ test('l’interface propose le mode recherche LinkedIn Companion sans clé Brave
   assert.match(web, /sans clé Brave/);
   assert.match(popup, /id="searchLinkedin"/);
   assert.match(popup, /id="searchterms"/);
-  assert.doesNotMatch(fs.readFileSync(extensionFile, 'utf8'), /chrome\.scripting|chrome\.cookies|fetch\(['"]https:\/\/www\.linkedin\.com/);
+  assert.match(fs.readFileSync(extensionFile, 'utf8'), /chrome\.scripting\.executeScript/);
+  assert.doesNotMatch(fs.readFileSync(extensionFile, 'utf8'), /chrome\.cookies|fetch\(['"]https:\/\/www\.linkedin\.com/);
 });
 
 test('Companion : coller, prévisualiser puis importer un lot sans lire l’onglet LinkedIn', async () => {
@@ -262,5 +279,76 @@ test('Companion : faux domaine LinkedIn et liste modifiée bloquent l’envoi ju
   assert.equal(elem('submitBulk').disabled, true);
   assert.equal(requests.length, before);
   const script = fs.readFileSync(extensionFile, 'utf8');
-  assert.doesNotMatch(script, /chrome\.scripting|document\.cookie|chrome\.cookies|executeScript/);
+  assert.doesNotMatch(script, /document\.cookie|chrome\.cookies|chrome\.webRequest/);
+});
+
+
+test('Companion lit uniquement la page Personnes sur clic, prévisualise et importe après confirmation', async () => {
+  const { elem, requests, executions } = await simulatePopup(
+    'https://www.linkedin.com/search/results/people/?keywords=directeur',
+    [
+      'https://www.linkedin.com/in/alice/?trk=search',
+      'https://www.linkedin.com/in/alice/',
+      'https://www.linkedin.com/in/bob/',
+      'https://linkedin.com.evil.test/in/intrus/',
+      'https://www.linkedin.com/jobs/',
+    ],
+  );
+  elem('base').value = 'https://rendevo.exemple.fr';
+  await elem('save').events.click();
+  elem('paircode').value = 'some-one-time-code';
+  elem('paircode').events.input();
+  await elem('connect').events.click();
+  elem('campaign').value = 'campaign-1';
+  elem('campaign').events.change();
+  const before = requests.length;
+  assert.equal(executions.length, 0);
+  assert.equal(elem('readLinkedinPage').disabled, false);
+  await elem('readLinkedinPage').events.click();
+  assert.equal(executions.length, 1);
+  assert.equal(executions[0].tabId, 12);
+  assert.equal(requests.length, before);
+  assert.equal(elem('submitBulk').disabled, false);
+  assert.match(elem('bulkPreview').textContent, /2 profil\(s\) trouvés/);
+  assert.deepEqual(elem('bulkUrls').value.split('\n'), [
+    'https://www.linkedin.com/in/alice/',
+    'https://www.linkedin.com/in/bob/',
+  ]);
+  await elem('submitBulk').events.click();
+  assert.equal(requests.length, before + 1);
+  assert.deepEqual(JSON.parse(requests.at(-1).options.body), {
+    campaign_id: 'campaign-1',
+    items: [
+      { linkedin_url: 'https://www.linkedin.com/in/alice/' },
+      { linkedin_url: 'https://www.linkedin.com/in/bob/' },
+    ],
+  });
+  assert.equal(elem('submitBulk').disabled, true);
+});
+
+test('Companion ne lit pas les pages LinkedIn non autorisées et invalide toute sélection modifiée', async () => {
+  const { elem, requests, executions } = await simulatePopup('https://www.linkedin.com/feed/');
+  elem('base').value = 'https://rendevo.exemple.fr';
+  await elem('save').events.click();
+  elem('paircode').value = 'some-one-time-code';
+  elem('paircode').events.input();
+  await elem('connect').events.click();
+  assert.equal(elem('readLinkedinPage').disabled, true);
+  assert.equal(executions.length, 0);
+  assert.equal(requests.filter((r) => r.url.includes('/prospects')).length, 0);
+
+  const page = await simulatePopup('https://www.linkedin.com/search/results/people/', [
+    'https://www.linkedin.com/in/alice/',
+  ]);
+  page.elem('base').value = 'https://rendevo.exemple.fr';
+  await page.elem('save').events.click();
+  page.elem('paircode').value = 'some-one-time-code';
+  page.elem('paircode').events.input();
+  await page.elem('connect').events.click();
+  await page.elem('readLinkedinPage').events.click();
+  assert.equal(page.elem('submitBulk').disabled, false);
+  page.elem('bulkUrls').value += '\nhttps://www.linkedin.com/in/bob/';
+  page.elem('bulkUrls').events.input();
+  assert.equal(page.elem('submitBulk').disabled, true);
+  assert.equal(page.requests.filter((r) => r.url.includes('/prospects')).length, 0);
 });

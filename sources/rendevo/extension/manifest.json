@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Rendevo Companion",
-  "version": "0.2.8",
-  "description": "Connexion directe et sécurisée à ton instance Rendevo : campagnes et import manuel depuis l'onglet LinkedIn, sans cookies LinkedIn.",
+  "version": "0.2.9",
+  "description": "Import sur confirmation des résultats de recherche LinkedIn visibles, sans cookies ni pagination automatisée.",
   "permissions": [
     "activeTab",
+    "scripting",
     "storage",
     "permissions"
   ],

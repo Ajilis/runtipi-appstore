@@ -25,14 +25,14 @@ export function CompanionSettings() {
     <div className="panel">
       <div className="panel-head"><h3>Rendevo Companion — connexion directe</h3></div>
       <div className="panel-pad stack" style={{ '--gap': '12px' }}>
-        <p className="small soft">L'extension Chrome dialogue directement avec Rendevo : elle affiche tes campagnes Companion et peut y importer l'URL du profil LinkedIn que tu sélectionnes. Aucun cookie LinkedIn n'est transféré, aucun message n'est envoyé automatiquement.</p>
+        <p className="small soft">L'extension Chrome dialogue directement avec Rendevo : elle affiche tes campagnes Companion et peut importer, après prévisualisation et validation, les profils de la page de recherche LinkedIn ouverte ou l'URL d'un profil sélectionné. Aucun cookie LinkedIn n'est transféré, aucun message n'est envoyé automatiquement.</p>
         <div className="row wrap">
           <input className="input grow" readOnly value={base} aria-label="URL de Rendevo" />
           <button className="btn" onClick={() => copy(base, toast)}>Copier l'URL</button>
         </div>
         <div className="row wrap">
           <button className="btn primary" disabled={busy} onClick={makeCode}>Générer un code d'association</button>
-          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V19.zip">Télécharger l’extension Chrome (.zip)</a>
+          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V20.zip">Télécharger l’extension Chrome (.zip)</a>
         </div>
         <p className="small soft">Téléchargement direct depuis ton serveur Rendevo, sans GitHub. Décompresse le ZIP, puis ouvre <code>chrome://extensions</code> → Mode développeur → Charger l’extension non empaquetée et sélectionne le dossier contenant <code>manifest.json</code>.</p>
         {pairing && (
