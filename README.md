@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V20 (0.2.9)** : Chrome Companion peut lire sur clic les liens des profils de la page de recherche LinkedIn Personnes affichée dans Chrome, puis les prévisualiser pour import confirmé (sans cookies ni navigation automatique). Voir [les instructions](sources/rendevo/extension/README.md).
+
 Boutique d'applications personnalisées pour [Runtipi](https://runtipi.io).
 
 ## Installer Chatwoot
