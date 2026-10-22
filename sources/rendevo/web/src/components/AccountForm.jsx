@@ -18,6 +18,11 @@ const PROVIDERS = [
     text: "Connexion expérimentale avec les cookies de votre session. Vérification uniquement : les messages et invitations restent manuels.",
   },
   {
+    id: 'linkedin_companion',
+    title: 'LinkedIn Companion (Chrome)',
+    text: "Extension Chrome sans cookies : importez manuellement des profils depuis l'onglet actif, préparez et validez vos messages dans Rendevo.",
+  },
+  {
     id: 'manual',
     title: 'Manuel',
     text: "Rendevo prépare chaque message, vous l'envoyez depuis LinkedIn et collez la réponse. Aucune automatisation.",
@@ -52,6 +57,13 @@ export function AccountForm({ value, onChange, existing }) {
           </select>
         </Field>
       </div>
+      {v.provider === 'linkedin_companion' && (
+        <div className="alert info small">
+          Ce compte fonctionne avec l'extension Chrome Rendevo Companion, sans copier de cookie ou tester la session LinkedIn depuis le serveur.
+          Configurez l'extension depuis Réglages → Intégrations → Rendevo Companion.
+          Vous importez les URLs des profils affichés, puis validez et envoyez vous-même les messages dans LinkedIn.
+        </div>
+      )}
       {v.provider === 'linkedin_cookie' && (
         <>
           <div className="alert warn small">

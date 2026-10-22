@@ -69,6 +69,26 @@ jobs:
           npm install --no-audit --no-fund
           npm run build:web
 
+      - name: Validate Chrome Companion extension
+        working-directory: sources/rendevo
+        run: |
+          node --check extension/popup.js
+          node -e 'const m = require("./extension/manifest.json"); if (m.manifest_version !== 3 || JSON.stringify(m.permissions) !== JSON.stringify(["activeTab", "storage"]) || m.host_permissions || m.content_scripts || m.background) throw new Error("Unexpected Chrome Companion permissions");'
+
+      - name: Downloadable Chrome Companion package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rendevo-Companion-V14
+          path: |
+            sources/rendevo/extension/manifest.json
+            sources/rendevo/extension/popup.html
+            sources/rendevo/extension/popup.js
+            sources/rendevo/extension/popup.css
+            sources/rendevo/extension/README.md
+          if-no-files-found: error
+          retention-days: 90
+
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 

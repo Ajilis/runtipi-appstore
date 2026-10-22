@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Rendevo Companion",
+  "version": "0.2.3",
+  "description": "Assistant manuel Rendevo pour importer l'URL du profil LinkedIn ouvert, sans cookies ni automatisation.",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "action": {
+    "default_title": "Rendevo Companion",
+    "default_popup": "popup.html"
+  }
+}

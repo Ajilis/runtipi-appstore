@@ -151,10 +151,10 @@ function Accounts({ limits }) {
             <div className="row spread wrap">
               <div>
                 <div className="row" style={{ gap: 8 }}><strong>{a.name}</strong><span className={`badge ${a.status === 'active' ? 'ok' : a.status === 'error' ? 'err' : 'warn'}`}>{(a.provider === 'linkedin_cookie' ? { active: 'Dernier test OK', paused: 'En pause', error: 'À vérifier' } : { active: 'Actif', paused: 'En pause', error: 'À reconnecter' })[a.status] || a.status}</span></div>
-                <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
+                <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', linkedin_companion: 'LinkedIn Companion (extension Chrome)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
               </div>
               <div className="row">
-                <button className="btn sm" disabled={busy || cooldownSeconds > 0} onClick={() => test(a)}><LuPlugZap />{cooldownSeconds ? `Tester (${cooldownSeconds}s)` : "Tester"}</button>
+                {a.provider !== "linkedin_companion" && <button className="btn sm" disabled={busy || cooldownSeconds > 0} onClick={() => test(a)}><LuPlugZap />{cooldownSeconds ? `Tester (${cooldownSeconds}s)` : "Tester"}</button>}
                 <button className="btn sm" disabled={busy} onClick={() => toggle(a)}>{a.status === 'paused' ? <><LuPlay />Réactiver</> : <><LuPause />Pause</>}</button>
                 <button className="btn sm" onClick={() => setEdit({ ...a, config: { ...a.config } })}>Modifier</button>
               </div>
@@ -272,6 +272,21 @@ function Integrations() {
   const mcpUrl = `${session.public_url || window.location.origin}/mcp`;
   return (
     <div className="stack" style={{ '--gap': '16px' }}>
+      <div className="panel">
+        <div className="panel-head"><h3>Rendevo Companion — extension Chrome</h3></div>
+        <div className="panel-pad stack" style={{ '--gap': '12px' }}>
+          <p className="soft small">Importez manuellement dans Rendevo l'URL du profil LinkedIn ouvert dans Chrome, sans cookie copié, sans lecture de la page et sans message automatique.</p>
+          <Field label="Adresse de cette instance à saisir dans l'extension">
+            <div className="row">
+              <input className="input" readOnly value={session.public_url || window.location.origin} />
+              <button className="btn" onClick={() => copy(session.public_url || window.location.origin, toast)}><LuCopy />Copier</button>
+            </div>
+          </Field>
+          <p className="small soft">Téléchargez l'archive « Rendevo-Companion-V14 » dans les artefacts du workflow GitHub Actions, décompressez-la puis ouvrez <code>chrome://extensions</code> → Mode développeur → Charger l'extension non empaquetée. Sélectionnez le dossier qui contient <code>manifest.json</code>.</p>
+          <a className="btn" style={{ alignSelf: 'flex-start' }} href="https://github.com/Ajilis/runtipi-appstore/actions/workflows/rendevo-image.yml" target="_blank" rel="noreferrer">Récupérer l'extension (GitHub Actions)</a>
+          <p className="small soft">Connectez-vous normalement à Rendevo dans Chrome, créez un compte « LinkedIn Companion (Chrome) », associez-le à une campagne, puis utilisez l'extension sur un profil LinkedIn. L'import s'ouvre dans Rendevo et attend votre confirmation. Votre session Rendevo demeure gérée par le site : aucun jeton n'est remis à l'extension.</p>
+        </div>
+      </div>
       <div className="panel">
         <div className="panel-head"><h3>Connecteur MCP</h3></div>
         <div className="panel-pad stack" style={{ '--gap': '12px' }}>

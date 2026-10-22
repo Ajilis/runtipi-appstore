@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LuUpload, LuDownload, LuSearch, LuPlus, LuExternalLink, LuSparkles, LuList, LuColumns3, LuRefreshCw } from 'react-icons/lu';
 import { api, useApi, useRouter, Loading, ErrorBox, Empty, Modal, Drawer, Field, Seg, useAction, useToast, HeatBadge, StatusBadge, STATUS, KIND, initials, ago, fmtDateTime, Link } from '../lib.jsx';
+import { normalizedLinkedinProfileUrl } from '../lib/companion.js';
 
 const SIGNAL_OPTIONS = [
   ['new_role', 'Nouveau poste'], ['hiring', 'Recrute'], ['funding', 'Levée de fonds'], ['profile_visit', 'A visité votre profil'],
@@ -12,6 +13,7 @@ export function Prospects({ openId }) {
   const [filters, setFilters] = useState({ q: '', heat: query.heat || '', status: '', campaign: query.campaign || '', needs_human: '' });
   const [view, setView] = useState('list');
   const [selected, setSelected] = useState(new Set());
+  const companionUrl = normalizedLinkedinProfileUrl(query.companion_url);
   const [modal, setModal] = useState(query.import === '1' ? 'import' : null);
   const qs = useMemo(() => new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString(), [filters]);
   const { data, error, loading, reload } = useApi(`/api/prospects?limit=300&${qs}`);
@@ -128,7 +130,7 @@ export function Prospects({ openId }) {
       )}
       {data && items.length > 0 && view === 'pipeline' && <Pipeline items={items} stages={data.stages} onMove={async (id, stage) => { await api(`/api/prospects/${id}`, { method: 'PATCH', body: { stage } }); reload(); }} onOpen={(id) => navigate(`/prospects/${id}`)} />}
 
-      {modal === 'import' && <ImportModal campaigns={campaigns.data || []} initialCampaign={filters.campaign} onClose={() => setModal(null)} onDone={(r) => { setModal(null); reload(); toast(`${r.created} importés, ${r.duplicates} doublons ignorés${r.invalid ? `, ${r.invalid} lignes invalides` : ''}.`); }} />}
+      {modal === 'import' && <ImportModal campaigns={campaigns.data || []} initialUrls={companionUrl || ''} initialCampaign={filters.campaign} onClose={() => setModal(null)} onDone={(r) => { setModal(null); reload(); toast(`${r.created} importés, ${r.duplicates} doublons ignorés${r.invalid ? `, ${r.invalid} lignes invalides` : ''}.`); }} />}
       {modal === 'add' && <AddModal campaigns={campaigns.data || []} onClose={() => setModal(null)} onDone={(id) => { setModal(null); reload(); navigate(`/prospects/${id}`); }} />}
       {modal === 'discover' && <DiscoverModal campaigns={campaigns.data || []} onClose={() => setModal(null)} onDone={(r) => { setModal(null); reload(); toast(`${r.created} nouveaux prospects qualifiés sur ${r.found} trouvés.`); }} />}
       {openId && <ProspectDrawer id={openId} campaigns={campaigns.data || []} onClose={() => navigate('/prospects')} onChange={reload} />}
@@ -170,17 +172,18 @@ function CampaignSelect({ campaigns, value, onChange, allowNone = true }) {
   );
 }
 
-function ImportModal({ campaigns, initialCampaign, onClose, onDone }) {
-  const [mode, setMode] = useState('csv');
+function ImportModal({ campaigns, initialCampaign, initialUrls = '', onClose, onDone }) {
+  const [mode, setMode] = useState(initialUrls ? 'urls' : 'csv');
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState('');
-  const [urls, setUrls] = useState('');
+  const [urls, setUrls] = useState(initialUrls);
   const [campaign, setCampaign] = useState(initialCampaign && initialCampaign !== 'none' ? initialCampaign : campaigns[0]?.id || '');
   const [signal, setSignal] = useState('');
   const [signalDetail, setSignalDetail] = useState('');
   const [run, busy] = useAction();
   const submit = () => run(async () => {
     const body = { campaign_id: campaign || null };
+    if (initialUrls && mode === 'urls') body.source = 'companion';
     if (mode === 'csv') body.csv = csv; else body.urls = urls;
     if (signal) body.signal = { type: signal, detail: signalDetail };
     const r = await api('/api/prospects/import', { method: 'POST', body });
@@ -243,7 +246,7 @@ function AddModal({ campaigns, onClose, onDone }) {
 }
 
 function DiscoverModal({ campaigns, onClose, onDone }) {
-  const usable = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie'].includes(c.account_provider));
+  const usable = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
   const [campaign, setCampaign] = useState(usable[0]?.id || '');
   const [limit, setLimit] = useState(15);
   const [run, busy] = useAction();
@@ -253,7 +256,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
       <button className="btn primary" disabled={busy || !campaign} onClick={() => run(async () => onDone(await api(`/api/campaigns/${campaign}/discover`, { method: 'POST', body: { limit } })))}>{busy ? <span className="spinner" /> : <LuSparkles />}Lancer la recherche</button>
     </>}>
       {usable.length === 0 ? (
-        <div className="alert warn">La recherche automatique n'est pas disponible avec votre session LinkedIn par cookies. Pour une campagne sans Unipile, importez des profils depuis des URLs ou un CSV.</div>
+        <div className="alert warn">La recherche automatique n'est pas disponible pour les comptes LinkedIn assistés. Importez manuellement des URLs de profils (depuis Chrome Companion) ou un CSV.</div>
       ) : (
         <div className="stack" style={{ '--gap': '12px' }}>
           <p className="soft">L'agent cherche des profils correspondant à la cible de la campagne, les enrichit et les qualifie. Les exclusions et doublons sont écartés.</p>
@@ -294,7 +297,7 @@ export function ProspectDrawer({ id, campaigns, onClose, onChange }) {
             <Link className="btn sm" to={`/messages/${p.id}`}>Ouvrir la conversation</Link>
             {['excluded', 'low_fit', 'not_accepted'].includes(p.status) && <button className="btn sm" disabled={busy} onClick={() => patch({ status: 'qualified' }, 'Prospect requalifié')}>Contacter quand même</button>}
             {!['excluded', 'lost', 'won'].includes(p.status) && <button className="btn sm" disabled={busy} onClick={() => patch({ status: 'excluded' }, 'Prospect exclu')}>Exclure</button>}
-            {p.status === 'invited' && ['manual', 'linkedin_cookie'].includes(p.account?.provider) && <button className="btn sm" disabled={busy} onClick={() => run(async () => { await api(`/api/prospects/${p.id}/accepted`, { method: 'POST' }); reload(); }, 'Invitation acceptée')}>Invitation acceptée</button>}
+            {p.status === 'invited' && ['manual', 'linkedin_cookie', 'linkedin_companion'].includes(p.account?.provider) && <button className="btn sm" disabled={busy} onClick={() => run(async () => { await api(`/api/prospects/${p.id}/accepted`, { method: 'POST' }); reload(); }, 'Invitation acceptée')}>Invitation acceptée</button>}
             {!['won', 'lost'].includes(p.status) && <button className="btn sm" disabled={busy} onClick={() => patch({ status: 'won' }, 'Marqué gagné')}>Gagné</button>}
             {!['won', 'lost'].includes(p.status) && <button className="btn sm ghost" disabled={busy} onClick={() => patch({ status: 'lost' }, 'Marqué perdu')}>Perdu</button>}
           </div>

@@ -12,7 +12,18 @@ const manual = {
   async test() { return { ok: true, detail: 'Mode manuel : les messages préparés apparaissent dans "À envoyer".' }; },
 };
 
-export const PROVIDERS = { simulation, unipile, linkedin_cookie: linkedinCookie, manual };
+// Optional browser companion: no session cookies, no LinkedIn network activity.
+const linkedinCompanion = {
+  id: 'linkedin_companion',
+  label: 'LinkedIn Companion (extension Chrome, assisté)',
+  auto: false,
+  capabilities: { search: false, invite: false, message: false },
+  async test() {
+    return { ok: true, detail: 'Compte Companion prêt pour les actions manuelles. Aucun accès réseau à LinkedIn ni session vérifiée.' };
+  },
+};
+
+export const PROVIDERS = { simulation, unipile, linkedin_cookie: linkedinCookie, linkedin_companion: linkedinCompanion, manual };
 
 export function getProvider(id) {
   const p = PROVIDERS[id];

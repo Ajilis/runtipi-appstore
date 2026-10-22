@@ -53,7 +53,7 @@ test('la confirmation ne contourne pas la validation et ne double pas les compte
   const core = fs.readFileSync(new URL('../server/routes/core.js', import.meta.url), 'utf8');
   assert.match(inbox, /body\.confirmed !== true/);
   assert.match(inbox, /m\.status !== 'queued'/);
-  assert.match(inbox, /\['linkedin_cookie', 'manual'\]\.includes/);
+  assert.match(inbox, /\['linkedin_cookie', 'manual', 'linkedin_companion'\]\.includes/);
   assert.match(inbox, /status = 'queued' RETURNING id/);
   assert.match(agent, /AND status IN \('queued','sending'\) RETURNING/);
   assert.match(core, /assistedCampaignSettings\(sanitizeSettings/);
