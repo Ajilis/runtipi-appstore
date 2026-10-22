@@ -247,9 +247,10 @@ function AddModal({ campaigns, onClose, onDone }) {
 
 function DiscoverModal({ campaigns, onClose, onDone }) {
   const automatic = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
+  const companionCampaigns = campaigns.filter((c) => c.account_provider === 'linkedin_companion');
   const assisted = campaigns.filter((c) => ['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
   const config = useApi('/api/discovery/config');
-  const [mode, setMode] = useState('web');
+  const [mode, setMode] = useState(companionCampaigns.length ? 'linkedin' : 'web');
   const [campaign, setCampaign] = useState(assisted[0]?.id || '');
   const [limit, setLimit] = useState(10);
   const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
@@ -311,9 +312,33 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
       </button>}
     </>}>
       <div className="stack" style={{ '--gap': '14px' }}>
-        {automatic.length > 0 && <Seg value={mode} onChange={(next) => { setMode(next); setCampaign(next === 'provider' ? automatic[0]?.id || '' : assisted[0]?.id || ''); }}
-          options={[{ value: 'web', label: 'Recherche web publique' }, { value: 'provider', label: 'Connecteur automatique' }]} />}
-        {mode === 'provider' ? (
+        {(automatic.length > 0 || companionCampaigns.length > 0) && <Seg value={mode} onChange={(next) => {
+          setMode(next);
+          setCampaign(next === 'provider' ? automatic[0]?.id || '' : next === 'linkedin' ? companionCampaigns[0]?.id || '' : assisted[0]?.id || '');
+        }} options={[
+          ...(companionCampaigns.length ? [{ value: 'linkedin', label: 'Dans mon LinkedIn (Companion)' }] : []),
+          { value: 'web', label: 'Recherche web publique' },
+          ...(automatic.length ? [{ value: 'provider', label: 'Connecteur automatique' }] : []),
+        ]} />}
+        {mode === 'linkedin' ? (
+          <div className="stack" style={{ '--gap': '12px' }}>
+            <div className="alert info">
+              Recherche directement sur <strong>LinkedIn dans ton navigateur connecté</strong>, sans clé Brave ni cookie transféré.
+              L'extension n'aspire pas les résultats : tu choisis les profils à importer.
+            </div>
+            <Field label="Campagne Companion">
+              <CampaignSelect campaigns={companionCampaigns} value={campaign} onChange={setCampaign} allowNone={false} />
+            </Field>
+            <div className="panel panel-pad stack" style={{ '--gap': '10px' }}>
+              <strong>Depuis Chrome, en 3 étapes</strong>
+              <p>1. Ouvre l'extension <strong>Rendevo Companion</strong> dans la barre de Chrome.</p>
+              <p>2. Sélectionne la campagne, vérifie les mots-clés issus de ta cible et clique <strong>« Rechercher dans mon LinkedIn »</strong>.</p>
+              <p>3. LinkedIn affiche ses propres résultats. Ouvre un profil et clique dans Companion sur <strong>« Ajouter ce profil directement à Rendevo »</strong>.</p>
+              <p className="small soft">Si l'extension n'est pas installée, récupère-la dans Réglages → Intégrations → Rendevo Companion.</p>
+            </div>
+            <p className="small soft">Cette recherche ouvre LinkedIn dans la session Chrome active. Elle ne renvoie pas une liste automatique dans Rendevo ; les données disponibles dépendent de ton compte et des filtres LinkedIn.</p>
+          </div>
+        ) : mode === 'provider' ? (
           <div className="stack" style={{ '--gap': '12px' }}>
             <p className="soft">Recherche avec le fournisseur de la campagne (hors comptes assistés).</p>
             <Field label="Campagne"><CampaignSelect campaigns={automatic} value={campaign} onChange={setCampaign} allowNone={false} /></Field>
