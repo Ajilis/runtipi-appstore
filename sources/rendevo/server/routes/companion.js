@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { bad, forbidden, unauthorized } from '../lib/http.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 
@@ -16,6 +17,16 @@ export function normalizeCompanionProfile(input) {
 // scoped, revocable bearer. It never gets a Rendevo API token or LinkedIn cookie.
 export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
   const { db, agent } = deps;
+
+  // The exact extension build that ships with this Rendevo release is
+  // available to signed-in users without requiring GitHub access.
+  router.get('/api/companion/download', requireAuth, async (ctx) => {
+    ctx.header('Cache-Control', 'no-store');
+    await ctx.sendFile(path.join(deps.config.staticDir, 'Rendevo-Companion.zip'), {
+      cache: 'no-store',
+      download: 'Rendevo-Companion-V16.zip',
+    });
+  });
 
   router.post('/api/companion/pairings', requireAuth, requireAdmin, async (ctx) => {
     await db.query('DELETE FROM companion_pairings WHERE expires_at <= now() OR (workspace_id = $1 AND user_id = $2)',
