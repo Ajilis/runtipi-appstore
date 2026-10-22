@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 13** · **Version Rendevo : 0.2.2**
+**Version du catalogue Runtipi : 14** · **Version Rendevo : 0.2.3**
+
+**Nouveau (V14) — Rendevo Companion pour Chrome :** un mode LinkedIn assisté **sans cookies copiés**, avec extension Manifest V3 à installer depuis l'archive GitHub Actions. Sur un profil LinkedIn ouvert, l'extension lit uniquement l'URL de l'onglet actif après clic, puis ouvre le formulaire d'import Rendevo avec cette URL préremplie : **tu confirmes l'import**. Association par l'URL HTTPS de ton Rendevo et ta session web existante ; aucun token LinkedIn ou Rendevo dans l'extension. Messages et invitations restent à envoyer manuellement depuis LinkedIn. Dans **Réglages → Comptes LinkedIn**, sélectionne « LinkedIn Companion (Chrome) ». Le connecteur cookies historique reste disponible.
 
 **Nouveau (V13)** : dans **Réglages → Comptes LinkedIn → Ajouter ou modifier**, un cookie supplémentaire facultatif peut être renseigné avec son nom **TEST** prérempli et modifiable et sa valeur initialement vide. Sa valeur est chiffrée et masquée ; elle peut être remplacée ou supprimée ultérieurement. **Ce cookie supplémentaire n'est pas transmis à LinkedIn lors de « Tester »**, lequel utilise toujours uniquement `li_at` et `JSESSIONID` ; il ne résout pas à lui seul les déconnexions de Chrome.
 
@@ -57,4 +59,4 @@ Sauvegarder ce dossier (ou utiliser la sauvegarde Runtipi) avant toute mise à j
 
 ## Image Docker
 
-`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.2.2`.
+`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.2.3`.
