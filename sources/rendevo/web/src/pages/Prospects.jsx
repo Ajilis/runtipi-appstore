@@ -243,7 +243,7 @@ function AddModal({ campaigns, onClose, onDone }) {
 }
 
 function DiscoverModal({ campaigns, onClose, onDone }) {
-  const usable = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie'].includes(c.account_provider));
+  const usable = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
   const [campaign, setCampaign] = useState(usable[0]?.id || '');
   const [limit, setLimit] = useState(15);
   const [run, busy] = useAction();
@@ -294,7 +294,7 @@ export function ProspectDrawer({ id, campaigns, onClose, onChange }) {
             <Link className="btn sm" to={`/messages/${p.id}`}>Ouvrir la conversation</Link>
             {['excluded', 'low_fit', 'not_accepted'].includes(p.status) && <button className="btn sm" disabled={busy} onClick={() => patch({ status: 'qualified' }, 'Prospect requalifié')}>Contacter quand même</button>}
             {!['excluded', 'lost', 'won'].includes(p.status) && <button className="btn sm" disabled={busy} onClick={() => patch({ status: 'excluded' }, 'Prospect exclu')}>Exclure</button>}
-            {p.status === 'invited' && ['manual', 'linkedin_cookie'].includes(p.account?.provider) && <button className="btn sm" disabled={busy} onClick={() => run(async () => { await api(`/api/prospects/${p.id}/accepted`, { method: 'POST' }); reload(); }, 'Invitation acceptée')}>Invitation acceptée</button>}
+            {p.status === 'invited' && ['manual', 'linkedin_cookie', 'linkedin_companion'].includes(p.account?.provider) && <button className="btn sm" disabled={busy} onClick={() => run(async () => { await api(`/api/prospects/${p.id}/accepted`, { method: 'POST' }); reload(); }, 'Invitation acceptée')}>Invitation acceptée</button>}
             {!['won', 'lost'].includes(p.status) && <button className="btn sm" disabled={busy} onClick={() => patch({ status: 'won' }, 'Marqué gagné')}>Gagné</button>}
             {!['won', 'lost'].includes(p.status) && <button className="btn sm ghost" disabled={busy} onClick={() => patch({ status: 'lost' }, 'Marqué perdu')}>Perdu</button>}
           </div>
