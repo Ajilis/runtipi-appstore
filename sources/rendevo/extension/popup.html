@@ -8,7 +8,7 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V19 • import groupé</span></header>
+  <header><strong>Rendevo Companion</strong><span>V20 • résultats LinkedIn</span></header>
   <main>
     <label for="base">Adresse de ton Rendevo</label>
     <input id="base" type="url" spellcheck="false" autocomplete="off"
@@ -37,8 +37,11 @@
       <p class="notice">Proposition basée sur la cible de ta campagne, modifiable ici.
         La recherche s'ouvre dans LinkedIn où tu es déjà connecté, sans clé Brave.</p>
       <button id="searchLinkedin" type="button" disabled>Rechercher dans mon LinkedIn</button>
-      <p class="notice">Consulte les résultats dans LinkedIn, ouvre le profil voulu, puis utilise Companion pour l'ajouter.
-        L'extension n'extrait pas automatiquement les listes de résultats.</p>
+      <p class="notice">Sur la page LinkedIn « Personnes » déjà ouverte, Companion peut lire les liens
+        des résultats affichés sur demande. Aucun défilement ni changement de page automatique.</p>
+      <button id="readLinkedinPage" type="button" disabled>Lire les profils de cette page LinkedIn</button>
+      <p class="notice">Vérifie la liste récupérée ci-dessous et confirme l'import. Cette lecture reste locale
+        jusqu'à ton clic sur le bouton de confirmation.</p>
       <hr>
       <p class="label">Profil LinkedIn de l’onglet actif</p>
       <p id="profile" class="profile">Ouvre un profil LinkedIn puis clique sur cette extension.</p>
@@ -46,7 +49,7 @@
       <hr>
       <label for="bulkUrls">Importer une liste de profils LinkedIn</label>
       <p class="notice">Copie volontairement les liens des profils que tu veux conserver depuis ta recherche LinkedIn,
-        puis colle-les ci-dessous (un lien par ligne). Rien n'est extrait automatiquement de la page.</p>
+        puis colle-les ci-dessous (un lien par ligne). Tu peux aussi utiliser le bouton « Lire les profils de cette page » ci-dessus.</p>
       <textarea id="bulkUrls" rows="5" maxlength="24000" spellcheck="false"
         placeholder="https://www.linkedin.com/in/profil-1/&#10;https://www.linkedin.com/in/profil-2/"></textarea>
       <button id="analyzeBulk" type="button" class="secondary" disabled>Prévisualiser les liens</button>
@@ -55,7 +58,7 @@
       <button id="messages" type="button" class="secondary">Ouvrir les messages dans Rendevo</button>
     </section>
     <p id="status" role="status" aria-live="polite"></p>
-    <p class="notice">L’extension transmet uniquement l’URL du profil choisi à ton serveur Rendevo.
+    <p class="notice">Seules les URLs que tu confirmes sont transmises à ton serveur Rendevo.
        Elle ne lit pas les cookies LinkedIn et n’envoie aucun message ou invitation.</p>
   </main>
 </body>
