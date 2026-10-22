@@ -160,7 +160,7 @@ test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’acc�
     && x.options.download === 'Rendevo-Companion-V19.zip'));
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V18\.zip"/);
+  assert.match(ui, /download="Rendevo-Companion-V19\.zip"/);
   assert.doesNotMatch(ui, /Télécharger Companion \(GitHub Actions\)/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /COPY extension \/extension/);
