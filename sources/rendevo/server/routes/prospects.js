@@ -72,7 +72,7 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     const campaignId = body.campaign_id || null;
     if (campaignId) {
       const { rows } = await db.query(
-        "SELECT id FROM campaigns WHERE id = $1 AND workspace_id = $2 AND status <> 'archived'",
+        "SELECT c.id FROM campaigns c JOIN accounts a ON a.id = c.account_id AND a.workspace_id = c.workspace_id WHERE c.id = $1 AND c.workspace_id = $2 AND c.status <> 'archived' AND a.provider IN ('manual','linkedin_cookie','linkedin_companion')",
         [campaignId, ctx.state.ws.id],
       );
       if (!rows.length) throw bad('Campagne indisponible dans cet espace');
