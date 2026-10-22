@@ -149,7 +149,7 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
         delete cfg.extra_cookie_value_enc;
       } else if (input.extra_cookie_value) {
         const value = String(input.extra_cookie_value).trim();
-        if (value.length > 4096 || /[;\\r\\n\\x00-\\x1F\\x7F]/.test(value)) {
+        if (value.length > 4096 || /[;\r\n\x00-\x1F\x7F]/.test(value)) {
           throw bad('Valeur du cookie supplémentaire invalide');
         }
         cfg.extra_cookie_value_enc = vault.encrypt(value);
