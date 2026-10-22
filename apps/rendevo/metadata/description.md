@@ -1,6 +1,10 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 17** · **Version Rendevo : 0.2.6**
+**Version du catalogue Runtipi : 18** · **Version Rendevo : 0.2.7**
+
+**Nouveau V18 — rechercher directement dans son LinkedIn connecté depuis Chrome Companion.** Dans **Prospects → Trouver des prospects**, sélectionner **Dans mon LinkedIn (Companion)**. Dans l'extension, choisir une campagne, vérifier ou modifier les mots-clés automatiquement proposés depuis sa cible (poste, secteur, localisation, mots-clés), puis cliquer sur **Rechercher dans mon LinkedIn**. Chrome ouvre la recherche de personnes sur LinkedIn dans la session déjà active, sans clé Brave. L'utilisateur consulte les résultats, ouvre un profil et l'importe explicitement via Companion. L'extension n'analyse pas les pages LinkedIn, n'extrait pas les listes, ne copie aucun cookie et ne transmet pas d'invitations ou de messages.
+
+
 
 **Nouveau V17 — recherche de prospects depuis l'index public du web :** dans **Prospects → Trouver des prospects**, définissez le poste, secteur, zone géographique et mots-clés. Rendevo utilise une **clé personnelle Brave Search API** (service indépendant avec crédits mensuels et tarification selon l'usage), stockée chiffrée, pour proposer au maximum vingt profils professionnels LinkedIn déjà indexés sur le web. **Vérifiez les résultats et sélectionnez-les manuellement avant de les importer** dans une campagne assistée. Aucune session ni cookie LinkedIn n'est utilisé ; aucun scraping ni envoi automatique n'est réalisé. Les informations provenant du moteur sont indicatives et peuvent être obsolètes.
 
