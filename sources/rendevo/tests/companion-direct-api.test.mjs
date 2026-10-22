@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { Router } from '../server/lib/http.js';
 import { sha256 } from '../server/lib/crypto.js';
 import { registerCompanion, normalizeCompanionProfile } from '../server/routes/companion.js';
@@ -135,4 +136,34 @@ test('ne conserve ni paramètres de tracking ni fausses URLs LinkedIn', () => {
     'https://me:password@linkedin.com/in/nom/']) {
     assert.equal(normalizeCompanionProfile(url), null, url);
   }
+});
+
+test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’accès', async () => {
+  const router = new Router();
+  let checked = false;
+  registerCompanion(router, { db: {}, agent: {}, config: { staticDir: '/app/web/dist' } }, {
+    requireAuth: async () => { checked = true; },
+    requireAdmin: async () => {},
+  });
+  const matched = router.match('GET', '/api/companion/download');
+  assert.ok(matched);
+  assert.equal(matched.route.handlers.length, 2);
+  const called = [];
+  const ctx = {
+    header: (key, value) => called.push({ key, value }),
+    sendFile: async (file, options) => called.push({ file, options }),
+  };
+  for (const handler of matched.route.handlers) await handler(ctx);
+  assert.equal(checked, true);
+  assert.ok(called.some((x) => x.key === 'Cache-Control' && x.value === 'no-store'));
+  assert.ok(called.some((x) => x.file === '/app/web/dist/Rendevo-Companion.zip'
+    && x.options.download === 'Rendevo-Companion-V16.zip'));
+  const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
+  assert.match(ui, /href="\/api\/companion\/download"/);
+  assert.match(ui, /download="Rendevo-Companion-V16\.zip"/);
+  assert.doesNotMatch(ui, /Télécharger Companion \(GitHub Actions\)/);
+  const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
+  assert.match(docker, /COPY extension \/extension/);
+  assert.match(docker, /zip -q -j \/Rendevo-Companion\.zip/);
+  assert.match(docker, /COPY --from=companion-package \/Rendevo-Companion\.zip \.\/web\/dist\/Rendevo-Companion\.zip/);
 });
