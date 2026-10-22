@@ -256,7 +256,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
       <button className="btn primary" disabled={busy || !campaign} onClick={() => run(async () => onDone(await api(`/api/campaigns/${campaign}/discover`, { method: 'POST', body: { limit } })))}>{busy ? <span className="spinner" /> : <LuSparkles />}Lancer la recherche</button>
     </>}>
       {usable.length === 0 ? (
-        <div className="alert warn">La recherche automatique n'est pas disponible avec votre session LinkedIn par cookies. Pour une campagne sans Unipile, importez des profils depuis des URLs ou un CSV.</div>
+        <div className="alert warn">La recherche automatique n'est pas disponible pour les comptes LinkedIn assistés. Importez manuellement des URLs de profils (depuis Chrome Companion) ou un CSV.</div>
       ) : (
         <div className="stack" style={{ '--gap': '12px' }}>
           <p className="soft">L'agent cherche des profils correspondant à la cible de la campagne, les enrichit et les qualifie. Les exclusions et doublons sont écartés.</p>
