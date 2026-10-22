@@ -94,6 +94,7 @@ async function simulatePopup(currentTabUrl) {
         '/api/companion/status': { connected: true, workspace: 'Mon espace' },
         '/api/companion/campaigns': { items: [{ id: 'campaign-1', name: 'Campagne test', search_keywords: 'Directeur commercial SaaS Paris' }] },
         '/api/companion/prospects': { created: 1, duplicates: 0, invalid: 0 },
+        '/api/companion/prospects/batch': { created: 2, duplicates: 0, invalid: 0, submitted: 2, repeated_in_list: 1 },
       }[pathname];
       if (!response) throw Error('Unexpected call ' + pathname);
       return { ok: true, status: 200, json: async () => response };
@@ -198,4 +199,68 @@ test('l’interface propose le mode recherche LinkedIn Companion sans clé Brave
   assert.match(popup, /id="searchLinkedin"/);
   assert.match(popup, /id="searchterms"/);
   assert.doesNotMatch(fs.readFileSync(extensionFile, 'utf8'), /chrome\.scripting|chrome\.cookies|fetch\(['"]https:\/\/www\.linkedin\.com/);
+});
+
+test('Companion : coller, prévisualiser puis importer un lot sans lire l’onglet LinkedIn', async () => {
+  const { elem, requests, createdTabs } = await simulatePopup('https://www.linkedin.com/search/results/people/?keywords=directeur');
+  elem('base').value = 'https://rendevo.exemple.fr';
+  await elem('save').events.click();
+  elem('paircode').value = 'some-one-time-code';
+  elem('paircode').events.input();
+  await elem('connect').events.click();
+  elem('campaign').value = 'campaign-1';
+  elem('campaign').events.change();
+  const before = requests.length;
+  assert.equal(elem('submitBulk').disabled, true);
+  elem('bulkUrls').value = [
+    'https://www.linkedin.com/in/camille/?trk=results',
+    'https://linkedin.com/in/camille/',
+    'https://www.linkedin.com/in/marc/',
+  ].join('\n');
+  elem('bulkUrls').events.input();
+  assert.equal(requests.length, before);
+  await elem('analyzeBulk').events.click();
+  assert.match(elem('bulkPreview').textContent, /2 profil\(s\) prêt\(s\)/);
+  assert.match(elem('bulkPreview').textContent, /1 doublon\(s\)/);
+  assert.equal(elem('submitBulk').disabled, false);
+  assert.equal(requests.length, before);
+  await elem('submitBulk').events.click();
+  assert.equal(requests.length, before + 1);
+  const call = requests.at(-1);
+  assert.equal(call.url, 'https://rendevo.exemple.fr/api/companion/prospects/batch');
+  assert.equal(call.options.method, 'POST');
+  assert.equal(call.options.credentials, 'omit');
+  assert.deepEqual(JSON.parse(call.options.body), {
+    campaign_id: 'campaign-1',
+    items: [
+      { linkedin_url: 'https://www.linkedin.com/in/camille/' },
+      { linkedin_url: 'https://www.linkedin.com/in/marc/' },
+    ],
+  });
+  assert.equal(elem('submitBulk').disabled, true);
+  assert.equal(createdTabs.length, 0);
+});
+
+test('Companion : faux domaine LinkedIn et liste modifiée bloquent l’envoi jusqu’à nouvelle validation', async () => {
+  const { elem, requests } = await simulatePopup('https://www.linkedin.com/search/results/people/');
+  elem('base').value = 'https://rendevo.exemple.fr';
+  await elem('save').events.click();
+  elem('paircode').value = 'one-time-code';
+  elem('paircode').events.input();
+  await elem('connect').events.click();
+  const before = requests.length;
+  elem('bulkUrls').value = 'https://linkedin.com.evil.test/in/camille/';
+  elem('bulkUrls').events.input();
+  await elem('analyzeBulk').events.click();
+  assert.equal(elem('submitBulk').disabled, true);
+  elem('bulkUrls').value = 'https://www.linkedin.com/in/camille/';
+  elem('bulkUrls').events.input();
+  await elem('analyzeBulk').events.click();
+  assert.equal(elem('submitBulk').disabled, false);
+  elem('bulkUrls').value += '\nhttps://www.linkedin.com/in/marc/';
+  elem('bulkUrls').events.input();
+  assert.equal(elem('submitBulk').disabled, true);
+  assert.equal(requests.length, before);
+  const script = fs.readFileSync(extensionFile, 'utf8');
+  assert.doesNotMatch(script, /chrome\.scripting|document\.cookie|chrome\.cookies|executeScript/);
 });
