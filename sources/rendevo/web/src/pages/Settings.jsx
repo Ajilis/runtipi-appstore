@@ -151,7 +151,7 @@ function Accounts({ limits }) {
             <div className="row spread wrap">
               <div>
                 <div className="row" style={{ gap: 8 }}><strong>{a.name}</strong><span className={`badge ${a.status === 'active' ? 'ok' : a.status === 'error' ? 'err' : 'warn'}`}>{(a.provider === 'linkedin_cookie' ? { active: 'Dernier test OK', paused: 'En pause', error: 'À vérifier' } : { active: 'Actif', paused: 'En pause', error: 'À reconnecter' })[a.status] || a.status}</span></div>
-                <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
+                <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', linkedin_companion: 'LinkedIn Companion (extension Chrome)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
               </div>
               <div className="row">
                 <button className="btn sm" disabled={busy || cooldownSeconds > 0} onClick={() => test(a)}><LuPlugZap />{cooldownSeconds ? `Tester (${cooldownSeconds}s)` : "Tester"}</button>
