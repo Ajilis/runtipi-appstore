@@ -19,7 +19,7 @@ Sur `https://www.linkedin.com/search/results/people/`, **ouvrir Companion sur l'
 
 **Aucune transmission à Rendevo n'a lieu à la lecture.** La fenêtre Companion affiche les URLs, éditables avant tout envoi ; la moindre modification annule la prévalidation et oblige à prévisualiser de nouveau. Le clic distinct **« Confirmer et importer les profils dans Rendevo »** déclenche l'appel API déjà authentifié. Pour capturer une autre page, naviguer normalement dans LinkedIn et répéter l'opération. Il n'y a ni pagination automatique, ni collecte en arrière-plan, ni récupération de cookies, ni requête vers les API privées LinkedIn. Les résultats et le DOM de LinkedIn pouvant changer, le détecteur peut ne trouver aucun profil et nécessiter une adaptation.
 
-**Attention :** même une lecture ponctuelle du DOM peut être considérée comme de l'extraction de données par LinkedIn. Vérifier les conditions d'utilisation du service ainsi que les obligations de protection des données avant tout import.
+**Avertissement important :** LinkedIn interdit explicitement les extensions tierces qui extraient ou copient des données de ses pages, même sur action ponctuelle de l'utilisateur. Cette fonctionnalité peut enfreindre ses conditions d'utilisation et entraîner des restrictions de compte. Avant tout usage, vérifier les autorisations nécessaires et les obligations relatives aux données personnelles.
 
 ### Import groupé de liens fournis manuellement (V19)
 
