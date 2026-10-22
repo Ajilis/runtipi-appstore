@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { Router } from '../server/lib/http.js';
 import { sha256 } from '../server/lib/crypto.js';
-import { registerCompanion, normalizeCompanionProfile } from '../server/routes/companion.js';
+import { registerCompanion, normalizeCompanionProfile, companionSearchTerms } from '../server/routes/companion.js';
 
 function harness() {
   let pairing = null, device = null;
@@ -34,8 +34,8 @@ function harness() {
       return { rows: [{ id: device.id, workspace_id: device.workspace_id,
         user_id: device.user_id, expires_at: device.expires_at }] };
     }
-    if (q.startsWith('SELECT c.id, c.name FROM campaigns')) {
-      return { rows: [{ id: 'campaign-1', name: 'Campagne Companion' }] };
+    if (q.startsWith('SELECT c.id, c.name, c.icp FROM campaigns')) {
+      return { rows: [{ id: 'campaign-1', name: 'Campagne Companion', icp: { titles: ['Directeur commercial'], industries: ['SaaS'], locations: ['Paris'] } }] };
     }
     if (q.startsWith('SELECT 1 FROM campaigns c JOIN accounts')) {
       return { rows: params[0] === 'campaign-1' && params[1] === scope.wsId ? [{ '?column?': 1 }] : [] };
@@ -103,7 +103,7 @@ test('l’extension lit ses campagnes et importe directement uniquement dans son
   const { token } = await h.request('POST', '/api/companion/exchange', { body: { code: pair.code } });
   await assert.rejects(() => h.request('GET', '/api/companion/campaigns'), /Associez/);
   const campaigns = await h.request('GET', '/api/companion/campaigns', { token });
-  assert.deepEqual(campaigns.items, [{ id: 'campaign-1', name: 'Campagne Companion' }]);
+  assert.deepEqual(campaigns.items, [{ id: 'campaign-1', name: 'Campagne Companion', search_keywords: 'Directeur commercial SaaS Paris' }]);
   await assert.rejects(() => h.request('POST', '/api/companion/prospects',
     { token, body: { linkedin_url: 'https://evil.test/in/me/' } }), /LinkedIn valide/);
   await assert.rejects(() => h.request('POST', '/api/companion/prospects',
@@ -157,13 +157,23 @@ test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’acc�
   assert.equal(checked, true);
   assert.ok(called.some((x) => x.key === 'Cache-Control' && x.value === 'no-store'));
   assert.ok(called.some((x) => x.file === '/app/web/dist/Rendevo-Companion.zip'
-    && x.options.download === 'Rendevo-Companion-V16.zip'));
+    && x.options.download === 'Rendevo-Companion-V18.zip'));
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V16\.zip"/);
+  assert.match(ui, /download="Rendevo-Companion-V18\.zip"/);
   assert.doesNotMatch(ui, /Télécharger Companion \(GitHub Actions\)/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /COPY extension \/extension/);
   assert.match(docker, /zip -q -j \/Rendevo-Companion\.zip/);
   assert.match(docker, /COPY --from=companion-package \/Rendevo-Companion\.zip \.\/web\/dist\/Rendevo-Companion\.zip/);
+});
+
+test('les campagnes fournissent uniquement des mots-clés de ciblage pour la recherche manuelle', () => {
+  assert.equal(companionSearchTerms({
+    titles: ['Directeur marketing'], industries: ['Logiciel B2B'], locations: ['Paris'],
+    keywords: ['prospection'], exclusions: ['SECRET'], excluded_companies: ['ACME'],
+  }), 'Directeur marketing Logiciel B2B Paris prospection');
+  assert.equal(companionSearchTerms({}), '');
+  assert.equal(companionSearchTerms(null), '');
+  assert.equal(companionSearchTerms({ titles: ['X'.repeat(500)] }).length, 70);
 });

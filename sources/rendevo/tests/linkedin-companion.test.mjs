@@ -92,7 +92,7 @@ async function simulatePopup(currentTabUrl) {
       const response = {
         '/api/companion/exchange': { token: 'example-' + 'A'.repeat(43), expires_at: '2030-01-01T00:00:00Z' },
         '/api/companion/status': { connected: true, workspace: 'Mon espace' },
-        '/api/companion/campaigns': { items: [{ id: 'campaign-1', name: 'Campagne test' }] },
+        '/api/companion/campaigns': { items: [{ id: 'campaign-1', name: 'Campagne test', search_keywords: 'Directeur commercial SaaS Paris' }] },
         '/api/companion/prospects': { created: 1, duplicates: 0, invalid: 0 },
       }[pathname];
       if (!response) throw Error('Unexpected call ' + pathname);
@@ -160,4 +160,42 @@ test('l’interface Rendevo propose une association directe et la révocation', 
   assert.match(component, /api\/companion\/devices/);
   assert.match(component, /Générer un code d'association/);
   assert.match(component, /Révoquer/);
+});
+
+test('recherche native LinkedIn lancée sur clic avec la cible fournie par Rendevo, sans scraping', async () => {
+  const { elem, requests, createdTabs } = await simulatePopup('https://www.linkedin.com/feed/');
+  elem('base').value = 'https://rendevo.exemple.fr';
+  await elem('save').events.click();
+  assert.equal(elem('searchLinkedin').disabled, true);
+  elem('paircode').value = 'one-time-code';
+  elem('paircode').events.input();
+  await elem('connect').events.click();
+  assert.equal(elem('searchLinkedin').disabled, true); // no campaign selected or search text
+  elem('campaign').value = 'campaign-1';
+  elem('campaign').events.change();
+  assert.equal(elem('searchterms').value, 'Directeur commercial SaaS Paris');
+  assert.equal(elem('searchLinkedin').disabled, false);
+  const before = requests.length;
+  await elem('searchLinkedin').events.click();
+  assert.equal(requests.length, before); // no calls to LinkedIn, only local navigation
+  assert.equal(createdTabs.length, 1);
+  const opened = new URL(createdTabs[0]);
+  assert.equal(opened.origin, 'https://www.linkedin.com');
+  assert.equal(opened.pathname, '/search/results/people/');
+  assert.equal(opened.searchParams.get('keywords'), 'Directeur commercial SaaS Paris');
+  elem('searchterms').value = 'Dirigeant financier Lyon';
+  elem('searchterms').events.input();
+  await elem('searchLinkedin').events.click();
+  assert.equal(new URL(createdTabs[1]).searchParams.get('keywords'), 'Dirigeant financier Lyon');
+  assert.equal(requests.length, before);
+});
+
+test('l’interface propose le mode recherche LinkedIn Companion sans clé Brave', () => {
+  const web = fs.readFileSync(new URL('../web/src/pages/Prospects.jsx', import.meta.url), 'utf8');
+  const popup = fs.readFileSync(new URL('../extension/popup.html', import.meta.url), 'utf8');
+  assert.match(web, /Dans mon LinkedIn \(Companion\)/);
+  assert.match(web, /sans clé Brave/);
+  assert.match(popup, /id="searchLinkedin"/);
+  assert.match(popup, /id="searchterms"/);
+  assert.doesNotMatch(fs.readFileSync(extensionFile, 'utf8'), /chrome\.scripting|chrome\.cookies|fetch\(['"]https:\/\/www\.linkedin\.com/);
 });

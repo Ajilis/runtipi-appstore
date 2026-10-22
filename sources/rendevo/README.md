@@ -29,6 +29,12 @@ Aucune dépendance npm à l'exécution : serveur HTTP, client PostgreSQL (SCRAM-
 | `server/db/migrations` | Schéma SQL appliqué au démarrage |
 | `web/src` | Interface React (tableau de bord, prospects, campagnes, messages, agenda, médias, réglages, pages publiques) |
 
+## Recherche LinkedIn assistée via Chrome Companion (0.2.7 / Runtipi V18)
+
+Depuis **Prospects → Trouver des prospects**, le nouveau mode **Dans mon LinkedIn (Companion)** fonctionne **sans clé Brave Search**. Installer l'extension Companion V18 depuis **Réglages → Intégrations**, sélectionner une campagne de type `linkedin_companion` dans l'extension et cliquer sur **Rechercher dans mon LinkedIn**. Rendevo fournit via l'API Companion uniquement les mots-clés autorisés de la cible de la campagne (premier poste, secteur, localisation et mot-clé), modifiables dans l'extension. Un clic explicite ouvre un onglet standard de recherche de personnes LinkedIn, dans la session Chrome déjà connectée, sans requête réseau du serveur vers LinkedIn.
+
+**Important :** la recherche s'effectue visuellement sur le site LinkedIn ; Companion n'accède pas au contenu de la page, n'extrait pas automatiquement la liste de résultats, et ne récupère aucun cookie. L'utilisateur ouvre les profils retenus un à un et valide leur ajout via Companion. Cette fonctionnalité ne contourne aucune restriction de compte et n'utilise pas une API LinkedIn officielle. Pour obtenir une liste indexée directement dans Rendevo, le mode alternatif Brave Search reste disponible.
+
 ## Découverte de profils professionnels depuis le web public (0.2.6 / catalogue V17)
 
 Dans **Prospects → Trouver des prospects**, sélectionner **Recherche web publique** : Rendevo propose une recherche de profils LinkedIn déjà indexés par l'API [Brave Search](https://brave.com/search/api/), sans ouvrir de session LinkedIn ni interroger LinkedIn ou son API Voyager. Un abonnement/API key Brave personnel est nécessaire ; cette clé se saisit dans la fenêtre de recherche, est chiffrée AES-GCM dans les réglages de l'espace et n'est pas renvoyée par les API Rendevo. Le fournisseur Brave facture ses requêtes selon son barème et propose un crédit mensuel ; aucune clé n'est préconfigurée.

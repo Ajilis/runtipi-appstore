@@ -9,10 +9,12 @@ const save = byId('save'), connect = byId('connect');
 const pairing = byId('pairing'), connected = byId('connected');
 const importBtn = byId('import'), refresh = byId('refresh');
 const messages = byId('messages'), disconnect = byId('disconnect');
+const searchTerms = byId('searchterms'), searchLinkedin = byId('searchLinkedin');
 let rendevoOrigin = '';
 let deviceToken = '';
 let profileUrl = null;
 let busy = false;
+let campaignSuggestions = new Map();
 
 function localOrigin(input) {
   try {
@@ -47,6 +49,7 @@ function update() {
   connect.disabled = busy || !rendevoOrigin || !code.value.trim() || !!deviceToken;
   importBtn.disabled = busy || !deviceToken || !profileUrl;
   refresh.disabled = busy || !deviceToken;
+  searchLinkedin.disabled = busy || !deviceToken || !searchTerms.value.trim();
   save.disabled = busy;
   disconnect.disabled = busy;
   messages.disabled = busy;
@@ -85,6 +88,10 @@ async function loadCampaigns() {
   ]);
   byId('workspace').textContent = state.workspace || 'Rendevo';
   const previous = campaign.value;
+  const previousSearch = searchTerms.value;
+  campaignSuggestions = new Map((list.items || []).map(({ id, search_keywords }) => [
+    id, String(search_keywords || '').slice(0, 240),
+  ]));
   campaign.replaceChildren();
   const none = document.createElement('option');
   none.value = ''; none.textContent = 'Sans campagne (à classer plus tard)';
@@ -96,6 +103,7 @@ async function loadCampaigns() {
     campaign.append(opt);
   }
   if (Array.from(campaign.options).some((x) => x.value === previous)) campaign.value = previous;
+  if (!previousSearch) searchTerms.value = campaignSuggestions.get(campaign.value) || '';
   update();
 }
 
@@ -132,6 +140,22 @@ save.addEventListener('click', async () => {
 });
 
 code.addEventListener('input', update);
+searchTerms.addEventListener('input', update);
+campaign.addEventListener('change', () => {
+  searchTerms.value = campaignSuggestions.get(campaign.value) || '';
+  update();
+});
+
+searchLinkedin.addEventListener('click', async () => {
+  if (!deviceToken || busy) return;
+  const words = searchTerms.value.trim().replace(/\s+/g, ' ').slice(0, 240);
+  if (!words) return;
+  // Navigate Chrome's ordinary LinkedIn page in the user's existing browser
+  // session. No background requests, DOM access, cookies or result extraction.
+  const url = new URL('https://www.linkedin.com/search/results/people/');
+  url.searchParams.set('keywords', words);
+  await chrome.tabs.create({ url: url.href });
+});
 
 connect.addEventListener('click', async () => {
   if (!rendevoOrigin || deviceToken || busy) return;
