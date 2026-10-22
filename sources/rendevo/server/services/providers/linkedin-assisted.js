@@ -1,5 +1,5 @@
-// Human-operated LinkedIn workflow. Cookies only verify the account identity:
-// neither this policy nor the worker may transmit invitations or messages.
+// Human-operated LinkedIn workflow (cookies or Chrome Companion).
+// Neither this policy nor the worker may transmit invitations or messages.
 export function isLinkedinAssisted(provider) {
   return provider === 'linkedin_cookie' || provider === 'linkedin_companion';
 }
