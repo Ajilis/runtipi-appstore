@@ -1,7 +1,7 @@
 import { bad, notFound } from '../lib/http.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
-import { normalizeDiscoveryCriteria, discoverPublicProfiles } from '../services/discovery.js';
+import { normalizeDiscoveryCriteria, discoverPublicProfiles, normalizePublicProfileUrl } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
   p.status, p.stage, p.tags, p.signals, p.campaign_id, p.needs_human, p.human_reason, p.last_reply_at, p.last_contact_at, p.created_at, p.updated_at, p.source, p.callback_at`;
@@ -33,7 +33,7 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     if (body.clear_key === true) encrypted = '';
     else if (body.api_key) {
       const key = String(body.api_key).trim();
-      if (!/^[^\\s]{8,512}$/.test(key)) throw bad('Clé API Brave invalide');
+      if (!/^\S{8,512}$/.test(key)) throw bad('Clé API Brave invalide');
       encrypted = vault.encrypt(key);
     }
     await db.query(
@@ -62,6 +62,28 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     } catch (err) { throw bad(err.message); }
   });
 
+
+  // A second, explicit click imports only reviewed and selected suggestions.
+  router.post('/api/discovery/import', requireAuth, async (ctx) => {
+    const body = await ctx.json(128 * 1024);
+    if (!Array.isArray(body.items) || !body.items.length || body.items.length > 20) {
+      throw bad('Sélectionnez entre 1 et 20 profils vérifiés');
+    }
+    const campaignId = body.campaign_id || null;
+    if (campaignId) {
+      const { rows } = await db.query(
+        "SELECT id FROM campaigns WHERE id = $1 AND workspace_id = $2 AND status <> 'archived'",
+        [campaignId, ctx.state.ws.id],
+      );
+      if (!rows.length) throw bad('Campagne indisponible dans cet espace');
+    }
+    const items = body.items.map((item) => ({
+      linkedin_url: normalizePublicProfileUrl(item?.linkedin_url),
+      full_name: String(item?.full_name || '').trim().slice(0, 160),
+    }));
+    if (items.some((item) => !item.linkedin_url)) throw bad('URL de profil LinkedIn invalide');
+    return agent.importProspects(ctx.state.ws, items, { campaignId, source: 'public_web_search' });
+  });
 
   function filters(ctx) {
     const q = ctx.query;
