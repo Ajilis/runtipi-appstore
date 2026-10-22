@@ -29,6 +29,16 @@ Aucune dépendance npm à l'exécution : serveur HTTP, client PostgreSQL (SCRAM-
 | `server/db/migrations` | Schéma SQL appliqué au démarrage |
 | `web/src` | Interface React (tableau de bord, prospects, campagnes, messages, agenda, médias, réglages, pages publiques) |
 
+## Rendevo Companion pour Chrome (0.2.3 / Runtipi V14)
+
+**Alternative sans copie de cookies**. Le fournisseur « LinkedIn Companion (Chrome) » n'exécute aucun appel à LinkedIn depuis Rendevo. Le moteur de campagne impose l'import manuel de prospects et la validation humaine des brouillons ; l'envoi reste à la charge de l'utilisateur dans LinkedIn.
+
+**Installer l'extension :** téléchargez l'artefact `Rendevo-Companion-V14` depuis le workflow [Rendevo image](https://github.com/Ajilis/runtipi-appstore/actions/workflows/rendevo-image.yml), extrayez le fichier ZIP et sélectionnez le dossier contenant `manifest.json` dans `chrome://extensions` → Mode développeur → Charger l'extension non empaquetée.
+
+**Associer l'application :** ouvrir l'extension et enregistrer l'URL HTTPS de votre instance (voir **Réglages → Intégrations**). L'extension conserve uniquement cette origine dans le stockage local Chrome, sans token ni cookie. Dans le même navigateur, connectez-vous normalement à Rendevo. Créez un compte « LinkedIn Companion (Chrome) », associez-le à une campagne assistée. Depuis une page de profil LinkedIn `/in/…`, cliquez sur l'extension puis « Préparer l'import » : le formulaire d'import de Rendevo s'ouvre avec l'URL préremplie, mais **aucune importation n'est faite sans cliquer « Importer »**.
+
+L'extension lit uniquement l'URL de l'onglet actif sur action explicite de l'utilisateur ; elle ne lit ni cookies ni DOM LinkedIn, n'installe aucun script dans la page, n'effectue aucune requête réseau vers LinkedIn et ne détient aucune autorisation d'hôte. Les messages approuvés se copient manuellement depuis Rendevo, et l'utilisateur confirme leurs envois réels. Ce mode ne prétend pas être une API LinkedIn officielle et ne permet aucun accès autonome au compte lorsque Chrome est fermé. Voir `extension/README.md`.
+
 ## Connexion expérimentale à son propre LinkedIn par cookies
 
 Dans **Réglages → Comptes LinkedIn → Ajouter un compte**, choisir **Mon LinkedIn (cookie)**.
