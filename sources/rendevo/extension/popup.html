@@ -8,7 +8,7 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V18 • recherche assistée</span></header>
+  <header><strong>Rendevo Companion</strong><span>V19 • import groupé</span></header>
   <main>
     <label for="base">Adresse de ton Rendevo</label>
     <input id="base" type="url" spellcheck="false" autocomplete="off"
@@ -43,6 +43,15 @@
       <p class="label">Profil LinkedIn de l’onglet actif</p>
       <p id="profile" class="profile">Ouvre un profil LinkedIn puis clique sur cette extension.</p>
       <button id="import" type="button" disabled>Ajouter ce profil directement à Rendevo</button>
+      <hr>
+      <label for="bulkUrls">Importer une liste de profils LinkedIn</label>
+      <p class="notice">Copie volontairement les liens des profils que tu veux conserver depuis ta recherche LinkedIn,
+        puis colle-les ci-dessous (un lien par ligne). Rien n'est extrait automatiquement de la page.</p>
+      <textarea id="bulkUrls" rows="5" maxlength="24000" spellcheck="false"
+        placeholder="https://www.linkedin.com/in/profil-1/&#10;https://www.linkedin.com/in/profil-2/"></textarea>
+      <button id="analyzeBulk" type="button" class="secondary" disabled>Prévisualiser les liens</button>
+      <p id="bulkPreview" class="profile" aria-live="polite">Aucun lien sélectionné.</p>
+      <button id="submitBulk" type="button" disabled>Confirmer et importer les profils dans Rendevo</button>
       <button id="messages" type="button" class="secondary">Ouvrir les messages dans Rendevo</button>
     </section>
     <p id="status" role="status" aria-live="polite"></p>
