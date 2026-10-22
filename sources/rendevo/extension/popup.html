@@ -8,7 +8,7 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V15 • connexion directe</span></header>
+  <header><strong>Rendevo Companion</strong><span>V18 • recherche assistée</span></header>
   <main>
     <label for="base">Adresse de ton Rendevo</label>
     <input id="base" type="url" spellcheck="false" autocomplete="off"
@@ -30,6 +30,16 @@
         <option value="">Sans campagne (à classer plus tard)</option>
       </select>
       <button id="refresh" type="button" class="secondary">Actualiser les campagnes</button>
+      <hr>
+      <label for="searchterms">Recherche de personnes sur LinkedIn</label>
+      <input id="searchterms" type="text" maxlength="240" autocomplete="off" spellcheck="false"
+        placeholder="Ex. Directeur commercial SaaS Paris">
+      <p class="notice">Proposition basée sur la cible de ta campagne, modifiable ici.
+        La recherche s'ouvre dans LinkedIn où tu es déjà connecté, sans clé Brave.</p>
+      <button id="searchLinkedin" type="button" disabled>Rechercher dans mon LinkedIn</button>
+      <p class="notice">Consulte les résultats dans LinkedIn, ouvre le profil voulu, puis utilise Companion pour l'ajouter.
+        L'extension n'extrait pas automatiquement les listes de résultats.</p>
+      <hr>
       <p class="label">Profil LinkedIn de l’onglet actif</p>
       <p id="profile" class="profile">Ouvre un profil LinkedIn puis clique sur cette extension.</p>
       <button id="import" type="button" disabled>Ajouter ce profil directement à Rendevo</button>
