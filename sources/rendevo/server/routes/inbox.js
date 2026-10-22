@@ -12,7 +12,7 @@ export function registerInbox(router, deps, { requireAuth }) {
       replies: 'p.last_reply_at IS NOT NULL',
       approval: `EXISTS (SELECT 1 FROM messages m WHERE m.prospect_id = p.id AND m.status = 'pending_approval')`,
       human: 'p.needs_human',
-      to_send: `EXISTS (SELECT 1 FROM messages m JOIN accounts a ON a.id = m.account_id WHERE m.prospect_id = p.id AND m.status = 'queued' AND a.provider IN ('manual', 'linkedin_cookie'))`,
+      to_send: `EXISTS (SELECT 1 FROM messages m JOIN accounts a ON a.id = m.account_id WHERE m.prospect_id = p.id AND m.status = 'queued' AND a.provider IN ('manual', 'linkedin_cookie', 'linkedin_companion'))`,
     }[filter] || 'true';
     const { rows } = await db.query(
       `SELECT p.id, p.full_name, p.title, p.company, p.heat, p.status, p.needs_human, p.human_reason, p.last_reply_at,
@@ -29,7 +29,7 @@ export function registerInbox(router, deps, { requireAuth }) {
       `SELECT
          (SELECT count(*)::int FROM messages WHERE workspace_id = $1 AND status = 'pending_approval') AS approval,
          (SELECT count(*)::int FROM prospects WHERE workspace_id = $1 AND needs_human) AS human,
-         (SELECT count(*)::int FROM messages m JOIN accounts a ON a.id = m.account_id WHERE m.workspace_id = $1 AND m.status = 'queued' AND a.provider IN ('manual', 'linkedin_cookie')) AS to_send`,
+         (SELECT count(*)::int FROM messages m JOIN accounts a ON a.id = m.account_id WHERE m.workspace_id = $1 AND m.status = 'queued' AND a.provider IN ('manual', 'linkedin_cookie', 'linkedin_companion')) AS to_send`,
       [ws],
     );
     return { items: rows, counts: counts.rows[0] };
@@ -104,7 +104,7 @@ export function registerInbox(router, deps, { requireAuth }) {
       'SELECT provider FROM accounts WHERE id = $1 AND workspace_id = $2',
       [m.account_id, ctx.state.ws.id],
     );
-    if (!['linkedin_cookie', 'manual'].includes(accounts[0]?.provider)) {
+    if (!['linkedin_cookie', 'manual', 'linkedin_companion'].includes(accounts[0]?.provider)) {
       throw bad('Cette confirmation est réservée aux envois manuels');
     }
     const text = body.body === undefined ? m.body : String(body.body).trim();
