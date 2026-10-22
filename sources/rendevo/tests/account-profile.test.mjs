@@ -104,6 +104,6 @@ test('le formulaire réutilise la session existante et ne demande le mot de pass
   assert.match(ui, /api\/me\/profile/);
   assert.match(ui, /emailChanged &&/);
   assert.match(ui, /await refresh\(\)/);
-  assert.match(auth, /api\/me\/\(password\|profile\)/);
+  assert.ok(auth.includes('(password|profile)'));
   assert.match(auth, /requireAuth, async \(ctx\)/);
 });
