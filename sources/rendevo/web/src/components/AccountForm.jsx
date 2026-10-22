@@ -77,6 +77,13 @@ export function AccountForm({ value, onChange, existing }) {
                 placeholder="" />
             </Field>
           </div>
+          {existing && v.config?.has_extra_cookie && (
+            <label className="check small">
+              <input type="checkbox" checked={!!v.config?.clear_extra_cookie}
+                onChange={(e) => onChange({ ...v, config: { ...v.config, clear_extra_cookie: e.target.checked } })} />
+              Supprimer la valeur du cookie supplémentaire enregistré
+            </label>
+          )}
           <p className="small soft">Le cookie supplémentaire, s'il est renseigné, est stocké chiffré. Il n'est pas envoyé à LinkedIn par le bouton « Tester ».</p>
                     <p className="small soft">Après l'ajout, utilisez « Tester » pour vérifier la session. Rendevo fonctionnera en mode d'envoi manuel avec ce connecteur.</p>
         </>
