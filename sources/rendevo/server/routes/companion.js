@@ -13,6 +13,17 @@ export function normalizeCompanionProfile(input) {
   } catch { return null; }
 }
 
+// Only campaign targeting keywords; never send AI settings, credentials or CRM data.
+export function companionSearchTerms(icp = {}) {
+  if (!icp || typeof icp !== 'object') return '';
+  const fields = ['titles', 'industries', 'locations', 'keywords'];
+  const terms = fields.map((field) => {
+    const values = Array.isArray(icp[field]) ? icp[field] : [];
+    return String(values[0] || '').replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70);
+  }).filter(Boolean);
+  return terms.join(' ').slice(0, 240);
+}
+
 // A browser extension exchanges a five-minute, single-use code for a narrowly
 // scoped, revocable bearer. It never gets a Rendevo API token or LinkedIn cookie.
 export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
@@ -103,13 +114,13 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
 
   router.get('/api/companion/campaigns', requireDevice, async (ctx) => {
     const { rows } = await db.query(
-      `SELECT c.id, c.name FROM campaigns c
+      `SELECT c.id, c.name, c.icp FROM campaigns c
        JOIN accounts a ON a.id = c.account_id AND a.workspace_id = c.workspace_id
        WHERE c.workspace_id = $1 AND a.provider = 'linkedin_companion' AND c.status <> 'archived'
        ORDER BY c.created_at DESC LIMIT 100`,
       [ctx.state.ws.id],
     );
-    return { items: rows };
+    return { items: rows.map(({ id, name, icp }) => ({ id, name, search_keywords: companionSearchTerms(icp) })) };
   });
 
   router.post('/api/companion/prospects', requireDevice, async (ctx) => {
