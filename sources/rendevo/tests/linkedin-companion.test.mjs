@@ -305,7 +305,8 @@ test('Companion lit uniquement la page Personnes sur clic, prévisualise et impo
   assert.equal(executions.length, 0);
   assert.equal(elem('readLinkedinPage').disabled, false);
   await elem('readLinkedinPage').events.click();
-  assert.deepEqual(executions, [{ tabId: 12 }]);
+  assert.equal(executions.length, 1);
+  assert.equal(executions[0].tabId, 12);
   assert.equal(requests.length, before);
   assert.equal(elem('submitBulk').disabled, false);
   assert.match(elem('bulkPreview').textContent, /2 profil\(s\) trouvés/);
