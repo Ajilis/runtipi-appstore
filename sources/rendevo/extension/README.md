@@ -17,10 +17,6 @@ L'extension **communique directement avec l'API de ton Rendevo**, sans faire pas
 
 La navigation `https://www.linkedin.com/search/results/people/?keywords=...` n'est déclenchée qu'après ton clic et utilise la session de navigation **existante** dans Chrome. Elle ne passe ni par l'API LinkedIn, ni par Brave, ni par le serveur Rendevo. Elle peut dépendre du fonctionnement futur de la recherche LinkedIn. Rendevo ne récupère **pas automatiquement** les résultats depuis la page ; l'utilisateur choisit les profils à importer. Aucune lecture DOM, aucun scraping, aucune récupération de cookies.
 
-<!-- Anciennes instructions -->
-6. L'extension affiche les campagnes Companion. Ouvrir un profil LinkedIn `https://www.linkedin.com/in/…`, cliquer sur l'extension, choisir la campagne et cliquer sur **Ajouter ce profil directement à Rendevo**. La réponse de l'API confirme l'import ou signale un doublon. Aucun import n'est effectué sans clic.
-7. Pour les messages, cliquer sur **Ouvrir les messages dans Rendevo**, valider et copier les brouillons, puis effectuer les envois toi-même dans LinkedIn.
-
 ## Confidentialité et sécurité
 
 - **Aucun cookie LinkedIn** `li_at`, `JSESSIONID`, `bcookie` n'est lu ou envoyé. Pas de lecture DOM, de collecte de messages, de scraping, ni d'API Voyager depuis cette extension.
