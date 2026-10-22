@@ -1,11 +1,11 @@
-# Rendevo Companion — extension Chrome V15
+# Rendevo Companion — extension Chrome V16
 
 L'extension **communique directement avec l'API de ton Rendevo**, sans faire passer les données par un onglet intermédiaire. Elle permet de choisir une campagne Companion et d'y importer l'URL du profil LinkedIn ouvert dans Chrome après clic explicite.
 
 ## Installation
 
-1. Mettre Rendevo à jour vers **0.2.4 / catalogue Runtipi V15**.
-2. Télécharger l'artefact **Rendevo-Companion-V15** depuis le [workflow GitHub Actions](https://github.com/Ajilis/runtipi-appstore/actions/workflows/rendevo-image.yml). Décompresser, puis ouvrir `chrome://extensions` → **Mode développeur** → **Charger l'extension non empaquetée**, sélectionner le dossier contenant `manifest.json`.
+1. Mettre Rendevo à jour vers **0.2.5 / catalogue Runtipi V16**.
+2. Depuis **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Télécharger l’extension Chrome (.zip)** pour récupérer `Rendevo-Companion-V16.zip` directement depuis Rendevo (sans GitHub). Décompresser, puis ouvrir `chrome://extensions` → **Mode développeur** → **Charger l'extension non empaquetée**, sélectionner le dossier contenant `manifest.json`.
 3. Dans Rendevo : **Réglages → Comptes LinkedIn → Ajouter** → **LinkedIn Companion (Chrome)**. Associer ce compte à une campagne assistée.
 4. Dans **Réglages → Intégrations → Rendevo Companion**, copier l'URL de l'instance et cliquer sur **Générer un code d'association**. Le code dure **5 minutes** et ne peut servir qu'une fois.
 5. Dans Chrome : ouvrir l'extension, coller l'URL de Rendevo, cliquer sur **Autoriser cette instance Rendevo** et accepter la permission Chrome pour ce site précis. Coller le code et cliquer sur **Associer directement l'extension**.

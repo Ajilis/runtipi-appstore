@@ -32,8 +32,9 @@ export function CompanionSettings() {
         </div>
         <div className="row wrap">
           <button className="btn primary" disabled={busy} onClick={makeCode}>Générer un code d'association</button>
-          <a className="btn" href="https://github.com/Ajilis/runtipi-appstore/actions/workflows/rendevo-image.yml" target="_blank" rel="noreferrer">Télécharger Companion (GitHub Actions)</a>
+          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V16.zip">Télécharger l’extension Chrome (.zip)</a>
         </div>
+        <p className="small soft">Téléchargement direct depuis ton serveur Rendevo, sans GitHub. Décompresse le ZIP, puis ouvre <code>chrome://extensions</code> → Mode développeur → Charger l’extension non empaquetée et sélectionne le dossier contenant <code>manifest.json</code>.</p>
         {pairing && (
           <div className="alert info stack" style={{ '--gap': '8px' }}>
             <strong>Code à usage unique — valable 5 minutes</strong>

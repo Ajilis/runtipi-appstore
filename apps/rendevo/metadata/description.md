@@ -1,6 +1,10 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 15** · **Version Rendevo : 0.2.4**
+**Version du catalogue Runtipi : 16** · **Version Rendevo : 0.2.5**
+
+**Nouveau V16 — téléchargement direct de l'extension Chrome.** Depuis **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Télécharger l’extension Chrome (.zip)** pour récupérer immédiatement la version compatible de Companion **depuis votre Rendevo**, sans redirection vers GitHub ni expiration d’artefact. Décompresser l’archive, puis charger le dossier contenant `manifest.json` dans `chrome://extensions` → Mode développeur → Charger l’extension non empaquetée. Téléchargement accessible après connexion à Rendevo ; l’association sécurisée par code temporaire reste identique.
+
+
 
 **Nouveau V15 — connexion directe de Chrome Companion à Rendevo.** Dans **Réglages → Intégrations**, générez un code à usage unique valable 5 minutes, puis saisissez-le dans l'extension. Celle-ci communique directement avec les API restreintes de votre instance Rendevo grâce à un jeton dédié, limité aux campagnes Companion et à l'import de profils sur clic. L'autorisation Chrome ne porte que sur le site Rendevo choisi. Le jeton est révocable, expire après 90 jours, et ne donne aucun accès au compte LinkedIn ni aux cookies. Aucun envoi automatique de messages ou d'invitations.
 
