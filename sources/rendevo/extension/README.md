@@ -1,4 +1,4 @@
-# Rendevo Companion — extension Chrome V15
+# Rendevo Companion — extension Chrome V16
 
 L'extension **communique directement avec l'API de ton Rendevo**, sans faire passer les données par un onglet intermédiaire. Elle permet de choisir une campagne Companion et d'y importer l'URL du profil LinkedIn ouvert dans Chrome après clic explicite.
 
