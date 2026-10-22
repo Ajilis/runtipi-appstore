@@ -76,7 +76,7 @@ export function CampaignEditor({ id }) {
   if (error) return <ErrorBox error={error} />;
   if (!c) return null;
 
-  const assisted = (accounts.data || []).some((a) => a.id === c.account_id && a.provider === 'linkedin_cookie');
+  const assisted = (accounts.data || []).some((a) => a.id === c.account_id && ['linkedin_cookie', 'linkedin_companion'].includes(a.provider));
   const upd = (patch) => { setC({ ...c, ...patch }); setDirty(true); };
   const save = () => run(async () => {
     await api(`/api/campaigns/${id}`, { method: 'PATCH', body: { name: c.name, goal: c.goal, offer: c.offer, icp: c.icp, sequence: c.sequence, settings: c.settings, account_id: c.account_id } });
@@ -109,7 +109,7 @@ export function CampaignEditor({ id }) {
       </div>
       {!c.account_id && <div className="alert warn" style={{ marginBottom: 14 }}>Choisissez un compte LinkedIn dans l'onglet Réglages pour pouvoir activer la campagne.</div>}
       {assisted && <div className="alert info" style={{ marginBottom: 14 }}>
-        <strong>Campagne assistée avec votre session LinkedIn.</strong> Aucun envoi automatique, sans Unipile.
+        <strong>Campagne assistée avec votre navigateur LinkedIn.</strong> Aucun envoi automatique, sans Unipile.
         <div className="row wrap" style={{ marginTop: 10 }}>
           <Link className="btn sm" to={`/prospects?campaign=${c.id}&import=1`}>Importer des profils CSV / URLs</Link>
           <Link className="btn sm" to="/messages?filter=approval">Brouillons à valider</Link>
@@ -154,7 +154,7 @@ export function CampaignEditor({ id }) {
             <Field label="Compte LinkedIn">
               <select className="select" value={c.account_id || ''} onChange={(e) => upd({ account_id: e.target.value || null })}>
                 <option value="">Choisir un compte…</option>
-                {(accounts.data || []).map((a) => <option key={a.id} value={a.id}>{a.name}{a.provider === "linkedin_cookie" ? " · Session LinkedIn (manuel)" : ""}</option>)}
+                {(accounts.data || []).map((a) => <option key={a.id} value={a.id}>{a.name}{a.provider === "linkedin_cookie" ? " · Session LinkedIn (manuel)" : a.provider === "linkedin_companion" ? " · Extension Chrome (assisté)" : ""}</option>)}
               </select>
             </Field>
             <Field label="Langue des messages">
