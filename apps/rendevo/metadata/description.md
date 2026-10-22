@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 19** · **Version Rendevo : 0.2.8**
+**Version du catalogue Runtipi : 20** · **Version Rendevo : 0.2.9**
+
+**Nouveau V20 — lire la page de résultats LinkedIn avec Chrome Companion.** Depuis une recherche `https://www.linkedin.com/search/results/people/` déjà ouverte dans Chrome, cliquer **« Lire les profils de cette page LinkedIn »**. Le compagnon détecte les URLs des profils présents dans les résultats chargés, les dédoublonne et propose leur vérification avant un import groupé confirmé dans une campagne Companion (100 maximum). Aucun prospect n'est transmis lors de la lecture. Pas de copie de cookies, pagination ou défilement automatique. Cette lecture locale du DOM sur demande dépend de la structure de LinkedIn et peut être soumise aux conditions du service.
 
 **Nouveau V19 — import groupé de profils dans Chrome Companion.** Dans la page de recherche de personnes LinkedIn, choisir et copier manuellement les adresses des profils intéressants. Dans l'extension Chrome Companion : sélectionner la campagne, coller jusqu'à **100 URLs de profils**, prévisualiser les liens dédoublonnés puis confirmer l'import en une seule opération dans Rendevo. L'authentification utilise le jeton Companion limité ; les faux domaines et campagnes non autorisées sont rejetés. **L'extension n'extrait pas automatiquement le contenu de la page LinkedIn**, ne lit pas ses cookies et n'envoie aucune invitation ni message. Un onglet LinkedIn connecté peut toujours être ouvert pour rechercher des personnes.
 
