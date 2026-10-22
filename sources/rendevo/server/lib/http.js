@@ -35,6 +35,7 @@ const MIME = {
   '.webm': 'video/webm',
   '.mov': 'video/quicktime',
   '.pdf': 'application/pdf',
+  '.zip': 'application/zip',
   '.txt': 'text/plain; charset=utf-8',
   '.ics': 'text/calendar; charset=utf-8',
 };
