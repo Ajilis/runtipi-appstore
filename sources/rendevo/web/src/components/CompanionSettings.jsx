@@ -32,7 +32,7 @@ export function CompanionSettings() {
         </div>
         <div className="row wrap">
           <button className="btn primary" disabled={busy} onClick={makeCode}>Générer un code d'association</button>
-          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V16.zip">Télécharger l’extension Chrome (.zip)</a>
+          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V18.zip">Télécharger l’extension Chrome (.zip)</a>
         </div>
         <p className="small soft">Téléchargement direct depuis ton serveur Rendevo, sans GitHub. Décompresse le ZIP, puis ouvre <code>chrome://extensions</code> → Mode développeur → Charger l’extension non empaquetée et sélectionne le dossier contenant <code>manifest.json</code>.</p>
         {pairing && (
