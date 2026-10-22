@@ -9,17 +9,20 @@ import { assistedCampaignSettings, assistedMessageApproval } from '../server/ser
 const extensionFile = new URL('../extension/popup.js', import.meta.url);
 const manifest = JSON.parse(fs.readFileSync(new URL('../extension/manifest.json', import.meta.url), 'utf8'));
 
-test('extension Manifest V3 sans autorisation cookie, injection ou domaine LinkedIn', () => {
+test('extension MV3 sans cookies, scripts, ni permissions d’hôtes permanentes', () => {
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions, ['activeTab', 'storage']);
+  assert.deepEqual(manifest.permissions, ['activeTab', 'storage', 'permissions']);
+  assert.deepEqual(manifest.optional_host_permissions, ['https://*/*', 'http://*/*']);
   assert.equal(manifest.host_permissions, undefined);
   assert.equal(manifest.content_scripts, undefined);
   assert.equal(manifest.background, undefined);
   const js = fs.readFileSync(extensionFile, 'utf8');
-  for (const forbidden of ['fetch(', 'XMLHttpRequest', 'document.cookie', 'chrome.cookies', 'chrome.scripting',
-    'executeScript', 'chrome.webRequest', 'querySelector(', 'innerHTML']) {
+  for (const forbidden of ['document.cookie', 'chrome.cookies', 'chrome.scripting',
+    'executeScript', 'chrome.webRequest', 'innerHTML']) {
     assert.equal(js.includes(forbidden), false, forbidden);
   }
+  assert.match(js, /chrome\.permissions\.request/);
+  assert.match(js, /credentials: 'omit'/);
 });
 
 test('les URLs de profils LinkedIn ne laissent passer ni faux domaines, ni requêtes, ni liens tiers', () => {
@@ -60,20 +63,22 @@ async function simulatePopup(currentTabUrl) {
   const elements = new Map();
   function elem(id) {
     if (!elements.has(id)) elements.set(id, {
-      value: '', textContent: '', disabled: true,
-      events: {},
+      value: '', textContent: '', disabled: false, hidden: false, options: [], events: {},
       addEventListener(name, callback) { this.events[name] = callback; },
+      replaceChildren() { this.options = []; },
+      append(child) { this.options.push(child); },
     });
     return elements.get(id);
   }
-  const createdTabs = [];
-  const storage = {};
+  const createdTabs = [], requests = [], permissions = [], storage = {};
   const context = {
-    document: { getElementById: elem },
+    document: { getElementById: elem, createElement: () => ({ value: '', textContent: '' }) },
     chrome: {
+      permissions: { request: async (x) => { permissions.push(x); return true; } },
       storage: { local: {
-        get: async () => ({ rendevoOrigin: storage.rendevoOrigin }),
+        get: async () => ({ ...storage }),
         set: async (patch) => Object.assign(storage, patch),
+        remove: async (k) => { delete storage[k]; },
       } },
       tabs: {
         query: async () => [{ url: currentTabUrl }],
@@ -81,52 +86,78 @@ async function simulatePopup(currentTabUrl) {
       },
     },
     URL,
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      const pathname = new URL(url).pathname;
+      const response = {
+        '/api/companion/exchange': { token: 'example-' + 'A'.repeat(43), expires_at: '2030-01-01T00:00:00Z' },
+        '/api/companion/status': { connected: true, workspace: 'Mon espace' },
+        '/api/companion/campaigns': { items: [{ id: 'campaign-1', name: 'Campagne test' }] },
+        '/api/companion/prospects': { created: 1, duplicates: 0, invalid: 0 },
+      }[pathname];
+      if (!response) throw Error('Unexpected call ' + pathname);
+      return { ok: true, status: 200, json: async () => response };
+    },
   };
   vm.runInNewContext(fs.readFileSync(extensionFile, 'utf8'), context, { filename: 'popup.js' });
-  for (let i = 0; i < 3; i++) await new Promise((resolve) => setImmediate(resolve));
-  return { elem, storage, createdTabs };
+  for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
+  return { elem, storage, createdTabs, requests, permissions };
 }
 
-test('l’extension attend une action explicite et ouvre le formulaire sans importer automatiquement', async () => {
-  const { elem, storage, createdTabs } = await simulatePopup('https://www.linkedin.com/in/camille/?trk=tracking');
+test('l’extension échange directement le code, lit les campagnes, importe uniquement sur clic', async () => {
+  const { elem, storage, createdTabs, requests, permissions } = await simulatePopup('https://www.linkedin.com/in/camille/?trk=tracking');
   assert.equal(elem('import').disabled, true);
   elem('base').value = 'https://rendevo.exemple.fr/';
   await elem('save').events.click();
   assert.equal(storage.rendevoOrigin, 'https://rendevo.exemple.fr');
-  assert.equal(elem('import').disabled, false);
+  assert.equal(permissions.length, 1);
+  assert.deepEqual(Array.from(permissions[0].origins), ['https://rendevo.exemple.fr/*']);
   assert.equal(createdTabs.length, 0);
+  elem('paircode').value = 'example-one-time-code';
+  elem('paircode').events.input();
+  await elem('connect').events.click();
+  assert.ok(storage.companionToken);
+  assert.equal(elem('connected').hidden, false);
+  assert.equal(elem('workspace').textContent, 'Mon espace');
+  assert.equal(elem('campaign').options.length, 2);
+  assert.equal(requests.length, 3); // exchange + status + campaigns; no upload yet
+  elem('campaign').value = 'campaign-1';
   await elem('import').events.click();
-  assert.equal(createdTabs.length, 1);
-  const link = new URL(createdTabs[0]);
-  assert.equal(link.origin, 'https://rendevo.exemple.fr');
-  assert.equal(link.pathname, '/prospects');
-  assert.equal(link.searchParams.get('import'), '1');
-  assert.equal(link.searchParams.get('companion_url'), 'https://www.linkedin.com/in/camille/');
-  assert.equal(createdTabs.length, 1);
+  assert.equal(requests.length, 4);
+  assert.equal(requests[3].url, 'https://rendevo.exemple.fr/api/companion/prospects');
+  assert.equal(requests[3].options.method, 'POST');
+  assert.equal(requests[3].options.credentials, 'omit');
+  assert.equal(requests[3].options.headers.Authorization, 'Bearer ' + storage.companionToken);
+  const sent = JSON.parse(requests[3].options.body);
+  assert.equal(sent.campaign_id, 'campaign-1');
+  assert.equal(sent.linkedin_url, 'https://www.linkedin.com/in/camille/');
+  assert.equal(createdTabs.length, 0);
 });
 
-test('l’extension refuse un faux LinkedIn et les origines Rendevo non sécurisées', async () => {
-  const { elem, storage, createdTabs } = await simulatePopup('https://www.linkedin.com.evil.test/in/camille/');
-  elem('base').value = 'https://attacker.example/?trick=1';
+test('l’extension refuse les origines invalides et les faux domaines LinkedIn', async () => {
+  const { elem, storage, requests, createdTabs } = await simulatePopup('https://linkedin.com.attacker.example/in/camille/');
+  elem('base').value = 'https://rendevo.exemple.fr/path';
   await elem('save').events.click();
   assert.equal(storage.rendevoOrigin, undefined);
-  assert.equal(elem('messages').disabled, true);
   elem('base').value = 'http://public.example.com';
   await elem('save').events.click();
   assert.equal(storage.rendevoOrigin, undefined);
   elem('base').value = 'https://rendevo.exemple.fr';
   await elem('save').events.click();
+  elem('paircode').value = 'some-code';
+  elem('paircode').events.input();
+  await elem('connect').events.click();
   assert.equal(elem('import').disabled, true);
-  assert.equal(elem('messages').disabled, false);
+  assert.equal(requests.filter((r) => r.url.includes('/prospects')).length, 0);
   assert.equal(createdTabs.length, 0);
 });
 
-test('l’interface Rendevo impose une confirmation d’import et n’envoie pas la page automatiquement', () => {
-  const prospects = fs.readFileSync(new URL('../web/src/pages/Prospects.jsx', import.meta.url), 'utf8');
+test('l’interface Rendevo propose une association directe et la révocation', () => {
   const settings = fs.readFileSync(new URL('../web/src/pages/Settings.jsx', import.meta.url), 'utf8');
-  assert.match(prospects, /normalizedLinkedinProfileUrl\(query\.companion_url\)/);
-  assert.match(prospects, /initialUrls=\{companionUrl \|\| ''\}/);
-  assert.match(prospects, /setMode\]\s*=\s*useState\(initialUrls \? 'urls'/);
-  assert.match(prospects, /onClick=\{submit\}/);
-  assert.match(settings, /Rendevo Companion — extension Chrome/);
+  const component = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
+  assert.match(settings, /CompanionSettings/);
+  assert.match(component, /api\/companion\/pairings/);
+  assert.match(component, /api\/companion\/devices/);
+  assert.match(component, /Générer un code d'association/);
+  assert.match(component, /Révoquer/);
 });
