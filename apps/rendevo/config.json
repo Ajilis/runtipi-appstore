@@ -9,9 +9,9 @@
     "automation",
     "social"
   ],
-  "description": "Version du catalogue Runtipi : 12 | Version Rendevo : 0.2.1. Modification sécurisée du nom et de l'adresse e-mail de connexion dans Réglages > Mon compte, avec mot de passe actuel exigé lors du changement d'e-mail. Campagnes LinkedIn assistées sans Unipile : import CSV/URLs, brouillons validés par un humain, copie/envoi depuis LinkedIn, suivi des invitations et réponses ; connexion par cookies avec diagnostic réseau/DNS/TLS et classification sécurisée des redirections (connexion, sécurité, accueil, profil, Voyager, authentification indirecte, autre), historique des vérifications, tests espacés et User-Agent Chrome macOS et affichage du profil enregistré (lecture seule, expérimentale) et Unipile. Agent de prospection auto-hébergé : il qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres. Node.js + PostgreSQL, données et fichier de configuration persistants. Accès local http://IP:8288 et Cloudflare Tunnel, sans Traefik.",
-  "tipi_version": 12,
-  "version": "0.2.1",
+  "description": "Version du catalogue Runtipi : 13 | Version Rendevo : 0.2.2. Nouveau champ facultatif de cookie supplémentaire (nom TEST modifiable, valeur vide), valeur chiffrée et jamais envoyée à LinkedIn lors de la vérification ;  Modification sécurisée du nom et de l'adresse e-mail de connexion dans Réglages > Mon compte, avec mot de passe actuel exigé lors du changement d'e-mail. Campagnes LinkedIn assistées sans Unipile : import CSV/URLs, brouillons validés par un humain, copie/envoi depuis LinkedIn, suivi des invitations et réponses ; connexion par cookies avec diagnostic réseau/DNS/TLS et classification sécurisée des redirections (connexion, sécurité, accueil, profil, Voyager, authentification indirecte, autre), historique des vérifications, tests espacés et User-Agent Chrome macOS et affichage du profil enregistré (lecture seule, expérimentale) et Unipile. Agent de prospection auto-hébergé : il qualifie vos prospects LinkedIn selon votre cible et leurs signaux d'achat, écrit dans votre style, relance, répond avec un setter IA et place les rendez-vous dans vos créneaux libres. Node.js + PostgreSQL, données et fichier de configuration persistants. Accès local http://IP:8288 et Cloudflare Tunnel, sans Traefik.",
+  "tipi_version": 13,
+  "version": "0.2.2",
   "source": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
   "website": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo",
   "exposable": false,
@@ -61,5 +61,5 @@
     }
   ],
   "created_at": 1792589944768,
-  "updated_at": 1792648800000
+  "updated_at": 1792652400000
 }

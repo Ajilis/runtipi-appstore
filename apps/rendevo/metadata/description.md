@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 12** · **Version Rendevo : 0.2.1**
+**Version du catalogue Runtipi : 13** · **Version Rendevo : 0.2.2**
+
+**Nouveau (V13)** : dans **Réglages → Comptes LinkedIn → Ajouter ou modifier**, un cookie supplémentaire facultatif peut être renseigné avec son nom **TEST** prérempli et modifiable et sa valeur initialement vide. Sa valeur est chiffrée et masquée ; elle peut être remplacée ou supprimée ultérieurement. **Ce cookie supplémentaire n'est pas transmis à LinkedIn lors de « Tester »**, lequel utilise toujours uniquement `li_at` et `JSESSIONID` ; il ne résout pas à lui seul les déconnexions de Chrome.
 
 Dans **Réglages → Mon compte**, modifiez votre nom et l'adresse e-mail utilisée pour vous connecter ; un changement d'e-mail exige votre mot de passe actuel. Les campagnes, espaces et profils existants sont conservés.
 
@@ -55,4 +57,4 @@ Sauvegarder ce dossier (ou utiliser la sauvegarde Runtipi) avant toute mise à j
 
 ## Image Docker
 
-`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.2.1`.
+`ghcr.io/ajilis/rendevo` est construite par GitHub Actions depuis [`sources/rendevo`](https://github.com/Ajilis/runtipi-appstore/tree/main/sources/rendevo) (amd64 et arm64). Version figée dans le Compose : `0.2.2`.
