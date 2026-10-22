@@ -157,7 +157,7 @@ test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’acc�
   assert.equal(checked, true);
   assert.ok(called.some((x) => x.key === 'Cache-Control' && x.value === 'no-store'));
   assert.ok(called.some((x) => x.file === '/app/web/dist/Rendevo-Companion.zip'
-    && x.options.download === 'Rendevo-Companion-V16.zip'));
+    && x.options.download === 'Rendevo-Companion-V18.zip'));
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
   assert.match(ui, /download="Rendevo-Companion-V16\.zip"/);
