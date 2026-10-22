@@ -29,6 +29,12 @@ Aucune dépendance npm à l'exécution : serveur HTTP, client PostgreSQL (SCRAM-
 | `server/db/migrations` | Schéma SQL appliqué au démarrage |
 | `web/src` | Interface React (tableau de bord, prospects, campagnes, messages, agenda, médias, réglages, pages publiques) |
 
+## Importer une page de résultats LinkedIn via Companion (0.2.9 / Runtipi V20)
+
+Depuis une recherche de personnes LinkedIn déjà ouverte sur `/search/results/people/`, l'utilisateur peut cliquer **« Lire les profils de cette page LinkedIn »** dans Chrome Companion. Une lecture DOM **ponctuelle, sur clic** et limitée aux liens de profils affichés dans les résultats chargés du contenu principal préremplit la liste des URLs ; elle ne transmet aucune donnée au serveur. L'utilisateur peut corriger ou supprimer des liens, les prévisualise de nouveau après toute modification et confirme explicitement l'import (100 profils maximum) dans une campagne Companion. L'import groupé, la normalisation des domaines, la déduplication, l'authentification restreinte et l'isolation des espaces sont ceux de V19.
+
+La lecture du DOM utilise les permissions Chrome `activeTab` et `scripting`, **sans autorisation LinkedIn permanente**. Pas de requête Voyager, ni cookies, ni pagination, ni défilement automatisé. Les sélecteurs du site peuvent évoluer et rendre la fonctionnalité inopérante. La lecture DOM elle-même peut être soumise aux restrictions de LinkedIn ; examiner ses conditions et la réglementation sur les données personnelles.
+
 ## Import groupé manuel des liens LinkedIn dans Companion (0.2.8 / Runtipi V19)
 
 **Rendevo Companion V19** propose une saisie multiligne de profils `https://www.linkedin.com/in/...` fournis volontairement depuis une page de recherche LinkedIn (par exemple `/search/results/people/`). L'utilisateur **prévisualise** la liste, vérifie chaque adresse, puis confirme **l'import groupé**. L'extension supprime les doublons avant de soumettre au maximum 100 profils dans l'API `POST /api/companion/prospects/batch` avec le jeton limité et révocable de Companion. Le serveur vérifie chaque URL, le fournisseur de la campagne et son appartenance à l'espace avant l'import. Les doublons déjà enregistrés sont gérés par l'agent. Aucun navigateur automatisé, aucune lecture de DOM, aucun export de cookies ni scraping LinkedIn : **la V19 n'aspire pas automatiquement une page de résultats**. Les profils sont choisis et les adresses copiées par l'utilisateur.
