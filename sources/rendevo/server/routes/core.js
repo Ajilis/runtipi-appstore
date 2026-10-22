@@ -23,8 +23,9 @@ function maskAccount(a) {
   const cfg = { ...a.config };
   const hasKey = !!cfg.api_key_enc;
   const hasSession = !!(cfg.li_at_enc && cfg.jsessionid_enc);
-  for (const name of ['api_key_enc', 'api_key', 'li_at_enc', 'jsessionid_enc', 'li_at', 'jsessionid']) delete cfg[name];
-  return { ...a, config: { ...cfg, has_api_key: hasKey, has_session: hasSession } };
+  const hasExtraCookie = !!cfg.extra_cookie_value_enc;
+  for (const name of ['api_key_enc', 'api_key', 'li_at_enc', 'jsessionid_enc', 'li_at', 'jsessionid', 'extra_cookie_value_enc', 'extra_cookie_value', 'clear_extra_cookie']) delete cfg[name];
+  return { ...a, config: { ...cfg, has_api_key: hasKey, has_session: hasSession, has_extra_cookie: hasExtraCookie } };
 }
 
 function cleanList(v) {
@@ -136,9 +137,27 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
       delete cfg.profile; // A different session may refer to another member.
       delete cfg.verification; // The previous test results belong to the old credentials.
     }
+    if (provider === 'linkedin_cookie') {
+      // Supplementary cookie metadata is optional and never sent during verification.
+      const name = String(input.extra_cookie_name ?? cfg.extra_cookie_name ?? 'TEST').trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_-]{0,63}$/.test(name)
+        || ['li_at', 'jsessionid'].includes(name.toLowerCase())) {
+        throw bad('Nom du cookie supplémentaire invalide ou réservé');
+      }
+      cfg.extra_cookie_name = name;
+      if (input.clear_extra_cookie) {
+        delete cfg.extra_cookie_value_enc;
+      } else if (input.extra_cookie_value) {
+        const value = String(input.extra_cookie_value).trim();
+        if (value.length > 4096 || /[;\\r\\n\\x00-\\x1F\\x7F]/.test(value)) {
+          throw bad('Valeur du cookie supplémentaire invalide');
+        }
+        cfg.extra_cookie_value_enc = vault.encrypt(value);
+      }
+    }
     if (input.ignore_window !== undefined) cfg.ignore_window = !!input.ignore_window;
     if (input.limits) cfg.limits = Object.fromEntries(Object.entries(input.limits).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, Math.max(0, parseInt(v, 10) || 0)]));
-    for (const name of ['api_key', 'li_at', 'jsessionid']) delete cfg[name];
+    for (const name of ['api_key', 'li_at', 'jsessionid', 'extra_cookie_value', 'clear_extra_cookie']) delete cfg[name];
     return cfg;
   }
 
