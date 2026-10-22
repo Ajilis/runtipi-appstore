@@ -29,6 +29,14 @@ Aucune dépendance npm à l'exécution : serveur HTTP, client PostgreSQL (SCRAM-
 | `server/db/migrations` | Schéma SQL appliqué au démarrage |
 | `web/src` | Interface React (tableau de bord, prospects, campagnes, messages, agenda, médias, réglages, pages publiques) |
 
+## Découverte de profils professionnels depuis le web public (0.2.6 / catalogue V17)
+
+Dans **Prospects → Trouver des prospects**, sélectionner **Recherche web publique** : Rendevo propose une recherche de profils LinkedIn déjà indexés par l'API [Brave Search](https://brave.com/search/api/), sans ouvrir de session LinkedIn ni interroger LinkedIn ou son API Voyager. Un abonnement/API key Brave personnel est nécessaire ; cette clé se saisit dans la fenêtre de recherche, est chiffrée AES-GCM dans les réglages de l'espace et n'est pas renvoyée par les API Rendevo. Le fournisseur Brave facture ses requêtes selon son barème et propose un crédit mensuel ; aucune clé n'est préconfigurée.
+
+Choisir éventuellement une campagne **assistée**, renseigner poste, secteur, localisation, mots-clés (les critères de la campagne peuvent être repris), puis cliquer **Rechercher des profils**. Chaque requête explicite interroge l'index Brave une fois, avec un maximum de 20 résultats, et un délai minimal de 10 secondes entre recherches. Les URLs sont validées (HTTPS et domaine LinkedIn exact) et normalisées ; les titres/extraits affichés sont des **suggestions indicatives**, potentiellement anciennes.
+
+**Aucun prospect n'est ajouté au stade de la recherche.** Cocher les personnes pertinentes, contrôler l'URL source et corriger le nom proposé, puis cliquer **Importer les profils sélectionnés**. L'import s'effectue uniquement dans une campagne assistée du même espace (ou sans campagne) et respecte les doublons existants. Messages et invitations restent entièrement manuels. Aucune collecte de cookies, aucun scraping, aucun accès automatique à LinkedIn.
+
 ## Télécharger Chrome Companion directement depuis Rendevo (0.2.5 / Runtipi V16)
 
 Dans **Réglages → Intégrations → Rendevo Companion**, le bouton **Télécharger l’extension Chrome (.zip)** appelle directement la route authentifiée `GET /api/companion/download`. Rendevo fournit le fichier `Rendevo-Companion-V16.zip` depuis son conteneur Docker. L'archive est créée pendant la construction de l'image Docker à partir des fichiers `extension/`, puis placée dans `web/dist` ; aucun appel à GitHub n'est nécessaire lors du téléchargement. Décompresser le ZIP et charger le dossier contenant `manifest.json` depuis `chrome://extensions` → Mode développeur → Charger l'extension non empaquetée. Les jetons Companion, les cookies LinkedIn et les données de compte existants restent inchangés.

@@ -16,6 +16,9 @@ function maskSettings(s) {
     out.ai = { ...out.ai, has_api_key: !!out.ai.api_key_enc };
     delete out.ai.api_key_enc;
   }
+  if (out.discovery) {
+    out.discovery = { has_api_key: !!out.discovery.brave_api_key_enc };
+  }
   return out;
 }
 

@@ -246,24 +246,160 @@ function AddModal({ campaigns, onClose, onDone }) {
 }
 
 function DiscoverModal({ campaigns, onClose, onDone }) {
-  const usable = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
-  const [campaign, setCampaign] = useState(usable[0]?.id || '');
-  const [limit, setLimit] = useState(15);
+  const automatic = campaigns.filter((c) => c.account_provider && !['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
+  const assisted = campaigns.filter((c) => ['manual', 'linkedin_cookie', 'linkedin_companion'].includes(c.account_provider));
+  const config = useApi('/api/discovery/config');
+  const [mode, setMode] = useState('web');
+  const [campaign, setCampaign] = useState(assisted[0]?.id || '');
+  const [limit, setLimit] = useState(10);
+  const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
+  const [key, setKey] = useState('');
+  const [results, setResults] = useState(null);
+  const [chosen, setChosen] = useState({});
+  const [names, setNames] = useState({});
   const [run, busy] = useAction();
+  const currentCampaign = campaigns.find((c) => c.id === campaign);
+  const fromCampaign = (property) => Array.isArray(currentCampaign?.icp?.[property]) ? currentCampaign.icp[property][0] || '' : '';
+  const chosenItems = (results || []).filter((r) => !!chosen[r.linkedin_url]);
+  const suggestion = (title) => {
+    const lead = String(title || '').split(/\s+[-–—|]\s+/)[0].trim();
+    return lead.split(/\s+/).length <= 5 ? lead : '';
+  };
+  const saveKey = () => run(async () => {
+    await api('/api/discovery/config', { method: 'POST', body: { api_key: key } });
+    setKey('');
+    config.reload();
+  }, 'Clé Brave enregistrée et chiffrée');
+  const search = () => run(async () => {
+    const input = {
+      title: criteria.title || fromCampaign('titles'),
+      industry: criteria.industry || fromCampaign('industries'),
+      location: criteria.location || fromCampaign('locations'),
+      keywords: criteria.keywords || fromCampaign('keywords'),
+      limit,
+    };
+    const response = await api('/api/discovery/search', { method: 'POST', body: input });
+    setResults(response.items);
+    setChosen({});
+    setNames(Object.fromEntries(response.items.map((item) => [item.linkedin_url, suggestion(item.title)])));
+  }, 'Recherche terminée : vérifiez les profils avant import');
+  const importSelected = () => run(async () => {
+    const response = await api('/api/discovery/import', {
+      method: 'POST',
+      body: {
+        campaign_id: campaign || null,
+        items: chosenItems.map((item) => ({
+          linkedin_url: item.linkedin_url,
+          full_name: String(names[item.linkedin_url] || '').trim(),
+        })),
+      },
+    });
+    onDone({ ...response, found: chosenItems.length });
+  });
+  const runAutomatic = () => run(async () => {
+    const response = await api(`/api/campaigns/${campaign}/discover`, { method: 'POST', body: { limit } });
+    onDone(response);
+  });
   return (
-    <Modal title="Trouver des prospects" onClose={onClose} footer={<>
-      <button className="btn ghost" onClick={onClose}>Annuler</button>
-      <button className="btn primary" disabled={busy || !campaign} onClick={() => run(async () => onDone(await api(`/api/campaigns/${campaign}/discover`, { method: 'POST', body: { limit } })))}>{busy ? <span className="spinner" /> : <LuSparkles />}Lancer la recherche</button>
+    <Modal title="Trouver des prospects" onClose={onClose} wide footer={<>
+      <button className="btn ghost" onClick={onClose}>Fermer</button>
+      {mode === 'web' && results && <button className="btn primary" disabled={busy || !chosenItems.length} onClick={importSelected}>
+        Importer les {chosenItems.length} profils sélectionnés
+      </button>}
+      {mode === 'provider' && <button className="btn primary" disabled={busy || !campaign} onClick={runAutomatic}>
+        {busy ? <span className="spinner" /> : <LuSparkles />}Lancer la recherche automatique
+      </button>}
     </>}>
-      {usable.length === 0 ? (
-        <div className="alert warn">La recherche automatique n'est pas disponible pour les comptes LinkedIn assistés. Importez manuellement des URLs de profils (depuis Chrome Companion) ou un CSV.</div>
-      ) : (
-        <div className="stack" style={{ '--gap': '12px' }}>
-          <p className="soft">L'agent cherche des profils correspondant à la cible de la campagne, les enrichit et les qualifie. Les exclusions et doublons sont écartés.</p>
-          <Field label="Campagne"><CampaignSelect campaigns={usable} value={campaign} onChange={setCampaign} allowNone={false} /></Field>
-          <Field label="Nombre de profils à analyser"><input className="input num" type="number" min="1" max="50" value={limit} onChange={(e) => setLimit(Number(e.target.value))} style={{ maxWidth: 120 }} /></Field>
-        </div>
-      )}
+      <div className="stack" style={{ '--gap': '14px' }}>
+        {automatic.length > 0 && <Seg value={mode} onChange={(next) => { setMode(next); setCampaign(next === 'provider' ? automatic[0]?.id || '' : assisted[0]?.id || ''); }}
+          options={[{ value: 'web', label: 'Recherche web publique' }, { value: 'provider', label: 'Connecteur automatique' }]} />}
+        {mode === 'provider' ? (
+          <div className="stack" style={{ '--gap': '12px' }}>
+            <p className="soft">Recherche avec le fournisseur de la campagne (hors comptes assistés).</p>
+            <Field label="Campagne"><CampaignSelect campaigns={automatic} value={campaign} onChange={setCampaign} allowNone={false} /></Field>
+            <Field label="Nombre de profils"><input className="input num" type="number" min="1" max="20"
+              value={limit} onChange={(e) => setLimit(Math.max(1, Math.min(20, Number(e.target.value) || 10)))} /></Field>
+          </div>
+        ) : (
+          <>
+            <div className="alert info small">
+              Recherche des profils professionnels <strong>déjà indexés sur le web</strong> par Brave Search.
+              Ni Rendevo ni Chrome Companion ne consultent LinkedIn automatiquement. Les résultats sont des suggestions à vérifier :
+              certains postes ou entreprises peuvent être anciens.
+            </div>
+            <Field label="Campagne de destination">
+              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); setResults(null); }} />
+            </Field>
+            <div className="grid-2">
+              {[
+                ['title', 'Poste recherché', 'titles', 'Ex. Directeur marketing'],
+                ['industry', 'Secteur', 'industries', 'Ex. Logiciel B2B'],
+                ['location', 'Localisation', 'locations', 'Ex. Paris'],
+                ['keywords', 'Mots-clés', 'keywords', 'Ex. SaaS'],
+              ].map(([field, label, source, example]) => (
+                <Field key={field} label={label} hint={fromCampaign(source) ? `Cible campagne : ${fromCampaign(source)}` : undefined}>
+                  <input className="input" value={criteria[field]} maxLength={90} placeholder={example}
+                    onChange={(e) => setCriteria((prev) => ({ ...prev, [field]: e.target.value }))} />
+                </Field>
+              ))}
+            </div>
+            <Field label="Nombre maximum de résultats (1–20)">
+              <input className="input num" type="number" min="1" max="20" value={limit}
+                onChange={(e) => setLimit(Math.max(1, Math.min(20, Number(e.target.value) || 10)))} />
+            </Field>
+            {config.loading ? <p className="small soft">Vérification de la configuration de recherche…</p> : (
+              <div className="panel panel-pad stack" style={{ '--gap': '10px' }}>
+                <strong>Recherche Brave : {config.data?.has_api_key ? 'Clé configurée' : 'Clé API à configurer'}</strong>
+                <p className="small soft">La recherche requiert une clé personnelle Brave Search API, indépendante de LinkedIn.
+                  Elle est chiffrée dans Rendevo. Le service Brave peut être payant selon votre utilisation.</p>
+                <a href="https://api-dashboard.search.brave.com/" target="_blank" rel="noopener noreferrer" className="small">
+                  Obtenir une clé API Brave Search <LuExternalLink />
+                </a>
+                <Field label={config.data?.has_api_key ? 'Remplacer la clé Brave (facultatif)' : 'Clé API Brave Search'}>
+                  <input className="input" type="password" value={key} autoComplete="off" spellCheck={false}
+                    onChange={(e) => setKey(e.target.value)} placeholder="Clé API non affichée après enregistrement" />
+                </Field>
+                <button className="btn" style={{ alignSelf: 'flex-start' }} disabled={busy || key.trim().length < 8}
+                  onClick={saveKey}>Enregistrer la clé</button>
+              </div>
+            )}
+            <div className="row wrap">
+              <button className="btn primary" disabled={busy || !config.data?.has_api_key} onClick={search}>
+                {busy ? <span className="spinner" /> : <LuSearch />}Rechercher des profils
+              </button>
+              <span className="small soft">Une recherche sur clic ; aucun ajout sans sélection.</span>
+            </div>
+            {results && (
+              <div className="stack" style={{ '--gap': '10px' }}>
+                <div className="row spread wrap">
+                  <strong>{results.length} profils publics suggérés</strong>
+                  <button className="btn sm" onClick={() => setChosen(Object.fromEntries(results.map((item) => [item.linkedin_url, true])))}>
+                    Tout sélectionner
+                  </button>
+                </div>
+                {!results.length && <p className="small soft">Aucun profil correspondant trouvé dans l'index public. Essayez des critères plus larges.</p>}
+                {results.map((item) => (
+                  <div className="panel panel-pad stack" style={{ '--gap': '7px' }} key={item.linkedin_url}>
+                    <label className="row" style={{ gap: 10 }}>
+                      <input type="checkbox" checked={!!chosen[item.linkedin_url]}
+                        onChange={(e) => setChosen((prev) => ({ ...prev, [item.linkedin_url]: e.target.checked }))} />
+                      <strong>{item.title || 'Profil LinkedIn'}</strong>
+                    </label>
+                    <a className="small" href={item.linkedin_url} target="_blank" rel="noopener noreferrer">
+                      Voir le profil source <LuExternalLink />
+                    </a>
+                    {item.description && <p className="small soft">{item.description}</p>}
+                    <Field label="Nom à enregistrer (vérifier avant import)">
+                      <input className="input" value={names[item.linkedin_url] ?? ''}
+                        onChange={(e) => setNames((prev) => ({ ...prev, [item.linkedin_url]: e.target.value }))} />
+                    </Field>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </Modal>
   );
 }

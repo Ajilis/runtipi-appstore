@@ -1,6 +1,10 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 16** · **Version Rendevo : 0.2.5**
+**Version du catalogue Runtipi : 17** · **Version Rendevo : 0.2.6**
+
+**Nouveau V17 — recherche de prospects depuis l'index public du web :** dans **Prospects → Trouver des prospects**, définissez le poste, secteur, zone géographique et mots-clés. Rendevo utilise une **clé personnelle Brave Search API** (service indépendant avec crédits mensuels et tarification selon l'usage), stockée chiffrée, pour proposer au maximum vingt profils professionnels LinkedIn déjà indexés sur le web. **Vérifiez les résultats et sélectionnez-les manuellement avant de les importer** dans une campagne assistée. Aucune session ni cookie LinkedIn n'est utilisé ; aucun scraping ni envoi automatique n'est réalisé. Les informations provenant du moteur sont indicatives et peuvent être obsolètes.
+
+
 
 **Nouveau V16 — téléchargement direct de l'extension Chrome.** Depuis **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Télécharger l’extension Chrome (.zip)** pour récupérer immédiatement la version compatible de Companion **depuis votre Rendevo**, sans redirection vers GitHub ni expiration d’artefact. Décompresser l’archive, puis charger le dossier contenant `manifest.json` dans `chrome://extensions` → Mode développeur → Charger l’extension non empaquetée. Téléchargement accessible après connexion à Rendevo ; l’association sécurisée par code temporaire reste identique.
 
