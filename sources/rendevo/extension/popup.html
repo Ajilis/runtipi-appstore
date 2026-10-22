@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Rendevo Companion</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <header><strong>Rendevo Companion</strong><span>V14 • mode assisté</span></header>
+  <main>
+    <label for="base">Adresse de ton Rendevo</label>
+    <input id="base" type="url" spellcheck="false" autocomplete="off"
+      placeholder="https://rendevo.exemple.fr">
+    <button id="save" type="button" class="secondary">Enregistrer l'adresse</button>
+    <hr>
+    <p class="label">Profil LinkedIn de l'onglet actif</p>
+    <p id="profile" class="profile">Ouvre un profil LinkedIn puis clique sur cette extension.</p>
+    <button id="import" type="button" disabled>Préparer l'import dans Rendevo</button>
+    <button id="messages" type="button" class="secondary" disabled>Ouvrir mes messages Rendevo</button>
+    <p id="status" role="status" aria-live="polite"></p>
+    <p class="notice">Aucun cookie, message, contenu de page ou jeton LinkedIn n'est lu.
+       Tu confirmes toi-même l'import dans Rendevo et les envois dans LinkedIn.</p>
+  </main>
+</body>
+</html>
