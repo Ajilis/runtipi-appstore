@@ -157,10 +157,10 @@ test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’acc�
   assert.equal(checked, true);
   assert.ok(called.some((x) => x.key === 'Cache-Control' && x.value === 'no-store'));
   assert.ok(called.some((x) => x.file === '/app/web/dist/Rendevo-Companion.zip'
-    && x.options.download === 'Rendevo-Companion-V18.zip'));
+    && x.options.download === 'Rendevo-Companion-V19.zip'));
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V18\.zip"/);
+  assert.match(ui, /download="Rendevo-Companion-V19\.zip"/);
   assert.doesNotMatch(ui, /Télécharger Companion \(GitHub Actions\)/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /COPY extension \/extension/);
@@ -176,4 +176,50 @@ test('les campagnes fournissent uniquement des mots-clés de ciblage pour la rec
   assert.equal(companionSearchTerms({}), '');
   assert.equal(companionSearchTerms(null), '');
   assert.equal(companionSearchTerms({ titles: ['X'.repeat(500)] }).length, 70);
+});
+
+test('import groupé : n’enregistre que les URLs soumises, vérifiées et dédoublonnées', async () => {
+  const h = harness();
+  const pair = await h.request('POST', '/api/companion/pairings');
+  const { token } = await h.request('POST', '/api/companion/exchange', { body: { code: pair.code } });
+  const link = 'https://www.linkedin.com/in/camille/?trk=search';
+  const result = await h.request('POST', '/api/companion/prospects/batch', { token, body: {
+    campaign_id: 'campaign-1',
+    items: [
+      { linkedin_url: link }, { linkedin_url: 'https://linkedin.com/in/camille/' },
+      { linkedin_url: 'https://www.linkedin.com/in/autre-profil/' },
+    ],
+  } });
+  assert.equal(result.submitted, 2);
+  assert.equal(result.repeated_in_list, 1);
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.saved[0].items.length, 2);
+  assert.equal(h.saved[0].items[0].linkedin_url, 'https://www.linkedin.com/in/camille/');
+  assert.equal(h.saved[0].items[1].source, 'companion_manual_list');
+  assert.deepEqual(h.saved[0].options, { campaignId: 'campaign-1', source: 'companion_manual_list' });
+});
+
+test('import groupé : refus de profils malformés, faux domaines et campagnes non autorisées', async () => {
+  const h = harness();
+  const pair = await h.request('POST', '/api/companion/pairings');
+  const { token } = await h.request('POST', '/api/companion/exchange', { body: { code: pair.code } });
+  const valid = [{ linkedin_url: 'https://linkedin.com/in/profil/' }];
+  await assert.rejects(
+    () => h.request('POST', '/api/companion/prospects/batch', { body: { items: valid } }),
+    /Associez de nouveau/,
+  );
+  for (const items of [[], new Array(101).fill(valid[0]), [
+    valid[0], { linkedin_url: 'https://linkedin.com.evil.test/in/intrus/' },
+  ], [{ linkedin_url: 'http://linkedin.com/in/profil/' }]]) {
+    await assert.rejects(
+      () => h.request('POST', '/api/companion/prospects/batch', { token, body: { items } }),
+      /1 et 100|profils LinkedIn/,
+    );
+  }
+  await assert.rejects(
+    () => h.request('POST', '/api/companion/prospects/batch', {
+      token, body: { items: valid, campaign_id: 'autre-espace' },
+    }), /Cette campagne/,
+  );
+  assert.equal(h.saved.length, 0);
 });

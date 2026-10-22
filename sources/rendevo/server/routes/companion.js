@@ -35,7 +35,7 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     ctx.header('Cache-Control', 'no-store');
     await ctx.sendFile(path.join(deps.config.staticDir, 'Rendevo-Companion.zip'), {
       cache: 'no-store',
-      download: 'Rendevo-Companion-V18.zip',
+      download: 'Rendevo-Companion-V19.zip',
     });
   });
 
@@ -121,6 +121,45 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
       [ctx.state.ws.id],
     );
     return { items: rows.map(({ id, name, icp }) => ({ id, name, search_keywords: companionSearchTerms(icp) })) };
+  });
+
+  // Explicitly pasted, user-reviewed profile URL list. No browser DOM scraping,
+  // LinkedIn session access, network requests or automatic search-result import.
+  router.post('/api/companion/prospects/batch', requireDevice, async (ctx) => {
+    const body = await ctx.json(48 * 1024);
+    const raw = body.items;
+    if (!Array.isArray(raw) || raw.length < 1 || raw.length > 100) {
+      throw bad('Sélectionnez entre 1 et 100 liens de profils à importer');
+    }
+    const items = [];
+    const seen = new Set();
+    for (const rawItem of raw) {
+      if (!rawItem || typeof rawItem !== 'object') throw bad('Format du profil invalide');
+      const linkedinUrl = normalizeCompanionProfile(rawItem.linkedin_url);
+      if (!linkedinUrl) throw bad('Tous les liens doivent correspondre à des profils LinkedIn /in/ valides');
+      const uniqueKey = linkedinUrl.toLowerCase();
+      if (seen.has(uniqueKey)) continue;
+      seen.add(uniqueKey);
+      items.push({
+        linkedin_url: linkedinUrl,
+        full_name: String(rawItem.full_name || '').trim().slice(0, 160),
+        source: 'companion_manual_list',
+      });
+    }
+    const campaignId = body.campaign_id || null;
+    if (campaignId) {
+      const { rows } = await db.query(
+        `SELECT 1 FROM campaigns c JOIN accounts a ON a.id = c.account_id
+         WHERE c.id = $1 AND c.workspace_id = $2 AND a.workspace_id = $2
+         AND a.provider = 'linkedin_companion' AND c.status <> 'archived'`,
+        [campaignId, ctx.state.ws.id],
+      );
+      if (!rows.length) throw forbidden('Cette campagne ne peut pas être utilisée par Companion');
+    }
+    const result = await agent.importProspects(ctx.state.ws, items,
+      { campaignId, source: 'companion_manual_list' });
+    return { created: result.created, duplicates: result.duplicates, invalid: result.invalid,
+      submitted: items.length, repeated_in_list: raw.length - items.length };
   });
 
   router.post('/api/companion/prospects', requireDevice, async (ctx) => {

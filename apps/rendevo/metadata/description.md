@@ -1,6 +1,10 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 18** · **Version Rendevo : 0.2.7**
+**Version du catalogue Runtipi : 19** · **Version Rendevo : 0.2.8**
+
+**Nouveau V19 — import groupé de profils dans Chrome Companion.** Dans la page de recherche de personnes LinkedIn, choisir et copier manuellement les adresses des profils intéressants. Dans l'extension Chrome Companion : sélectionner la campagne, coller jusqu'à **100 URLs de profils**, prévisualiser les liens dédoublonnés puis confirmer l'import en une seule opération dans Rendevo. L'authentification utilise le jeton Companion limité ; les faux domaines et campagnes non autorisées sont rejetés. **L'extension n'extrait pas automatiquement le contenu de la page LinkedIn**, ne lit pas ses cookies et n'envoie aucune invitation ni message. Un onglet LinkedIn connecté peut toujours être ouvert pour rechercher des personnes.
+
+
 
 **Nouveau V18 — rechercher directement dans son LinkedIn connecté depuis Chrome Companion.** Dans **Prospects → Trouver des prospects**, sélectionner **Dans mon LinkedIn (Companion)**. Dans l'extension, choisir une campagne, vérifier ou modifier les mots-clés automatiquement proposés depuis sa cible (poste, secteur, localisation, mots-clés), puis cliquer sur **Rechercher dans mon LinkedIn**. Chrome ouvre la recherche de personnes sur LinkedIn dans la session déjà active, sans clé Brave. L'utilisateur consulte les résultats, ouvre un profil et l'importe explicitement via Companion. L'extension n'analyse pas les pages LinkedIn, n'extrait pas les listes, ne copie aucun cookie et ne transmet pas d'invitations ou de messages.
 

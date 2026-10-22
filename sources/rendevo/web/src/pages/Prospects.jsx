@@ -333,10 +333,10 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               <strong>Depuis Chrome, en 3 étapes</strong>
               <p>1. Ouvre l'extension <strong>Rendevo Companion</strong> dans la barre de Chrome.</p>
               <p>2. Sélectionne la campagne, vérifie les mots-clés issus de ta cible et clique <strong>« Rechercher dans mon LinkedIn »</strong>.</p>
-              <p>3. LinkedIn affiche ses propres résultats. Ouvre un profil et clique dans Companion sur <strong>« Ajouter ce profil directement à Rendevo »</strong>.</p>
+              <p>3. LinkedIn affiche ses résultats : soit ouvre un profil et ajoute-le via Companion, soit copie manuellement plusieurs adresses de profils, colle-les dans <strong>« Importer une liste de profils LinkedIn »</strong> dans Companion, prévisualise et confirme l'import groupé.</p>
               <p className="small soft">Si l'extension n'est pas installée, récupère-la dans Réglages → Intégrations → Rendevo Companion.</p>
             </div>
-            <p className="small soft">Cette recherche ouvre LinkedIn dans la session Chrome active. Elle ne renvoie pas une liste automatique dans Rendevo ; les données disponibles dépendent de ton compte et des filtres LinkedIn.</p>
+            <p className="small soft">Cette recherche ouvre LinkedIn dans la session Chrome active. Elle ne renvoie pas une liste automatique dans Rendevo ; les URL de profils sont choisies et copiées par l'utilisateur et les données disponibles dépendent de ton compte et des filtres LinkedIn.</p>
           </div>
         ) : mode === 'provider' ? (
           <div className="stack" style={{ '--gap': '12px' }}>

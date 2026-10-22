@@ -29,6 +29,10 @@ Aucune dépendance npm à l'exécution : serveur HTTP, client PostgreSQL (SCRAM-
 | `server/db/migrations` | Schéma SQL appliqué au démarrage |
 | `web/src` | Interface React (tableau de bord, prospects, campagnes, messages, agenda, médias, réglages, pages publiques) |
 
+## Import groupé manuel des liens LinkedIn dans Companion (0.2.8 / Runtipi V19)
+
+**Rendevo Companion V19** propose une saisie multiligne de profils `https://www.linkedin.com/in/...` fournis volontairement depuis une page de recherche LinkedIn (par exemple `/search/results/people/`). L'utilisateur **prévisualise** la liste, vérifie chaque adresse, puis confirme **l'import groupé**. L'extension supprime les doublons avant de soumettre au maximum 100 profils dans l'API `POST /api/companion/prospects/batch` avec le jeton limité et révocable de Companion. Le serveur vérifie chaque URL, le fournisseur de la campagne et son appartenance à l'espace avant l'import. Les doublons déjà enregistrés sont gérés par l'agent. Aucun navigateur automatisé, aucune lecture de DOM, aucun export de cookies ni scraping LinkedIn : **la V19 n'aspire pas automatiquement une page de résultats**. Les profils sont choisis et les adresses copiées par l'utilisateur.
+
 ## Recherche LinkedIn assistée via Chrome Companion (0.2.7 / Runtipi V18)
 
 Depuis **Prospects → Trouver des prospects**, le nouveau mode **Dans mon LinkedIn (Companion)** fonctionne **sans clé Brave Search**. Installer l'extension Companion V18 depuis **Réglages → Intégrations**, sélectionner une campagne de type `linkedin_companion` dans l'extension et cliquer sur **Rechercher dans mon LinkedIn**. Rendevo fournit via l'API Companion uniquement les mots-clés autorisés de la cible de la campagne (premier poste, secteur, localisation et mot-clé), modifiables dans l'extension. Un clic explicite ouvre un onglet standard de recherche de personnes LinkedIn, dans la session Chrome déjà connectée, sans requête réseau du serveur vers LinkedIn.
