@@ -10,11 +10,14 @@ const pairing = byId('pairing'), connected = byId('connected');
 const importBtn = byId('import'), refresh = byId('refresh');
 const messages = byId('messages'), disconnect = byId('disconnect');
 const searchTerms = byId('searchterms'), searchLinkedin = byId('searchLinkedin');
+const bulkUrls = byId('bulkUrls'), analyzeBulk = byId('analyzeBulk');
+const bulkPreview = byId('bulkPreview'), submitBulk = byId('submitBulk');
 let rendevoOrigin = '';
 let deviceToken = '';
 let profileUrl = null;
 let busy = false;
 let campaignSuggestions = new Map();
+let preparedBulk = [];
 
 function localOrigin(input) {
   try {
@@ -50,6 +53,8 @@ function update() {
   importBtn.disabled = busy || !deviceToken || !profileUrl;
   refresh.disabled = busy || !deviceToken;
   searchLinkedin.disabled = busy || !deviceToken || !searchTerms.value.trim();
+  analyzeBulk.disabled = busy || !deviceToken || !bulkUrls.value.trim();
+  submitBulk.disabled = busy || !deviceToken || !preparedBulk.length;
   save.disabled = busy;
   disconnect.disabled = busy;
   messages.disabled = busy;
@@ -143,7 +148,63 @@ code.addEventListener('input', update);
 searchTerms.addEventListener('input', update);
 campaign.addEventListener('change', () => {
   searchTerms.value = campaignSuggestions.get(campaign.value) || '';
+  preparedBulk = [];
+  bulkPreview.textContent = 'La campagne a changé : prévisualise de nouveau les liens.';
   update();
+});
+
+bulkUrls.addEventListener('input', () => {
+  preparedBulk = [];
+  bulkPreview.textContent = 'Contenu modifié : clique sur Prévisualiser les liens.';
+  update();
+});
+
+analyzeBulk.addEventListener('click', () => {
+  if (!deviceToken || busy) return;
+  // Only links that the user pastes into the popup. Never read the tab DOM.
+  const candidates = bulkUrls.value.match(/https?:\/\/[^\s<>"',;]+/gi) || [];
+  const seen = new Set(), profiles = [];
+  let invalid = 0, repeated = 0;
+  for (const candidate of candidates) {
+    const valid = normalizedLinkedinProfileUrl(candidate);
+    if (!valid) { invalid++; continue; }
+    if (seen.has(valid.toLowerCase())) { repeated++; continue; }
+    seen.add(valid.toLowerCase());
+    profiles.push(valid);
+  }
+  if (!profiles.length || profiles.length > 100 || invalid) {
+    preparedBulk = [];
+    bulkPreview.textContent = !profiles.length
+      ? 'Aucun lien LinkedIn /in/ valide dans la liste. Copie les adresses complètes des profils.'
+      : profiles.length > 100 ? 'Maximum : 100 profils par import.'
+        : invalid + ' lien(s) non valide(s) : corrige la liste avant de continuer.';
+  } else {
+    preparedBulk = profiles;
+    bulkPreview.textContent = profiles.length + ' profil(s) prêt(s) à importer'
+      + (repeated ? ' (' + repeated + ' doublon(s) retiré(s))' : '')
+      + ' :\n' + profiles.join('\n');
+  }
+  update();
+});
+
+submitBulk.addEventListener('click', async () => {
+  if (!deviceToken || !preparedBulk.length || busy) return;
+  setBusy(true);
+  try {
+    const result = await api('/api/companion/prospects/batch', {
+      method: 'POST',
+      body: {
+        campaign_id: campaign.value || null,
+        items: preparedBulk.map((url) => ({ linkedin_url: url })),
+      },
+    });
+    preparedBulk = [];
+    bulkUrls.value = '';
+    bulkPreview.textContent = 'Import terminé : ' + result.created + ' créé(s), '
+      + result.duplicates + ' déjà présent(s), ' + result.invalid + ' invalide(s).';
+    say('Import groupé terminé dans Rendevo.');
+  } catch (err) { say(err.message); }
+  finally { setBusy(false); }
 });
 
 searchLinkedin.addEventListener('click', async () => {
