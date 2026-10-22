@@ -63,7 +63,7 @@ export function makeAuth(deps) {
     return true;
   }
 
-  const CLIENT_WRITE_OK = [/^\/api\/auth\//, /^\/api\/me\/password$/, /^\/api\/workspaces\/[^/]+\/switch$/];
+  const CLIENT_WRITE_OK = [/^\/api\/auth\//, /^\/api\/me\/(password|profile)$/, /^\/api\/workspaces\/[^/]+\/switch$/];
   const requireAuth = async (ctx) => {
     if (!(await load(ctx))) throw unauthorized();
     // "client" members (agency customers) can look but not touch.
@@ -175,6 +175,41 @@ export function makeAuth(deps) {
         public_url: deps.agent.publicUrl(ws),
         version: deps.config.version,
       };
+    });
+
+    // Allow each authenticated user (including client/read-only members) to edit
+    // their own identity without altering their workspace or permissions.
+    router.patch('/api/me/profile', requireAuth, async (ctx) => {
+      const body = await ctx.json();
+      const name = String(body.name ?? ctx.state.user.name).trim();
+      const email = String(body.email ?? ctx.state.user.email).trim().toLowerCase();
+      if (!name || name.length > 120) throw bad('Le nom doit contenir entre 1 et 120 caractères');
+      if (email.length > 254 || !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) {
+        throw bad('Adresse e-mail invalide');
+      }
+
+      const emailChanged = email !== ctx.state.user.email;
+      if (emailChanged) {
+        throttle('profile-email:' + ctx.state.user.id);
+        const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [ctx.state.user.id]);
+        if (!rows[0] || !verifyPassword(String(body.current_password || ''), rows[0].password_hash)) {
+          throw bad('Mot de passe actuel incorrect');
+        }
+        attempts.delete('profile-email:' + ctx.state.user.id);
+      }
+
+      try {
+        const { rows } = await db.query(
+          'UPDATE users SET name = $2, email = $3 WHERE id = $1 RETURNING id, name, email',
+          [ctx.state.user.id, name, email],
+        );
+        if (!rows[0]) throw unauthorized();
+        // The login session is attached to the immutable user id, not the e-mail.
+        return { user: rows[0], email_changed: emailChanged };
+      } catch (error) {
+        if (error.code === '23505') throw bad('Cette adresse e-mail est déjà utilisée');
+        throw error;
+      }
     });
 
     router.post('/api/me/password', requireAuth, async (ctx) => {
