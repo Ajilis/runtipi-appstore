@@ -6,6 +6,7 @@ import { OfferEditor, VoiceEditor, IcpEditor, AvailabilityEditor, ScheduleEditor
 import { AccountForm, emptyAccount } from '../components/AccountForm.jsx';
 import { LinkedInAccountProfile } from '../components/LinkedInAccountProfile.jsx';
 import { LinkedInAccountDiagnostics } from '../components/LinkedInAccountDiagnostics.jsx';
+import { CompanionSettings } from '../components/CompanionSettings.jsx';
 
 const SECTIONS = [
   ['general', 'Général'],
@@ -272,21 +273,7 @@ function Integrations() {
   const mcpUrl = `${session.public_url || window.location.origin}/mcp`;
   return (
     <div className="stack" style={{ '--gap': '16px' }}>
-      <div className="panel">
-        <div className="panel-head"><h3>Rendevo Companion — extension Chrome</h3></div>
-        <div className="panel-pad stack" style={{ '--gap': '12px' }}>
-          <p className="soft small">Importez manuellement dans Rendevo l'URL du profil LinkedIn ouvert dans Chrome, sans cookie copié, sans lecture de la page et sans message automatique.</p>
-          <Field label="Adresse de cette instance à saisir dans l'extension">
-            <div className="row">
-              <input className="input" readOnly value={session.public_url || window.location.origin} />
-              <button className="btn" onClick={() => copy(session.public_url || window.location.origin, toast)}><LuCopy />Copier</button>
-            </div>
-          </Field>
-          <p className="small soft">Téléchargez l'archive « Rendevo-Companion-V14 » dans les artefacts du workflow GitHub Actions, décompressez-la puis ouvrez <code>chrome://extensions</code> → Mode développeur → Charger l'extension non empaquetée. Sélectionnez le dossier qui contient <code>manifest.json</code>.</p>
-          <a className="btn" style={{ alignSelf: 'flex-start' }} href="https://github.com/Ajilis/runtipi-appstore/actions/workflows/rendevo-image.yml" target="_blank" rel="noreferrer">Récupérer l'extension (GitHub Actions)</a>
-          <p className="small soft">Connectez-vous normalement à Rendevo dans Chrome, créez un compte « LinkedIn Companion (Chrome) », associez-le à une campagne, puis utilisez l'extension sur un profil LinkedIn. L'import s'ouvre dans Rendevo et attend votre confirmation. Votre session Rendevo demeure gérée par le site : aucun jeton n'est remis à l'extension.</p>
-        </div>
-      </div>
+      <CompanionSettings />
       <div className="panel">
         <div className="panel-head"><h3>Connecteur MCP</h3></div>
         <div className="panel-pad stack" style={{ '--gap': '12px' }}>
