@@ -38,10 +38,15 @@ export function normalizeDiscoveryCriteria(input = {}, defaults = {}) {
   let titles;
   if (input.titles !== undefined) {
     if (!Array.isArray(input.titles) || input.titles.length > MAX_SEARCH_TITLES
-      || input.titles.some((t) => typeof t !== 'string' || t.length > 120)) {
+      || input.titles.some((t) => typeof t !== 'string' || t.trim().length > MAX_TITLE_LENGTH)) {
       throw new Error('Sélectionnez au maximum ' + MAX_SEARCH_TITLES + ' intitulés de poste valides');
     }
-    titles = [...new Set(input.titles.map((t) => clean(t, MAX_TITLE_LENGTH)).filter(Boolean))];
+    const unique = new Map();
+    for (const title of input.titles.map((t) => clean(t, MAX_TITLE_LENGTH)).filter(Boolean)) {
+      const key = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr');
+      if (!unique.has(key)) unique.set(key, title);
+    }
+    titles = [...unique.values()];
   } else {
     const legacy = clean(input.title === undefined ? first('titles') : input.title, MAX_TITLE_LENGTH);
     titles = legacy ? [legacy] : [];
