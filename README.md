@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V30 (0.2.19)** : connecteur IA OpenAI compatible générique avec liste des modèles `GET /models`, sélection, test non destructif `/chat/completions` et enregistrement sécurisé des identifiants. [Documentation](sources/rendevo/README.md).
+
 **Rendevo V29 (0.2.18)** : recherche publique DeGoog paginée ou en défilement infini, choix conservés entre pages et import manuel jusqu'à **200 contacts** à la fois. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V28 (0.2.17)** : pictogrammes modifier/supprimer les campagnes avec confirmation par saisie du nom et suppression logique conservant les données ; recherche web publique par dorks LinkedIn via DeGoog avec diagnostic affiché. [Documentation](sources/rendevo/README.md).
