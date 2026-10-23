@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 28** · **Version Rendevo : 0.2.17**
+**Version du catalogue Runtipi : 29** · **Version Rendevo : 0.2.18**
+
+**Nouveau V29 — pagination de la recherche DeGoog et import jusqu'à 200 contacts.** L'API DeGoog permet `page=N` et peut retourner `totalPages`. Rendevo propose deux modes : **Charger la page suivante** ou **Défilement infini**. La sélection et les noms vérifiés sont conservés entre pages ; les profils sont dédoublonnés. Il est maintenant possible d'importer **200 contacts LinkedIn** en une seule opération après validation manuelle, dans une limite de 20 pages de recherche. Aucun changement destructif de la base PostgreSQL.
 
 **Nouveau V28 — actions de campagne en pictogrammes et recherche dorks LinkedIn.** Les campagnes affichent un crayon « Modifier » et une corbeille « Supprimer », sans texte sur les boutons. La suppression demande de saisir le nom exact et conserve tous les enregistrements historiques grâce à une colonne `deleted_at` ajoutée de manière non destructive. Le moteur DeGoog réglé dans « Réglages → Recherche » reçoit jusqu'à trois dorks LinkedIn publics progressifs ; les requêtes exécutées et les nombres de profils retenus sont affichés pour diagnostiquer les résultats vides. L'import de prospects reste sur confirmation explicite.
 
