@@ -20,8 +20,21 @@ export function normalizeOpenAIBaseUrl(input) {
   return url.href.replace(/\/+$/, '');
 }
 
+// Vultr publishes all modalities from /models by default (images, embeddings,
+// music, etc.). Limit the selector to text-generating models through its
+// documented OpenRouter catalog filter, without affecting generic OpenAI APIs.
+export function isVultrInferenceBaseUrl(baseUrl) {
+  try {
+    const url = new URL(normalizeOpenAIBaseUrl(baseUrl));
+    return url.protocol === 'https:' && url.hostname === 'api.vultrinference.com'
+      && url.pathname.replace(/\\/+$/, '') === '/v1';
+  } catch { return false; }
+}
+
 export async function listOpenAIModels({ baseUrl, apiKey = '', fetcher = fetch }) {
-  const url = normalizeOpenAIBaseUrl(baseUrl) + '/models';
+  const vultr = isVultrInferenceBaseUrl(baseUrl);
+  const url = normalizeOpenAIBaseUrl(baseUrl) + '/models'
+    + (vultr ? '?format=openrouter&output_modalities=text' : '');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
