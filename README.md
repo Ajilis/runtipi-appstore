@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V28 (0.2.17)** : pictogrammes modifier/supprimer les campagnes avec confirmation par saisie du nom et suppression logique conservant les données ; recherche web publique par dorks LinkedIn via DeGoog avec diagnostic affiché. [Documentation](sources/rendevo/README.md).
+
 **Rendevo V27 (0.2.16)** : **migrations PostgreSQL additives, immuables et transactionnelles** ; intégrité SHA-256, tests CI de non-régression sur une ancienne base remplie et conservation des volumes Runtipi. [Documentation des sauvegardes et mises à jour](sources/rendevo/README.md).
 
 **Rendevo V26 (0.2.15)** : **Tester la connexion** dans Réglages → Recherche vérifie l’instance DeGoog et sa clé API avant d’activer Enregistrer ; preuve serveur à usage unique, aucune modification pendant le test. [Documentation](sources/rendevo/README.md).

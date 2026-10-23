@@ -1,5 +1,14 @@
 # Rendevo — sources
 
+## V28 (0.2.17) : pictogrammes campagnes et recherche web publique LinkedIn
+
+**Campagnes :** chaque ligne propose uniquement de petits pictogrammes accessibles (crayon pour ouvrir l’éditeur et poubelle pour supprimer). La suppression requiert le rôle propriétaire/administrateur et une saisie exacte du nom dans une fenêtre de confirmation. Elle est **logique, non destructrice** : `campaigns.deleted_at` (migration additive `004_campaign_soft_delete.sql`) masque la campagne des listes, la met en archive et annule ses messages programmés encore en attente. Les prospects, messages, réunions et événements historiques restent intacts en base. L’accès à une campagne masquée par API renvoie « introuvable ». Aucune table ou donnée historique n'est détruite.
+
+**Recherche web publique :** la recherche exploite le moteur réellement configuré dans **Réglages → Recherche** et l’API DeGoog `GET /api/search?q=...` (clé Bearer facultative), sans session ni extraction LinkedIn automatique. Les requêtes sont des dorks `site:linkedin.com/in/` suivis des termes de poste, secteur, localisation et mots-clés. Si aucun profil exploitable n’est renvoyé, Rendevo élargit la requête en deux étapes, dans la même limite de 12 secondes. Les URLs `fr.linkedin.com/in/...` et autres sous-domaines linguistiques sont acceptées et normalisées. **Trouver des prospects** affiche les dorks réellement exécutés, le nombre de résultats du moteur et le nombre de profils LinkedIn valides, pour distinguer un moteur injoignable, un index sans résultats et des résultats qui ne sont pas des profils. L’import reste manuel après vérification des suggestions.
+
+Les migrations de V27 continuent de contrôler l’intégrité et la conservation des bases PostgreSQL historiques en CI.
+
+
 ## V27 (0.2.16) : garantie technique de migrations additives et conservation des bases existantes
 
 **Les mises à jour normales ne doivent jamais exiger la suppression ou la recréation de la base Rendevo.** Le stockage persistant Runtipi reste `${APP_DATA_DIR}/data/postgres` (PostgreSQL 17), accompagné des dossiers `${APP_DATA_DIR}/data/config` (incluant le secret de chiffrement) et `${APP_DATA_DIR}/data/uploads` (médias). La configuration et les données ne sont pas supprimées lors d'un changement d'image Docker.

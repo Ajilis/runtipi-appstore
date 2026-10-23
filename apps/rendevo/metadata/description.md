@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 27** · **Version Rendevo : 0.2.16**
+**Version du catalogue Runtipi : 28** · **Version Rendevo : 0.2.17**
+
+**Nouveau V28 — actions de campagne en pictogrammes et recherche dorks LinkedIn.** Les campagnes affichent un crayon « Modifier » et une corbeille « Supprimer », sans texte sur les boutons. La suppression demande de saisir le nom exact et conserve tous les enregistrements historiques grâce à une colonne `deleted_at` ajoutée de manière non destructive. Le moteur DeGoog réglé dans « Réglages → Recherche » reçoit jusqu'à trois dorks LinkedIn publics progressifs ; les requêtes exécutées et les nombres de profils retenus sont affichés pour diagnostiquer les résultats vides. L'import de prospects reste sur confirmation explicite.
 
 **Nouveau V27 — mises à jour PostgreSQL conservatrices.** Les anciennes bases Rendevo sont migrées **sans effacer de table ni d'enregistrement** : mutations SQL destructrices interdites, migrations historiques vérifiées par empreintes SHA-256, verrou et transaction uniques, rollback si erreur. La CI applique les migrations sur une véritable base PostgreSQL historique contenant des prospects et des campagnes, et bloque la publication des images tant que la conservation des données n'est pas vérifiée. Les volumes persistants Runtipi restent inchangés. Une sauvegarde régulière reste recommandée.
 

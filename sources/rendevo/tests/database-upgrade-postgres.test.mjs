@@ -24,7 +24,7 @@ async function snapshot(pool) {
   // Ignore only intentionally-added nullable schema columns; compare every
   // business field/record byte-for-byte across migrations.
   for (const table of tables) {
-    const { rows } = await pool.query(`SELECT to_jsonb(t) - 'extension_version' - 'probe' AS document FROM "${table}" t`);
+    const { rows } = await pool.query(`SELECT to_jsonb(t) - 'extension_version' - 'deleted_at' - 'probe' AS document FROM "${table}" t`);
     result[table] = rows.map((r) => JSON.stringify(r.document)).sort();
   }
   return result;
@@ -100,7 +100,7 @@ test('upgrade: PostgreSQL legacy with real records survives multiple migrations,
       assert.deepEqual(await snapshot(pool), before, 'Historical records changed during upgrade');
       let history = (await pool.query('SELECT version, checksum FROM schema_migrations ORDER BY version')).rows;
       assert.deepEqual(history.map((r) => r.version),
-        ['001_init.sql', '002_companion.sql', '003_companion_version.sql']);
+        ['001_init.sql', '002_companion.sql', '003_companion_version.sql', '004_campaign_soft_delete.sql']);
       assert.ok(history.every((r) => /^[0-9a-f]{64}$/.test(r.checksum)),
         'Legacy history must receive checksums without changing business rows');
       const { rows: devices } = await pool.query('SELECT extension_version FROM companion_devices');

@@ -9,7 +9,7 @@ const migrationDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 
 test('all existing migrations comply with additive-only policy without removing data', () => {
   const names = fs.readdirSync(migrationDir).filter((f) => f.endsWith('.sql')).sort();
-  assert.deepEqual(names, ['001_init.sql', '002_companion.sql', '003_companion_version.sql']);
+  assert.deepEqual(names, ['001_init.sql', '002_companion.sql', '003_companion_version.sql', '004_campaign_soft_delete.sql']);
   for (const name of names) {
     const script = fs.readFileSync(path.join(migrationDir, name), 'utf8');
     assert.ok(assertSafeMigration(name, script) >= 1);

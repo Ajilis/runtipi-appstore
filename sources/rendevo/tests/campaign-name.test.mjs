@@ -47,8 +47,8 @@ test('la route de renommage ne modifie que le nom de la campagne dans son espace
 
 test('l’interface propose le renommage en liste et les versions app et Companion', () => {
   const read = (file) => fs.readFileSync(new URL(file, import.meta.url), 'utf8');
-  assert.match(read('../web/src/pages/Campaigns.jsx'), /Renommer la campagne/);
-  assert.match(read('../web/src/pages/Campaigns.jsx'), /\/api\/campaigns\/\$\{rename.id\}\/name/);
+  assert.match(read('../web/src/pages/Campaigns.jsx'), /Modifier la campagne/);
+  assert.match(read('../web/src/pages/Campaigns.jsx'), /Supprimer la campagne/);
   assert.match(read('../web/src/pages/Auth.jsx'), /auth\.version/);
   assert.match(read('../web/src/main.jsx'), /session\.version/);
   assert.match(read('../web/src/pages/Settings.jsx'), /latestCompanion\.extension_version/);

@@ -147,10 +147,14 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     if (recentSearches.size > 2000) recentSearches.clear();
     recentSearches.set(id, Date.now());
     try {
+      const attempts = [];
       const items = provider === 'brave'
         ? await discoverPublicProfiles({ apiKey: key, criteria, fetcher })
-        : await discoverDegoogProfiles({ baseUrl: settings.base_url, apiKey: key, criteria, fetcher });
-      return { items, found: items.length, query: criteria.searchQuery, provider };
+        : await discoverDegoogProfiles({
+          baseUrl: settings.base_url, apiKey: key, criteria, fetcher,
+          onAttempt: (entry) => attempts.push(entry),
+        });
+      return { items, found: items.length, query: criteria.searchQuery, provider, attempts };
     } catch (err) { throw bad(err.message); }
   });
 

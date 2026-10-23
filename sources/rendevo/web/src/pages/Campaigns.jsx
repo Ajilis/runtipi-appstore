@@ -13,19 +13,24 @@ export function Campaigns() {
   const { navigate } = useRouter();
   const { session } = useSession();
   const canEdit = ['owner', 'admin'].includes(session.role);
-  const [rename, setRename] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [confirmation, setConfirmation] = useState('');
   const [archived, setArchived] = useState(false);
   const { data, error, loading, reload } = useApi(`/api/campaigns${archived ? '?archived=1' : ''}`);
   const [run, busy] = useAction();
   const create = () => run(async () => { const c = await api('/api/campaigns', { method: 'POST', body: { name: 'Nouvelle campagne' } }); navigate(`/campagnes/${c.id}`); });
   const setStatus = (c, status) => run(async () => { await api(`/api/campaigns/${c.id}/status`, { method: 'POST', body: { status } }); reload(); }, status === 'active' ? 'Campagne activée' : 'Campagne mise en pause');
-  const saveName = () => run(async () => {
-    await api(`/api/campaigns/${rename.id}/name`, { method: 'PATCH', body: { name: rename.name.trim() } });
-    setRename(null);
+  const confirmDelete = () => run(async () => {
+    if (!deleting || confirmation !== deleting.name) return;
+    await api(`/api/campaigns/${deleting.id}`, {
+      method: 'DELETE', body: { confirm_name: confirmation },
+    });
+    setDeleting(null);
+    setConfirmation('');
     reload();
-  }, 'Campagne renommée');
+  }, 'Campagne masquée. Prospects et historique conservés.');
 
-  return (
+    return (
     <>
       <div className="page-head">
         <div>
@@ -57,10 +62,21 @@ export function Campaigns() {
                   <td className="num">{pct(c.replied, c.connected)} <span className="small muted">({c.replied})</span></td>
                   <td className="num" style={{ fontWeight: 650 }}>{c.meetings}</td>
                   <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                    {canEdit && <button className="btn sm" disabled={busy} onClick={() => setRename({ id: c.id, name: c.name })} aria-label={`Renommer la campagne ${c.name}`} title="Renommer la campagne"><LuPencil />Renommer</button>}
-                    {c.status === 'active'
-                      ? <button className="btn sm" disabled={busy} onClick={() => setStatus(c, 'paused')}><LuPause />Pause</button>
-                      : c.status !== 'archived' && <button className="btn sm" disabled={busy} onClick={() => setStatus(c, 'active')}><LuPlay />Activer</button>}
+                    <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                      {canEdit && <>
+                        <button type="button" className="btn sm ghost icon" disabled={busy}
+                          onClick={() => navigate(`/campagnes/${c.id}`)}
+                          title="Modifier la campagne" aria-label={`Modifier la campagne ${c.name}`}><LuPencil /></button>
+                        <button type="button" className="btn sm ghost icon danger" disabled={busy}
+                          onClick={() => { setDeleting({ id: c.id, name: c.name }); setConfirmation(''); }}
+                          title="Supprimer la campagne" aria-label={`Supprimer la campagne ${c.name}`}><LuTrash2 /></button>
+                      </>}
+                      {c.status === 'active'
+                        ? <button type="button" className="btn sm ghost icon" disabled={busy} onClick={() => setStatus(c, 'paused')}
+                            title="Mettre en pause" aria-label={`Mettre en pause la campagne ${c.name}`}><LuPause /></button>
+                        : c.status !== 'archived' && <button type="button" className="btn sm ghost icon" disabled={busy} onClick={() => setStatus(c, 'active')}
+                            title="Activer" aria-label={`Activer la campagne ${c.name}`}><LuPlay /></button>}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -68,15 +84,23 @@ export function Campaigns() {
           </table>
         </div>
       )}
-      {rename && <Modal title="Renommer la campagne" onClose={() => setRename(null)} footer={<>
-        <button className="btn ghost" onClick={() => setRename(null)}>Annuler</button>
-        <button className="btn primary" disabled={busy || !rename.name.trim() || rename.name.trim().length > 120} onClick={saveName}>Enregistrer le nom</button>
-      </>}>
-        <Field label="Nom de la campagne" htmlFor="campaign-new-name">
-          <input id="campaign-new-name" className="input" autoFocus maxLength={120} value={rename.name}
-            onChange={(e) => setRename({ ...rename, name: e.target.value })}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !busy && rename.name.trim()) { e.preventDefault(); saveName(); } }} />
-        </Field>
+      {deleting && <Modal title="Supprimer une campagne"
+        onClose={() => { if (!busy) { setDeleting(null); setConfirmation(''); } }}
+        footer={<>
+          <button className="btn ghost" disabled={busy}
+            onClick={() => { setDeleting(null); setConfirmation(''); }}>Annuler</button>
+          <button className="btn danger" disabled={busy || confirmation !== deleting.name}
+            onClick={confirmDelete}>{busy ? 'Suppression…' : 'Confirmer la suppression'}</button>
+        </>}>
+        <div className="stack" style={{ '--gap': '12px' }}>
+          <p>La campagne <strong>{deleting.name}</strong> sera retirée des listes et arrêtée.</p>
+          <p className="small soft">Les prospects, conversations, rendez-vous et historiques restent dans la base de données. Les messages en attente seront annulés.</p>
+          <Field label="Saisissez exactement le nom de la campagne pour confirmer" htmlFor="campaign-delete-name">
+            <input id="campaign-delete-name" className="input" autoFocus autoComplete="off"
+              value={confirmation} maxLength={120}
+              onChange={(e) => setConfirmation(e.target.value)} />
+          </Field>
+        </div>
       </Modal>}
     </>
   );
