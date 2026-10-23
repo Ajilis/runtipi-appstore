@@ -74,8 +74,17 @@ export class AiService {
         const detail = String(data.error?.message || '').slice(0, 220).replaceAll(s.api_key || '\\0', '[secret]');
         throw new Error('LLM HTTP ' + res.status + (detail ? ' : ' + detail : ''));
       }
-      const message = data.choices?.[0]?.message?.content;
-      if (typeof message !== 'string' || !message.trim()) throw new Error('Réponse IA vide ou format incompatible');
+      const choice = data.choices?.[0];
+      // Some reasoning models spend their whole token budget on reasoning and
+      // return content:null with finish_reason=length. Retrying a smaller
+      // generation is more useful than reporting an unidentified failure.
+      if (choice?.finish_reason === 'length') throw new Error('AI_OUTPUT_TRUNCATED');
+      if (choice?.finish_reason === 'content_filter') throw new Error('AI_CONTENT_FILTER');
+      const content = choice?.message?.content;
+      const message = Array.isArray(content) ? content.map((part) =>
+        typeof part === 'string' ? part : typeof part?.text === 'string' ? part.text : '',
+      ).join('') : content;
+      if (typeof message !== 'string' || !message.trim()) throw new Error('AI_EMPTY_CONTENT');
       return message.trim();
     } finally {
       clearTimeout(timer);
