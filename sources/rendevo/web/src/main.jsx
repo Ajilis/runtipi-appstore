@@ -78,6 +78,7 @@ function Shell({ children }) {
             <div className="grow">
               <div className="ellipsis" style={{ fontWeight: 600 }}>{session.user.name || session.user.email}</div>
               <div className="ellipsis small muted">{session.user.email}</div>
+              {session.version && <div className="small muted app-version" aria-label="Version de Rendevo">Rendevo v{session.version}</div>}
             </div>
             <button className="btn ghost icon" onClick={logout} aria-label="Se déconnecter" title="Se déconnecter"><LuLogOut size={18} /></button>
           </div>
