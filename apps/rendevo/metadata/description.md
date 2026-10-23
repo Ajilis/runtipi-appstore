@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 32** · **Version Rendevo : 0.2.21**
+**Version du catalogue Runtipi : 33** · **Version Rendevo : 0.2.22**
+
+**Nouveau V33 — correctif des interruptions d'IA sur la baguette magique.** Les générations « Poste recherché » sont désormais courtes, avec une seule tentative de secours si le serveur IA coupe la connexion, atteint son délai ou renvoie une sortie vide ou limitée en tokens. Les erreurs identifient l'origine : DNS, connexion refusée, TLS, socket interrompue, timeout, HTTP et quota, sans exposer les secrets de l'API. Le modèle et ses paramètres déjà enregistrés ne sont pas modifiés. Aucun changement de schéma PostgreSQL ni perte de données.
 
 **Nouveau V32 — correction de la génération des intitulés IA.** La baguette magique accepte désormais les réponses JSON entourées de Markdown, les tableaux Markdown à quatre colonnes et les tableaux JSON équivalents fournis par les modèles compatibles OpenAI. Pour limiter les réponses tronquées, Rendevo demande une liste plus courte et peut effectuer une seconde tentative automatique. Les messages d'échec sont spécifiques (authentification, quota, modèle, durée, réponse incomplète) sans dévoiler les secrets. Le modèle enregistré reste inchangé ; aucune migration PostgreSQL n'est nécessaire.
 

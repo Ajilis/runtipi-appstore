@@ -36,12 +36,12 @@ export class AiService {
     return true; // OpenAI-compatible endpoints like Ollama may not need a key
   }
 
-  async complete(ws, { system, user, maxTokens = 700, temperature, settingsOverride }) {
+  async complete(ws, { system, user, maxTokens = 700, temperature, settingsOverride, timeoutMs = 60000 }) {
     const s = settingsOverride || this.settingsFor(ws);
     if (s.provider === 'none' || !s.model || (s.provider === 'anthropic' && !s.api_key)) throw new Error('IA non configurée');
     const t = temperature ?? s.temperature;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60000);
+    const timer = setTimeout(() => ctrl.abort(), Math.min(60000, Math.max(10000, timeoutMs)));
     try {
       if (s.provider === 'anthropic') {
         const base = s.base_url.includes('anthropic.com') ? s.base_url : 'https://api.anthropic.com/v1';
@@ -74,8 +74,17 @@ export class AiService {
         const detail = String(data.error?.message || '').slice(0, 220).replaceAll(s.api_key || '\\0', '[secret]');
         throw new Error('LLM HTTP ' + res.status + (detail ? ' : ' + detail : ''));
       }
-      const message = data.choices?.[0]?.message?.content;
-      if (typeof message !== 'string' || !message.trim()) throw new Error('Réponse IA vide ou format incompatible');
+      const choice = data.choices?.[0];
+      // Some reasoning models spend their whole token budget on reasoning and
+      // return content:null with finish_reason=length. Retrying a smaller
+      // generation is more useful than reporting an unidentified failure.
+      if (choice?.finish_reason === 'length') throw new Error('AI_OUTPUT_TRUNCATED');
+      if (choice?.finish_reason === 'content_filter') throw new Error('AI_CONTENT_FILTER');
+      const content = choice?.message?.content;
+      const message = Array.isArray(content) ? content.map((part) =>
+        typeof part === 'string' ? part : typeof part?.text === 'string' ? part.text : '',
+      ).join('') : content;
+      if (typeof message !== 'string' || !message.trim()) throw new Error('AI_EMPTY_CONTENT');
       return message.trim();
     } finally {
       clearTimeout(timer);
