@@ -1,5 +1,14 @@
 # Rendevo — sources
 
+## V31 (0.2.20) : baguette magique IA pour « Poste recherché »
+
+Dans **Prospects → Trouver des prospects → Recherche web publique**, le pictogramme **baguette magique** apparaît juste à côté du champ **Poste recherché**. Saisir un mot-clé professionnel (par exemple « directeur commercial », « juriste » ou « responsable RH »), puis cliquer sur la baguette magique. Si ce champ est vide, l'intitulé de la cible de campagne peut servir de mot-clé. Le connecteur IA déjà actif dans **Réglages → Intelligence artificielle** est utilisé sans autre configuration, via `POST /api/discovery/job-titles`.
+
+L'agent suit la demande utilisateur de classification des fonctions professionnelles : intitulés français masculins/féminins, synonymes et abréviations, variantes en anglais, titres hiérarchiquement et institutionnellement associés, fonctions actuelles/anciennes/honorifiques, et métiers voisins clairement distingués. Les résultats sont affichés sous forme d'un **tableau à quatre colonnes** : **Catégorie**, **Intitulé principal**, **Variantes et synonymes LinkedIn**, **Lien avec le mot-clé**. Un **menu déroulant groupé par catégorie** offre les intitulés et leurs variantes ; le bouton **Utiliser ce poste** remplit seulement le champ de recherche. Le lancement du dork DeGoog reste distinct et manuel, tout comme l'import.
+
+L'API exige un utilisateur authentifié et un modèle IA configuré, valide la longueur du mot-clé (2 à 90 caractères), limite les générations répétées à une par 12 secondes et nettoie/limite la sortie IA (60 intitulés maximum, dix variantes par intitulé). Les erreurs du fournisseur ne dévoilent pas la clé API. Le modèle doit pouvoir générer un objet JSON structuré ; les intitulés suggérés sont **potentiellement présents sur LinkedIn**, mais **ne constituent pas une classification officielle LinkedIn**. Aucun enregistrement n'est modifié pendant la génération. Aucun changement de schéma SQL, aucune perte de données de base.
+
+
 ## V30 (0.2.19) : connecteur IA compatible OpenAI générique et sélection des modèles
 
 Dans **Réglages → Intelligence artificielle**, choisir **OpenAI compatible (serveur personnalisé)**, renseigner l'adresse de base de l'API (par exemple `https://llm.example.fr/v1`, `https://api.mistral.ai/v1` ou `http://ollama:11434/v1` sur un réseau local) puis éventuellement la clé API. Le bouton **Récupérer la liste des modèles** utilise **`GET {base_url}/models`** avec `Authorization: Bearer <clé>` seulement si une clé est requise. Il affiche les identifiants des modèles renvoyés par `data[].id`; l'utilisateur en choisit un dans la liste. Le champ Modèle reste éditable pour les fournisseurs qui ne prennent pas en charge `/models`.
