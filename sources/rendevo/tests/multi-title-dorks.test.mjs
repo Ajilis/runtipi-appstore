@@ -56,7 +56,7 @@ test('multi-postes : validation stricte, limites, pas d’injection de dork ou s
   assert.equal(sanitized.titles.length, 3);
   assert.ok(sanitized.searchQuery.startsWith('site:linkedin.com/in/ ('));
   assert.doesNotMatch(sanitized.searchQuery, /" OR site:evil\.com/);
-  assert.match(sanitized.searchQuery, /"DRH  OR site:evil.com"/);
+  assert.match(sanitized.searchQuery, /"DRH OR site:evil.com"/);
   assert.equal(normalizeDiscoveryCriteria({
     titles: [], location: 'Paris', title: 'ne doit pas être réinjecté',
   }).searchQuery, 'site:linkedin.com/in/ "Paris"');
@@ -106,6 +106,8 @@ test('DeGoog : OR réellement envoyé sur page 1 et page 2, sans lecture LinkedI
   assert.equal(first.items.length, 1);
   assert.equal(first.query, 'site:linkedin.com/in/ ("Responsable RH" OR "Human Resources Director") "Lyon"');
   assert.equal(first.page, 1);
+  // Existing DeGoog rate limit requires one second between page loads.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
   const page2 = await h.invoke({ ...input, page: 2, dork_index: first.dork_index });
   assert.equal(page2.page, 2);
   assert.equal(page2.query, first.query);
