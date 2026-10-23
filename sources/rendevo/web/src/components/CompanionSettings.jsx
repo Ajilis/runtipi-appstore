@@ -8,10 +8,14 @@ export function CompanionSettings() {
   const [pairing, setPairing] = useState(null);
   const [run, busy] = useAction();
   const toast = useToast();
+  // A single code transports both the server origin and its short-lived pairing secret.
+  // Prefer the configured HTTPS public address when Rendevo is opened over LAN.
   const base = session.public_url || window.location.origin;
   const makeCode = () => run(async () => {
     const result = await api('/api/companion/pairings', { method: 'POST', body: {} });
-    setPairing({ ...result, createdAt: Date.now() });
+    const origin = new URL(base).origin;
+    const portableCode = 'RDV1.' + encodeURIComponent(origin) + '.' + result.code;
+    setPairing({ portableCode, origin, createdAt: Date.now(), expires_in_seconds: result.expires_in_seconds });
   }, 'Code d’association créé (5 minutes)');
   const revoke = (id) => {
     if (!window.confirm("Révoquer cette extension ? Elle perdra immédiatement l'accès à Rendevo.")) return;
@@ -26,23 +30,20 @@ export function CompanionSettings() {
       <div className="panel-head"><h3>Rendevo Companion — connexion directe</h3></div>
       <div className="panel-pad stack" style={{ '--gap': '12px' }}>
         <p className="small soft">L'extension Chrome dialogue directement avec Rendevo : elle affiche tes campagnes Companion et peut importer, après prévisualisation et validation, les profils de la page de recherche LinkedIn ouverte ou l'URL d'un profil sélectionné. Aucun cookie LinkedIn n'est transféré, aucun message n'est envoyé automatiquement.</p>
-        <div className="row wrap">
-          <input className="input grow" readOnly value={base} aria-label="URL de Rendevo" />
-          <button className="btn" onClick={() => copy(base, toast)}>Copier l'URL</button>
-        </div>
+        <p className="small soft">Un seul code suffit : il inclut l’adresse de cette instance Rendevo et le secret temporaire. Il n’est plus nécessaire de saisir le site séparément dans Companion.</p>
         <div className="row wrap">
           <button className="btn primary" disabled={busy} onClick={makeCode}>Générer un code d'association</button>
-          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V21.zip">Télécharger l’extension Chrome (.zip)</a>
+          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V22.zip">Télécharger l’extension Chrome (.zip)</a>
         </div>
         <p className="small soft">Téléchargement direct depuis ton serveur Rendevo, sans GitHub. Décompresse le ZIP, puis ouvre <code>chrome://extensions</code> → Mode développeur → Charger l’extension non empaquetée et sélectionne le dossier contenant <code>manifest.json</code>.</p>
         {pairing && (
           <div className="alert info stack" style={{ '--gap': '8px' }}>
             <strong>Code à usage unique — valable 5 minutes</strong>
             <div className="row wrap">
-              <input className="input grow" value={pairing.code} readOnly aria-label="Code d'association" autoComplete="off" />
-              <button className="btn" onClick={() => copy(pairing.code, toast)}>Copier le code</button>
+              <input className="input grow" value={pairing.portableCode} readOnly aria-label="Code unique d'association" autoComplete="off" />
+              <button className="btn" onClick={() => copy(pairing.portableCode, toast)}>Copier le code unique</button>
             </div>
-            <p className="small">Dans l'extension Chrome : enregistre cette URL Rendevo, colle le code, puis clique sur « Associer directement ». Le code ne sera plus affiché après fermeture de cet encart et expirera au bout de 5 minutes.</p>
+            <p className="small">Dans Companion V22, colle uniquement ce code puis clique sur « Associer le Companion ». Vérifie que Chrome demande bien l'accès à <strong>{pairing.origin}</strong> avant de l'autoriser. Code valable 5 minutes, une seule utilisation.</p>
           </div>
         )}
         <div className="section-title">Extensions associées</div>
