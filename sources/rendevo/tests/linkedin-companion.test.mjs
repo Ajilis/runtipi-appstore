@@ -156,8 +156,8 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.ok(storage.companionToken);
   assert.equal(elem('connected').hidden, false);
   assert.equal(elem('workspace').textContent, 'Mon espace');
-  assert.equal(elem('rendevoVersion').textContent, 'v0.2.14');
-  assert.equal(elem('companionVersion').textContent, 'Companion v0.2.14');
+  assert.equal(elem('rendevoVersion').textContent, 'v0.2.15');
+  assert.equal(elem('companionVersion').textContent, 'Companion v0.2.15');
   assert.equal(elem('campaign').options.length, 2);
   assert.equal(requests.length, 3); // exchange + status + campaigns; no upload yet
   elem('campaign').value = 'campaign-1';
