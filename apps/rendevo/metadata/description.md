@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 36** · **Version Rendevo : 0.2.25**
+**Version du catalogue Runtipi : 37** · **Version Rendevo : 0.2.26**
+
+**Nouveau V37 — prompt IA compact pour la baguette magique.** Tous les champs de la recherche publique (poste, secteur, localisation et mots-clés) servent de contexte pour proposer les intitulés LinkedIn, variantes, fonctions proches et anciens titres. Le modèle reçoit une demande courte avec réponse JSON `[{"value":"identifiant","label":"Intitulé","keywords":["synonymes"]}]`. Les labels deviennent des tags colorés, supprimables individuellement et combinés par `OR` dans DeGoog. Aucun changement de configuration Vultr ni de données PostgreSQL.
 
 **Nouveau V36 — interface épurée pour la recherche publique.** Les intitulés générés par la baguette magique restent directement présentés comme des tags colorés avec croix de suppression ; l'ancien panneau « Fonctions proposées pour… » et son tableau ne sont plus affichés. Tous les champs de recherche et de pagination sont désormais disposés verticalement, sur une seule colonne. Le OU logique dans les dorks DeGoog, le connecteur IA et la conservation des données PostgreSQL demeurent inchangés.
 
