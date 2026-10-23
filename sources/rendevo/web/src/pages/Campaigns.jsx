@@ -122,7 +122,7 @@ export function CampaignEditor({ id }) {
         </div>
         <div className="row wrap">
           <Link className="btn" to={`/prospects?campaign=${c.id}`}>Voir les prospects</Link>
-          {dirty && <button className="btn" onClick={save} disabled={busy || !c.name.trim()}>Enregistrer</button>
+          {dirty && <button className="btn" onClick={save} disabled={busy || !c.name.trim()}>Enregistrer</button>}
           {c.status === 'active'
             ? <button className="btn" onClick={() => setStatus('paused')} disabled={busy}><LuPause />Mettre en pause</button>
             : <button className="btn primary" onClick={() => setStatus('active')} disabled={busy || !c.account_id}><LuPlay />Activer</button>}
