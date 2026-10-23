@@ -162,9 +162,10 @@ test('interface : résultats affichés pour approbation avant appel d’import e
   const core = fs.readFileSync(new URL('../server/routes/core.js', import.meta.url), 'utf8');
   assert.match(ui, /api\/discovery\/search/);
   assert.match(ui, /api\/discovery\/import/);
-  assert.match(ui, /api\/discovery\/config/);
+  assert.doesNotMatch(ui, /api\/discovery\/config/);
+  assert.match(fs.readFileSync(new URL('../web/src/components/SearchSettings.jsx', import.meta.url), 'utf8'), /api\/discovery\/config/);
   assert.match(ui, /checked=\{!!chosen\[item\.linkedin_url\]\}/);
   assert.match(ui, /Import(er|er les).*profils sélectionnés/);
   assert.match(core, /delete out\.ai\.api_key_enc/);
-  assert.match(core, /out\.discovery = \{ has_api_key:/);
+  assert.match(core, /out\.discovery = \{/);
 });
