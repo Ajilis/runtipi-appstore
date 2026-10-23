@@ -156,7 +156,7 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.equal(requests[3].options.method, 'POST');
   assert.equal(requests[3].options.credentials, 'omit');
   assert.equal(requests[3].options.headers['X-Companion-Version'], '0.2.11');
-  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.10');
+  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.11');
   assert.equal(requests[3].options.headers.Authorization, 'Bearer ' + storage.companionToken);
   const sent = JSON.parse(requests[3].options.body);
   assert.equal(sent.campaign_id, 'campaign-1');
