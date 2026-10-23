@@ -310,7 +310,7 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const { rows } = await db.query(
       `SELECT c.*, a.name AS account_name, a.provider AS account_provider, ${campaignStats}
          FROM campaigns c LEFT JOIN accounts a ON a.id = c.account_id
-        WHERE c.workspace_id = $1 AND ($2::boolean OR c.status <> 'archived') ORDER BY c.created_at DESC`,
+        WHERE c.workspace_id = $1 AND c.deleted_at IS NULL AND ($2::boolean OR c.status <> 'archived') ORDER BY c.created_at DESC`,
       [ctx.state.ws.id, ctx.query.archived === '1'],
     );
     return rows.map((c) => ({ ...c, settings: { ...DEFAULT_CAMPAIGN_SETTINGS, ...c.settings } }));
@@ -365,10 +365,44 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
   });
 
   async function ownedCampaign(ctx) {
-    const { rows } = await db.query('SELECT * FROM campaigns WHERE id = $1 AND workspace_id = $2', [ctx.params.id, ctx.state.ws.id]);
+    const { rows } = await db.query('SELECT * FROM campaigns WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL', [ctx.params.id, ctx.state.ws.id]);
     if (!rows[0]) throw notFound('Campagne introuvable');
     return rows[0];
   }
+
+  // A campaign 'deletion' is intentionally reversible at the database level.
+  // It only hides the campaign and cancels pending outbound messages. All
+  // prospects, conversations, meetings, events and links remain untouched.
+  // Name confirmation is checked server-side; the workspace is always scoped.
+  router.delete('/api/campaigns/:id', requireAuth, requireAdmin, async (ctx) => {
+    const body = await ctx.json(2048);
+    if (typeof body.confirm_name !== 'string' || !body.confirm_name.trim()) {
+      throw bad('Saisissez le nom exact de la campagne pour confirmer la suppression');
+    }
+    const result = await db.tx(async (tx) => {
+      const { rows } = await tx.query(
+        'SELECT id, name FROM campaigns WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL FOR UPDATE',
+        [ctx.params.id, ctx.state.ws.id],
+      );
+      const campaign = rows[0];
+      if (!campaign) throw notFound('Campagne introuvable');
+      if (body.confirm_name !== campaign.name) throw bad('Le nom saisi ne correspond pas à cette campagne');
+      await tx.query(
+        "UPDATE campaigns SET deleted_at = now(), status = 'archived', archived_at = now(), updated_at = now() WHERE id = $1 AND workspace_id = $2",
+        [campaign.id, ctx.state.ws.id],
+      );
+      await tx.query(
+        "UPDATE messages SET status = 'cancelled' WHERE campaign_id = $1 AND workspace_id = $2 AND status IN ('queued', 'pending_approval')",
+        [campaign.id, ctx.state.ws.id],
+      );
+      // Preserve all child rows; no SQL DELETE FROM anywhere in this route.
+      return { id: campaign.id, name: campaign.name };
+    });
+    await deps.activity.log(ctx.state.ws.id, 'campaign.deleted', {
+      campaignId: result.id, data: { name: result.name, retained_data: true },
+    });
+    return { ok: true, preserved_data: true };
+  });
 
   // Rename independently from campaign settings to avoid overwriting unsaved or
   // concurrent edits to the target, sequence or account.
