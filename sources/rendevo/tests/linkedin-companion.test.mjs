@@ -69,7 +69,7 @@ test('compte Companion n’effectue aucun appel externe et interdit les envois e
   assert.match(inbox, /body\.confirmed !== true/);
 });
 
-async function simulatePopup(currentTabUrl, pageUrls = [], { grant = true } = {}) {
+async function simulatePopup(currentTabUrl, pageUrls = [], { grant = true, stored = {} } = {}) {
   const elements = new Map();
   function elem(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -80,7 +80,7 @@ async function simulatePopup(currentTabUrl, pageUrls = [], { grant = true } = {}
     });
     return elements.get(id);
   }
-  const createdTabs = [], requests = [], permissions = [], executions = [], storage = {};
+  const createdTabs = [], requests = [], permissions = [], executions = [], storage = { ...stored };
   const context = {
     document: { getElementById: elem, createElement: () => ({ value: '', textContent: '' }) },
     chrome: {
@@ -366,4 +366,27 @@ test('Companion ne lit pas les pages LinkedIn non autorisées et invalide toute 
   page.elem('bulkUrls').events.input();
   assert.equal(page.elem('submitBulk').disabled, true);
   assert.equal(page.requests.filter((r) => r.url.includes('/prospects')).length, 0);
+});
+
+test('une extension déjà associée reste connectée sans nouvelle saisie ni permission', async () => {
+  const { elem, requests, permissions, storage } = await simulatePopup(
+    'https://www.linkedin.com/feed/', [], {
+      stored: { rendevoOrigin: 'https://rendevo.exemple.fr', companionToken: 'persisted-token' },
+    },
+  );
+  assert.equal(elem('pairing').hidden, true);
+  assert.equal(elem('connected').hidden, false);
+  assert.equal(elem('connectedOrigin').textContent, 'https://rendevo.exemple.fr');
+  assert.equal(permissions.length, 0);
+  assert.equal(requests.length, 2);
+  assert.equal(storage.companionToken, 'persisted-token');
+});
+
+test('un code pour instance HTTP privée permet une association locale contrôlée', async () => {
+  const { elem, permissions, requests, storage } = await simulatePopup('https://www.linkedin.com/feed/');
+  await pair(elem, 'http://192.168.1.16:8288');
+  assert.equal(permissions.length, 1);
+  assert.deepEqual(Array.from(permissions[0].origins), ['http://192.168.1.16:8288/*']);
+  assert.equal(requests[0].url, 'http://192.168.1.16:8288/api/companion/exchange');
+  assert.equal(storage.rendevoOrigin, 'http://192.168.1.16:8288');
 });
