@@ -49,7 +49,7 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     if (body.clear_key === true) encrypted = '';
     else if (body.api_key !== undefined && String(body.api_key).trim()) {
       const key = String(body.api_key).trim();
-      if (!/^\\S{8,512}$/.test(key)) throw bad('Clé API invalide (8 à 512 caractères)');
+      if (!/^\S{8,512}$/.test(key)) throw bad('Clé API invalide (8 à 512 caractères)');
       encrypted = vault.encrypt(key);
     }
     let settings;
