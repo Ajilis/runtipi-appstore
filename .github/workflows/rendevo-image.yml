@@ -121,7 +121,7 @@ jobs:
       - name: Chrome Companion templates (not installable until personalized by Rendevo)
         uses: actions/upload-artifact@v4
         with:
-          name: Rendevo-Companion-SOURCE-V36
+          name: Rendevo-Companion-SOURCE-V37
           path: |
             sources/rendevo/extension/manifest.json
             sources/rendevo/extension/popup.html

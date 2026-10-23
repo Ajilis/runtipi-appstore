@@ -2,7 +2,7 @@ import { bad, notFound } from '../lib/http.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
-import { normalizeJobKeyword, professionalTitlePrompt } from '../services/job-titles.js';
+import { normalizeJobKeyword, normalizeJobFormFields, professionalTitlePrompt } from '../services/job-titles.js';
 import { parseProfessionalTitleResponse } from '../services/job-title-parser.js';
 import { classifyAiGenerationFailure } from '../services/ai-diagnostics.js';
 import { isVultrInferenceBaseUrl } from '../services/ai-models.js';
@@ -143,8 +143,11 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     ctx.header('Cache-Control', 'no-store');
     const body = await ctx.json(2048);
     let keyword;
-    try { keyword = normalizeJobKeyword(body.keyword); }
-    catch (error) { throw bad(error.message); }
+    let fields;
+    try {
+      keyword = normalizeJobKeyword(body.keyword);
+      fields = normalizeJobFormFields(body.fields || {}, keyword);
+    } catch (error) { throw bad(error.message); }
     if (!ai?.enabled(ctx.state.ws)) {
       throw bad('Aucun connecteur IA actif : configurez un modèle dans Réglages → Intelligence artificielle');
     }
@@ -163,21 +166,14 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     let formatError;
     for (let attempt = 0; attempt < 2; attempt++) {
       const userPrompt = attempt === 0
-        ? professionalTitlePrompt(keyword).replace('au maximum 24 lignes', 'au maximum 12 lignes')
-        : [
-          'Tu es un expert des intitulés de postes professionnels en France.',
-          'Mot-clé : ' + JSON.stringify(keyword),
-          'Propose AU MAXIMUM 6 fonctions liées : postes courants, féminins/masculins,',
-          'synonymes, variantes anglaises, fonctions voisines, anciennes ou honorifiques.',
-          'Les catégories sont indicatives et NON officielles sur LinkedIn.',
-          'Réponds UNIQUEMENT en JSON valide et court :',
-          '{"rows":[{"category":"Métier","title":"Poste","variants":["Synonyme"],"relation":"Lien au mot-clé"}]}',
-          'Pas de texte supplémentaire. Termine impérativement toutes les accolades.',
-        ].join('\n');
+        ? professionalTitlePrompt(fields)
+        : 'À partir de « ' + JSON.stringify(fields) +
+          ' », génère 6 intitulés de postes LinkedIn maximum (variantes, fonctions proches, anciens titres), sans doublons. JSON compact seulement : ' +
+          '[{"value":"identifiant","label":"Intitulé","keywords":["synonymes"]}].';
       let responseText;
       try {
         responseText = await ai.complete(ctx.state.ws, {
-          system: 'Classe les métiers à partir du mot-clé. Réponds par un JSON complet et concis, sans autre texte.',
+          system: 'Réponds uniquement par un tableau JSON compact de value, label et keywords. Aucun texte supplémentaire.',
           user: userPrompt,
           maxTokens: attempt === 0 ? 1200 : 700,
           // Vultr may queue inference requests, and a reasoning model can
