@@ -87,7 +87,7 @@ async function simulatePopup(currentTabUrl, pageUrls = [], {
   const context = {
     document: { getElementById: elem, createElement: () => ({ value: '', textContent: '' }) },
     chrome: {
-      runtime: { getManifest: () => ({ version: '0.2.13' }) },
+      runtime: { getManifest: () => ({ version: '0.2.14' }) },
       permissions: { contains: async (x) => { permissions.push(x); return grant; } },
       storage: { local: {
         get: async () => ({ ...storage }),
@@ -120,7 +120,7 @@ async function simulatePopup(currentTabUrl, pageUrls = [], {
       const pathname = new URL(url).pathname;
       const response = {
         '/api/companion/exchange': { token: 'example-' + 'A'.repeat(43), expires_at: '2030-01-01T00:00:00Z' },
-        '/api/companion/status': { connected: true, workspace: 'Mon espace' },
+        '/api/companion/status': { connected: true, workspace: 'Mon espace', rendevo_version: '0.2.14' },
         '/api/companion/campaigns': { items: [{ id: 'campaign-1', name: 'Campagne test', search_keywords: 'Directeur commercial SaaS Paris' }] },
         '/api/companion/prospects': { created: 1, duplicates: 0, invalid: 0 },
         '/api/companion/prospects/batch': { created: 2, duplicates: 0, invalid: 0, submitted: 2, repeated_in_list: 1 },
@@ -156,6 +156,8 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.ok(storage.companionToken);
   assert.equal(elem('connected').hidden, false);
   assert.equal(elem('workspace').textContent, 'Mon espace');
+  assert.equal(elem('rendevoVersion').textContent, 'v0.2.14');
+  assert.equal(elem('companionVersion').textContent, 'Companion v0.2.14');
   assert.equal(elem('campaign').options.length, 2);
   assert.equal(requests.length, 3); // exchange + status + campaigns; no upload yet
   elem('campaign').value = 'campaign-1';
@@ -164,8 +166,8 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.equal(requests[3].url, 'https://rendevo.exemple.fr/api/companion/prospects');
   assert.equal(requests[3].options.method, 'POST');
   assert.equal(requests[3].options.credentials, 'omit');
-  assert.equal(requests[3].options.headers['X-Companion-Version'], '0.2.13');
-  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.13');
+  assert.equal(requests[3].options.headers['X-Companion-Version'], '0.2.14');
+  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.14');
   assert.equal(requests[3].options.headers.Authorization, 'Bearer ' + storage.companionToken);
   const sent = JSON.parse(requests[3].options.body);
   assert.equal(sent.campaign_id, 'campaign-1');
@@ -257,7 +259,7 @@ test('l’interface propose le mode recherche LinkedIn Companion sans clé Brave
   const web = fs.readFileSync(new URL('../web/src/pages/Prospects.jsx', import.meta.url), 'utf8');
   const popup = fs.readFileSync(new URL('../extension/popup.html', import.meta.url), 'utf8');
   assert.match(web, /Dans mon LinkedIn \(Companion\)/);
-  assert.match(web, /sans clé Brave/);
+  assert.match(web, /sans moteur web externe/);
   assert.match(popup, /id="searchLinkedin"/);
   assert.match(popup, /id="searchterms"/);
   assert.match(fs.readFileSync(extensionFile, 'utf8'), /chrome\.scripting\.executeScript/);
