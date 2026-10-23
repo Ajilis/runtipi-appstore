@@ -104,18 +104,35 @@ export function normalizeDegoogResults(data, limit = 10) {
   return items;
 }
 
-export async function discoverDegoogProfiles({ baseUrl, apiKey = '', criteria, fetcher = fetch, onAttempt }) {
+// DeGoog exposes ?page=N (1-based) and may report totalPages. Infinite
+// scrolling is deliberately implemented by Rendevo's UI, not by DeGoog.
+// A subsequent page reuses the exact dork chosen on page 1, preventing pages
+// from silently mixing different queries. Keep a strict 20-page bound.
+export const DEGOOG_MAX_PAGES = 20;
+export const DISCOVERY_IMPORT_MAX = 200;
+
+export async function discoverDegoogPage({
+  baseUrl, apiKey = '', criteria, fetcher = fetch, onAttempt,
+  page = 1, dorkIndex = 0,
+}) {
   const base = normalizeDegoogUrl(baseUrl);
   const queries = buildLinkedInDorks(criteria);
+  if (!Number.isInteger(page) || page < 1 || page > DEGOOG_MAX_PAGES
+    || !Number.isInteger(dorkIndex) || dorkIndex < 0 || dorkIndex >= queries.length) {
+    throw new Error('Page de recherche DeGoog invalide');
+  }
   const controller = new AbortController();
-  // One total timeout shared across all attempts, not one 12s timeout per dork.
+  // 12-second combined timeout for first-page dork fallbacks.
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    for (const query of queries) {
+    let lastPage = null;
+    for (let index = page === 1 ? 0 : dorkIndex; index < queries.length; index++) {
+      const query = queries[index];
       const url = new URL('/api/search', base);
       url.searchParams.set('q', query);
       url.searchParams.set('type', 'web');
       url.searchParams.set('lang', 'fr');
+      url.searchParams.set('page', String(page));
       const response = await fetcher(url, {
         method: 'GET',
         redirect: 'error',
@@ -131,15 +148,32 @@ export async function discoverDegoogProfiles({ baseUrl, apiKey = '', criteria, f
       const data = await response.json();
       if (!Array.isArray(data?.results)) throw new Error('Format de réponse DeGoog invalide');
       const items = normalizeDegoogResults(data, criteria.limit);
-      if (onAttempt) onAttempt({ query, results: data.results.length, profiles: items.length });
-      if (items.length) return items;
+      const total = Number.isInteger(data.totalPages) && data.totalPages > 0
+        ? data.totalPages : null;
+      lastPage = {
+        items, query, page, dork_index: index, total_pages: total,
+        has_more: page < DEGOOG_MAX_PAGES && (total !== null
+          ? page < total : data.results.length > 0),
+      };
+      if (onAttempt) onAttempt({
+        query, page, results: data.results.length, profiles: items.length,
+      });
+      // Only retry fallback dorks on the first page, and only if no valid
+      // LinkedIn profile was returned. Page >= 2 uses its chosen dork alone.
+      if (items.length || page > 1) return lastPage;
     }
-    return [];
+    return lastPage;
   } catch (err) {
     if (err?.name === 'AbortError') throw new Error('La recherche a dépassé 12 secondes');
-    if (/^(Clé API DeGoog|Limite de requêtes DeGoog|Le moteur DeGoog|Format de réponse DeGoog|La recherche a dépassé)/.test(err?.message || '')) throw err;
+    if (/^(Clé API DeGoog|Limite de requêtes DeGoog|Le moteur DeGoog|Format de réponse DeGoog|La recherche a dépassé|Page de recherche DeGoog)/.test(err?.message || '')) throw err;
     throw new Error('Le service DeGoog est temporairement inaccessible');
   } finally { clearTimeout(timeout); }
+}
+
+// Backward compatible helper: original callers still receive only the array.
+export async function discoverDegoogProfiles(options) {
+  const page = await discoverDegoogPage(options);
+  return page.items;
 }
 
 export async function discoverPublicProfiles({ apiKey, criteria, fetcher = fetch }) {
