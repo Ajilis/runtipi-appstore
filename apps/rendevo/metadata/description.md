@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 34** · **Version Rendevo : 0.2.23**
+**Version du catalogue Runtipi : 35** · **Version Rendevo : 0.2.24**
+
+**Nouveau V35 — intitulés multiples sous forme de tags colorés.** Après génération par la baguette magique du champ « Poste recherché », la baguette magique remplace automatiquement le mot-clé initial par les principaux intitulés suggérés en tags colorés ; chaque ajout manuel ou variante crée un tag supplémentaire, avec une croix pour le retirer. Les postes sélectionnés produisent automatiquement un groupe `("Poste A" OR "Poste B" OR "Poste C")` dans les dorks LinkedIn envoyés au moteur configuré, sans perdre le groupe pendant les essais élargis ou la pagination. Ajout manuel possible, maximum huit tags. Aucun changement destructif de la base PostgreSQL, du connecteur IA ou de l'extension.
 
 **Nouveau V34 — Vultr Serverless Inference.** Préréglage dédié avec URL `https://api.vultrinference.com/v1`, liste filtrée des modèles produisant du texte, `max_completion_tokens` pour la génération et contrôle du raisonnement sur la baguette magique. Rendevo vérifie aussi que Vultr répond réellement avec le modèle sélectionné au lieu de substituer silencieusement son modèle par défaut. Aucun changement des autres API OpenAI compatibles, de la clé API enregistrée ni de la base PostgreSQL.
 

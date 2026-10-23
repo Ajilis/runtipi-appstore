@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LuUpload, LuDownload, LuSearch, LuPlus, LuExternalLink, LuSparkles, LuList, LuColumns3, LuRefreshCw, LuWandSparkles } from 'react-icons/lu';
+import { LuUpload, LuDownload, LuSearch, LuPlus, LuExternalLink, LuSparkles, LuList, LuColumns3, LuRefreshCw, LuWandSparkles, LuX } from 'react-icons/lu';
 import { api, useApi, useRouter, Loading, ErrorBox, Empty, Modal, Drawer, Field, Seg, useAction, useToast, HeatBadge, StatusBadge, STATUS, KIND, initials, ago, fmtDateTime, Link } from '../lib.jsx';
 import { normalizedLinkedinProfileUrl } from '../lib/companion.js';
 
@@ -254,6 +254,8 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
   const [campaign, setCampaign] = useState(assisted[0]?.id || '');
   const [limit, setLimit] = useState(20);
   const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
+  const [titleTags, setTitleTags] = useState([]);
+  const [titleTagsEdited, setTitleTagsEdited] = useState(false);
   const [jobTitles, setJobTitles] = useState(null);
   const [titleSource, setTitleSource] = useState('');
   const [selectedSuggestedTitle, setSelectedSuggestedTitle] = useState('');
@@ -279,7 +281,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     setChosen({}); setNames({});
   };
   const generateJobTitles = () => runWizard(async () => {
-    const keyword = (criteria.title || fromCampaign('titles')).trim();
+    const keyword = (criteria.title || titleTags[0] || fromCampaign('titles')).trim();
     if (!keyword) throw new Error('Saisissez d’abord un mot-clé dans « Poste recherché »');
     const response = await api('/api/discovery/job-titles', {
       method: 'POST', body: { keyword },
@@ -287,22 +289,52 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     setJobTitles(response.rows);
     setTitleSource(response.keyword);
     setSelectedSuggestedTitle('');
-    return response;
-  }, (response) => `${response.rows.length} intitulés proposés par le modèle IA actif`);
-  const applySuggestedTitle = () => {
-    if (!selectedSuggestedTitle) return;
-    setCriteria((previous) => ({ ...previous, title: selectedSuggestedTitle }));
-    setJobTitles(null);
+    // Replace the seed keyword immediately with the AI's main titles,
+    // then allow the user to remove unwanted tags or add any variant.
+    const recommended = [...new Map(response.rows.filter((row) =>
+      row.title?.trim() && row.title.trim().length <= 70,
+    ).map((row) => [
+      row.title.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr'),
+      row.title.trim(),
+    ])).values()].slice(0, 8);
+    setTitleTags(recommended);
+    setTitleTagsEdited(true);
+    setCriteria((previous) => ({ ...previous, title: '' }));
+    clearSearch();
+    return { ...response, selectedCount: recommended.length };
+  }, (response) => `${response.selectedCount} postes en tags — retire ceux à exclure ou ajoute des variantes`);
+  const addTitleTag = (value) => {
+    const title = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!title) return;
+    if (title.length > 70) { toast('Un intitulé ne peut pas dépasser 70 caractères', 'err'); return; }
+    if (titleTags.length >= 8) { toast('8 intitulés maximum pour un même dork', 'err'); return; }
+    const normalized = (v) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr');
+    if (titleTags.some((item) => normalized(item) === normalized(title))) {
+      toast('Cet intitulé est déjà sélectionné', 'err');
+      return;
+    }
+    // The keyword is only a seed: selecting the first title REPLACES it.
+    setTitleTags((prev) => [...prev, title]);
+    setTitleTagsEdited(true);
+    setCriteria((previous) => ({ ...previous, title: '' }));
     setSelectedSuggestedTitle('');
     clearSearch();
   };
+  const removeTitleTag = (title) => {
+    setTitleTags((previous) => previous.filter((item) => item !== title));
+    setTitleTagsEdited(true);
+    clearSearch();
+  };
+  const applySuggestedTitle = () => addTitleTag(selectedSuggestedTitle);
   const suggestion = (title) => {
     const lead = String(title || '').split(/\s+[-–—|]\s+/)[0].trim();
     return lead.split(/\s+/).length <= 5 ? lead : '';
   };
   const search = () => run(async () => {
     const input = {
-      title: criteria.title || fromCampaign('titles'),
+      ...(titleTags.length
+        ? { titles: titleTags }
+        : { title: criteria.title || (titleTagsEdited ? '' : fromCampaign('titles')) }),
       industry: criteria.industry || fromCampaign('industries'),
       location: criteria.location || fromCampaign('locations'),
       keywords: criteria.keywords || fromCampaign('keywords'),
@@ -394,6 +426,8 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
           setMode(next);
           clearSearch();
           setJobTitles(null);
+          setTitleTags([]);
+          setTitleTagsEdited(false);
           setCampaign(next === 'provider' ? automatic[0]?.id || '' : next === 'linkedin' ? companionCampaigns[0]?.id || '' : assisted[0]?.id || '');
         }} options={[
           ...(companionCampaigns.length ? [{ value: 'linkedin', label: 'Dans mon LinkedIn (Companion)' }] : []),
@@ -434,7 +468,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               certains postes ou entreprises peuvent être anciens.
             </div>
             <Field label="Campagne de destination">
-              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); clearSearch(); setJobTitles(null); }} />
+              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); clearSearch(); setJobTitles(null); setTitleTags([]); setTitleTagsEdited(false); }} />
             </Field>
             <div className="grid-2">
               {[
@@ -444,20 +478,42 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                 ['keywords', 'Mots-clés', 'keywords', 'Ex. SaaS'],
               ].map(([field, label, source, example]) => (
                 <Field key={field} label={label} hint={fromCampaign(source) ? `Cible campagne : ${fromCampaign(source)}` : undefined}>
-                  <div className="row" style={{ gap: 6 }}>
-                    <input className="input" value={criteria[field]} maxLength={90} placeholder={example}
-                      onChange={(e) => {
-                        setCriteria((prev) => ({ ...prev, [field]: e.target.value }));
-                        if (field === 'title') setJobTitles(null);
-                        clearSearch();
-                      }} />
-                    {field === 'title' && <button type="button" className="btn sm icon"
-                      aria-label="Générer les intitulés de poste avec l’IA" title="Générer les intitulés avec l’IA"
-                      disabled={wizardBusy || busy || !(criteria.title.trim() || fromCampaign('titles'))}
-                      onClick={generateJobTitles}>
-                      {wizardBusy ? <span className="spinner" /> : <LuWandSparkles />}
-                    </button>}
-                  </div>
+                  {field === 'title' ? <>
+                    <div className="row" style={{ gap: 6 }}>
+                      <div className="job-title-selector">
+                        {titleTags.map((title, index) => (
+                          <span key={title} className={`job-title-tag job-title-tag-${index % 4}`}>
+                            <span>{title}</span>
+                            <button type="button" className="job-title-tag-remove"
+                              aria-label={`Retirer le poste ${title}`} title={`Retirer ${title}`}
+                              onClick={() => removeTitleTag(title)}><LuX /></button>
+                          </span>
+                        ))}
+                        <input className="job-title-input" value={criteria.title} maxLength={70}
+                          aria-label="Ajouter un intitulé de poste"
+                          placeholder={titleTags.length ? 'Ajouter un poste…' : example}
+                          onChange={(e) => { setCriteria((prev) => ({ ...prev, title: e.target.value })); setJobTitles(null); clearSearch(); }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && criteria.title.trim()) {
+                              e.preventDefault(); addTitleTag(criteria.title);
+                            }
+                          }} />
+                      </div>
+                      {criteria.title.trim() && <button type="button" className="btn sm icon"
+                        title="Ajouter ce poste comme tag" aria-label="Ajouter ce poste comme tag"
+                        disabled={titleTags.length >= 8} onClick={() => addTitleTag(criteria.title)}>
+                        <LuPlus />
+                      </button>}
+                      <button type="button" className="btn sm icon"
+                        aria-label="Générer les intitulés de poste avec l’IA" title="Générer les intitulés avec l’IA"
+                        disabled={wizardBusy || busy || !(criteria.title.trim() || titleTags.length || fromCampaign('titles'))}
+                        onClick={generateJobTitles}>
+                        {wizardBusy ? <span className="spinner" /> : <LuWandSparkles />}
+                      </button>
+                    </div>
+                    <p className="small soft">Chaque tag est un poste recherché. Plusieurs tags = OU logique dans le dork ; clique sur × pour en retirer un (maximum 8).</p>
+                  </> : <input className="input" value={criteria[field]} maxLength={90} placeholder={example}
+                    onChange={(e) => { setCriteria((prev) => ({ ...prev, [field]: e.target.value })); clearSearch(); }} />}
                 </Field>
               ))}
             </div>
@@ -469,8 +525,8 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                   Fermer les suggestions
                 </button>
               </div>
-              <p className="small soft">Suggestions générées par ton connecteur IA, non officielles et à vérifier. Aucun profil n’est recherché avant de cliquer sur « Rechercher des profils ».</p>
-              <Field label="Choisir un intitulé ou une variante pour le poste recherché">
+              <p className="small soft">La baguette magique a remplacé ton mot-clé par les intitulés principaux sous forme de tags (8 maximum). Retire ceux à exclure avec × ; tu peux ensuite ajouter une variante depuis ce menu. Les tags restants sont reliés par OU dans le dork. Aucun import automatique.</p>
+              <Field label="Ajouter un intitulé ou une variante aux tags du poste recherché">
                 <div className="row wrap" style={{ gap: 8 }}>
                   <select className="select" style={{ flex: 1, minWidth: 220 }}
                     value={selectedSuggestedTitle} onChange={(e) => setSelectedSuggestedTitle(e.target.value)}>
@@ -485,8 +541,8 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                       </optgroup>
                     ))}
                   </select>
-                  <button className="btn primary" type="button" disabled={!selectedSuggestedTitle}
-                    onClick={applySuggestedTitle}>Utiliser ce poste</button>
+                  <button className="btn primary" type="button" disabled={!selectedSuggestedTitle || titleTags.length >= 8}
+                    onClick={applySuggestedTitle}>Ajouter ce poste</button>
                 </div>
               </Field>
               <div className="table-wrap">

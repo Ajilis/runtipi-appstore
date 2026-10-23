@@ -119,11 +119,13 @@ test('interface : baguette magique attenante au poste, table en quatre colonnes 
   assert.match(src, /api\/discovery\/job-titles/);
   assert.match(src, /jobTitles\.map/);
   assert.match(src, /optgroup/);
-  assert.match(src, /Utiliser ce poste/);
+  assert.match(src, /Ajouter ce poste/);
   assert.match(src, /Intitulé principal/);
   assert.match(src, /Variantes et synonymes LinkedIn/);
   assert.match(src, /Lien avec le mot-clé/);
-  assert.match(src, /setCriteria\(\(previous\) => \(\{ \.\.\.previous, title: selectedSuggestedTitle \}\)\)/);
+  assert.match(src, /setTitleTags\(recommended\)/);
+  assert.match(src, /setCriteria\(\(previous\) => \(\{ \.\.\.previous, title: '' \}\)\)/);
+  assert.match(src, /removeTitleTag/);
   assert.match(src, /<LuSearch \/>}Rechercher des profils/);
 });
 

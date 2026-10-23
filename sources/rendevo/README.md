@@ -1,5 +1,18 @@
 # Rendevo — sources
 
+## V35 (0.2.24) : tags de postes et OU logique dans les dorks LinkedIn
+
+Dans **Prospects → Trouver des prospects → Recherche web publique → Poste recherché**, le clic sur la baguette magique **remplace automatiquement le mot-clé initial** par les principaux postes suggérés (jusqu'à 8). Les postes générés s'affichent ensuite côte à côte sous forme de **tags colorés** ; chacun possède une petite croix pour le retirer indépendamment. Le menu IA reste disponible pour sélectionner un deuxième, troisième, etc. intitulé (ou une variante masculine, féminine, française ou anglaise). Il est également possible d'ajouter un poste manuellement avec **Entrée** ou le bouton **+**. Maximum **8 intitulés distincts** et 70 caractères par intitulé pour maîtriser la longueur de la requête.
+
+Les postes sélectionnés forment un groupe **OU** explicite sur le serveur, par exemple :
+`site:linkedin.com/in/ ("Directeur commercial" OR "Directrice commerciale" OR "Head of Sales") "Paris"`.
+Les autres filtres (secteur, ville, mots-clés) continuent de s'appliquer aux résultats sous forme de termes additionnels. **Le même groupe OU est conservé dans les trois dorks** envoyés successivement à DeGoog si le précédent ne donne aucun profil exploitable, ainsi que pendant la pagination ou le défilement infini. L'API Brave historique reçoit aussi la requête à plusieurs postes ; les recherches à un seul poste restent inchangées.
+
+La validation serveur accepte `titles: string[]` (8 au maximum) en plus de l'ancien `title`, nettoie les guillemets et caractères de contrôle, dédoublonne les titres sans tenir compte de la casse et des accents et ne réinjecte pas le champ `title` lorsque la liste est fournie. Les dorks sont toujours envoyés **au moteur de recherche configuré**, sans consultation automatique de LinkedIn. Leur interprétation dépend du moteur sous-jacent ; les termes sont correctement groupés par parenthèses avec l'opérateur `OR`. L'import manuel, la pagination et les limites existantes restent applicables.
+
+**Aucune migration PostgreSQL**, aucune suppression de campagne, contact ou message et aucun changement à la configuration IA enregistrée.
+
+
 ## V34 (0.2.23) : connecteur compatible Vultr Serverless Inference
 
 **API :** [documentation Vultr](https://api.vultrinference.com/docs). Dans **Réglages → Intelligence artificielle**, choisir **Vultr Serverless Inference** (fournisseur OpenAI compatible), URL exacte `https://api.vultrinference.com/v1`, puis renseigner la clé Vultr en Bearer et sélectionner un **modèle de chat/génération de texte**. Une configuration déjà enregistrée sur cette URL continue à fonctionner sans ressaisir la clé.

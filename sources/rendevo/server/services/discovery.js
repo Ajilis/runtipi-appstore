@@ -14,37 +14,71 @@ export function normalizePublicProfileUrl(input) {
   } catch { return null; }
 }
 
+// Keep this limit aligned with the UI: one OR group is sent as a single
+// DeGoog/Brave query, never one request per selected title.
+export const MAX_SEARCH_TITLES = 8;
+export const MAX_TITLE_LENGTH = 70;
+
+// Treat every title as a quoted search phrase. A caller cannot inject boolean
+// operators, extra search scopes or quotes outside this group.
+function quotedTitle(title) { return '"' + title + '"'; }
+export function titleOrGroup(titles) {
+  if (!Array.isArray(titles) || !titles.length) return '';
+  const phrases = titles.map(quotedTitle);
+  return phrases.length === 1 ? phrases[0] : '(' + phrases.join(' OR ') + ')';
+}
+
 export function normalizeDiscoveryCriteria(input = {}, defaults = {}) {
   const clean = (value, max = 90) => String(value ?? '').trim()
     .replace(/[\r\n\t"\\<>|]/g, ' ').replace(/\s+/g, ' ').slice(0, max);
   const first = (key) => Array.isArray(defaults[key]) ? defaults[key][0] : '';
-  const title = clean(input.title === undefined ? first('titles') : input.title);
   const industry = clean(input.industry === undefined ? first('industries') : input.industry);
   const location = clean(input.location === undefined ? first('locations') : input.location);
   const keywords = clean(input.keywords === undefined ? first('keywords') : input.keywords);
+  let titles;
+  if (input.titles !== undefined) {
+    if (!Array.isArray(input.titles) || input.titles.length > MAX_SEARCH_TITLES
+      || input.titles.some((t) => typeof t !== 'string' || t.trim().length > MAX_TITLE_LENGTH)) {
+      throw new Error('Sélectionnez au maximum ' + MAX_SEARCH_TITLES + ' intitulés de poste valides');
+    }
+    const unique = new Map();
+    for (const title of input.titles.map((t) => clean(t, MAX_TITLE_LENGTH)).filter(Boolean)) {
+      const key = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr');
+      if (!unique.has(key)) unique.set(key, title);
+    }
+    titles = [...unique.values()];
+  } else {
+    // Legacy single-title clients previously accepted up to 90 characters.
+    const legacy = clean(input.title === undefined ? first('titles') : input.title);
+    titles = legacy ? [legacy] : [];
+  }
+  const title = titles[0] || '';
   const limit = Math.max(1, Math.min(50, Math.trunc(Number(input.limit) || 10)));
   if (![title, industry, location, keywords].some(Boolean)) {
     throw new Error('Indiquez un poste, un secteur, une localisation ou des mots-clés');
   }
-  const searchQuery = ['site:linkedin.com/in/', ...[title, industry, location, keywords]
-    .filter(Boolean).map((term) => '"' + term + '"')].join(' ');
-  return { title, industry, location, keywords, limit, searchQuery: searchQuery.slice(0, 580) };
+  const titleGroup = titleOrGroup(titles);
+  const searchQuery = ['site:linkedin.com/in/', titleGroup,
+    ...[industry, location, keywords].filter(Boolean).map(quotedTitle)].filter(Boolean).join(' ');
+  if (searchQuery.length > 950) throw new Error('La requête est trop longue : supprimez des intitulés ou des filtres');
+  return { title, titles, industry, location, keywords, limit, searchQuery };
 }
 
 // Search only public, independently indexed LinkedIn *profile* URLs.
-// The first dork is specific to the chosen ICP; if it yields no valid profile,
-// broaden in two bounded stages to compensate for limited search-engine support
-// for long quoted queries and /in/ path filters.
+// When several job titles are selected, group them as an explicit Boolean
+// OR on ALL three fallback dorks, including the broadest one. Never silently
+// degrade the selection to the first title.
 export function buildLinkedInDorks(criteria) {
   const site = 'site:linkedin.com/in/';
-  const terms = [criteria.title, criteria.industry, criteria.location, criteria.keywords].filter(Boolean);
-  if (!terms.length) return [criteria.searchQuery].filter(Boolean);
+  const titleGroup = titleOrGroup(criteria.titles?.length ? criteria.titles : criteria.title ? [criteria.title] : []);
+  const terms = [criteria.industry, criteria.location, criteria.keywords].filter(Boolean);
+  if (!titleGroup && !terms.length) return [criteria.searchQuery].filter(Boolean);
   const phrase = (term) => '"' + term + '"';
-  const focus = [criteria.title, criteria.location].filter(Boolean);
+  const focus = [titleGroup, criteria.location && phrase(criteria.location)].filter(Boolean);
   const queries = [
-    site + ' ' + terms.map(phrase).join(' '),
-    site + ' ' + (focus.length ? focus : terms.slice(0, 2)).map(phrase).join(' '),
-    'site:linkedin.com/in ' + phrase(criteria.title || criteria.keywords || criteria.industry || criteria.location),
+    [site, titleGroup, ...terms.map(phrase)].filter(Boolean).join(' '),
+    [site, ...(focus.length ? focus : terms.slice(0, 2).map(phrase))].filter(Boolean).join(' '),
+    ['site:linkedin.com/in', titleGroup || phrase(criteria.keywords || criteria.industry || criteria.location)].join(' '),
   ];
   return [...new Set(queries.map((x) => x.trim()))].slice(0, 3);
 }
