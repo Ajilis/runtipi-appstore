@@ -1,5 +1,14 @@
 # Rendevo — sources
 
+## V36 (0.2.25) : recherche publique compacte et champs verticaux
+
+Dans **Prospects → Trouver des prospects → Recherche web publique**, la baguette magique continue d'utiliser le **connecteur IA actif** pour remplacer le mot-clé initial par une série de **tags de postes colorés et supprimables par une croix**. Cependant, le panneau **« Fonctions proposées pour… »**, le tableau détaillé des intitulés générés et le menu déroulant de variantes ne sont **plus affichés**. Cette suppression concerne exclusivement la présentation, pas l'API ni le moteur IA.
+
+Tous les champs sont maintenant **empilés sur une seule colonne** dans l'ordre : **Campagne de destination → Poste recherché → Secteur → Localisation → Mots-clés → Profils retenus par page → Affichage des résultats DeGoog**. Chaque champ dispose de sa propre ligne ; les tags restent côte à côte et se répartissent automatiquement sur plusieurs lignes à l'intérieur du champ Poste recherché si nécessaire.
+
+Les titres sélectionnés continuent de former un groupe **OU** dans les dorks LinkedIn (par exemple `("Directeur marketing" OR "Head of Marketing")`) sur les recherches et pages DeGoog. Les ajouts manuels par Entrée ou +, la suppression individuelle des tags, la recherche à plusieurs pages et l'import après validation restent disponibles. Aucun changement de données, de migration PostgreSQL, de connecteur IA ni de clé API.
+
+
 ## V35 (0.2.24) : tags de postes et OU logique dans les dorks LinkedIn
 
 Dans **Prospects → Trouver des prospects → Recherche web publique → Poste recherché**, le clic sur la baguette magique **remplace automatiquement le mot-clé initial** par les principaux postes suggérés (jusqu'à 8). Les postes générés s'affichent ensuite côte à côte sous forme de **tags colorés** ; chacun possède une petite croix pour le retirer indépendamment. Le menu IA reste disponible pour sélectionner un deuxième, troisième, etc. intitulé (ou une variante masculine, féminine, française ou anglaise). Il est également possible d'ajouter un poste manuellement avec **Entrée** ou le bouton **+**. Maximum **8 intitulés distincts** et 70 caractères par intitulé pour maîtriser la longueur de la requête.
