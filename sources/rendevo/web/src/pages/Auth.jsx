@@ -55,6 +55,7 @@ export function AuthPage({ auth, onDone }) {
             </p>
           )}
         </form>
+        {auth.version && <div className="auth-version" aria-label="Version de Rendevo">Rendevo v{auth.version}</div>}
       </div>
     </div>
   );
