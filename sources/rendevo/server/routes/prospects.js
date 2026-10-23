@@ -2,7 +2,7 @@ import { bad, notFound } from '../lib/http.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
-import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
+import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, discoverDegoogPage, DEGOOG_MAX_PAGES, DISCOVERY_IMPORT_MAX, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
   p.status, p.stage, p.tags, p.signals, p.campaign_id, p.needs_human, p.human_reason, p.last_reply_at, p.last_contact_at, p.created_at, p.updated_at, p.source, p.callback_at`;
@@ -141,34 +141,53 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     let criteria;
     try { criteria = normalizeDiscoveryCriteria(input, ctx.state.ws.settings?.icp || {}); }
     catch (err) { throw bad(err.message); }
+    const page = input.page === undefined ? 1 : Number(input.page);
+    const dorkIndex = input.dork_index === undefined ? 0 : Number(input.dork_index);
+    if (!Number.isInteger(page) || page < 1 || page > DEGOOG_MAX_PAGES
+      || !Number.isInteger(dorkIndex) || dorkIndex < 0 || dorkIndex > 2) {
+      throw bad('Page de recherche invalide');
+    }
+    if (provider === 'brave' && page !== 1) throw bad('Pagination disponible uniquement pour DeGoog');
     const id = ctx.state.user.id;
-    const last = recentSearches.get(id) || 0;
-    if (Date.now() - last < 10000) throw bad('Une recherche toutes les 10 secondes au maximum');
+    const keyRate = String(ctx.state.ws.id) + ':' + id;
+    const last = recentSearches.get(keyRate) || 0;
+    // Full new searches remain limited to one every 10 seconds. Page turns
+    // are paced at 1 second, with hard page limits to bound provider traffic.
+    const delay = page === 1 ? 10000 : 1000;
+    if (Date.now() - last < delay) throw bad(
+      page === 1 ? 'Une nouvelle recherche toutes les 10 secondes au maximum'
+        : 'Patientez une seconde avant de charger la page suivante',
+    );
     if (recentSearches.size > 2000) recentSearches.clear();
-    recentSearches.set(id, Date.now());
+    recentSearches.set(keyRate, Date.now());
     try {
       const attempts = [];
-      const items = provider === 'brave'
-        ? await discoverPublicProfiles({ apiKey: key, criteria, fetcher })
-        : await discoverDegoogProfiles({
-          baseUrl: settings.base_url, apiKey: key, criteria, fetcher,
-          onAttempt: (entry) => attempts.push(entry),
-        });
-      return { items, found: items.length, query: criteria.searchQuery, provider, attempts };
+      if (provider === 'brave') {
+        const items = await discoverPublicProfiles({ apiKey: key, criteria, fetcher });
+        return { items, found: items.length, query: criteria.searchQuery, provider, attempts,
+          page: 1, has_more: false, total_pages: null, dork_index: 0 };
+      }
+      const response = await discoverDegoogPage({
+        baseUrl: settings.base_url, apiKey: key, criteria, fetcher, page,
+        dorkIndex,
+        onAttempt: (entry) => attempts.push(entry),
+      });
+      return {
+        ...response, found: response.items.length, provider, attempts,
+      };
     } catch (err) { throw bad(err.message); }
   });
 
-
   // A second, explicit click imports only reviewed and selected suggestions.
   router.post('/api/discovery/import', requireAuth, async (ctx) => {
-    const body = await ctx.json(128 * 1024);
-    if (!Array.isArray(body.items) || !body.items.length || body.items.length > 20) {
-      throw bad('Sélectionnez entre 1 et 20 profils vérifiés');
+    const body = await ctx.json(256 * 1024);
+    if (!Array.isArray(body.items) || !body.items.length || body.items.length > DISCOVERY_IMPORT_MAX) {
+      throw bad('Sélectionnez entre 1 et ' + DISCOVERY_IMPORT_MAX + ' profils vérifiés');
     }
     const campaignId = body.campaign_id || null;
     if (campaignId) {
       const { rows } = await db.query(
-        "SELECT c.id FROM campaigns c JOIN accounts a ON a.id = c.account_id AND a.workspace_id = c.workspace_id WHERE c.id = $1 AND c.workspace_id = $2 AND c.status <> 'archived' AND a.provider IN ('manual','linkedin_cookie','linkedin_companion')",
+        "SELECT c.id FROM campaigns c JOIN accounts a ON a.id = c.account_id AND a.workspace_id = c.workspace_id WHERE c.id = $1 AND c.workspace_id = $2 AND c.status <> 'archived' AND c.deleted_at IS NULL AND a.provider IN ('manual','linkedin_cookie','linkedin_companion')",
         [campaignId, ctx.state.ws.id],
       );
       if (!rows.length) throw bad('Campagne indisponible dans cet espace');
