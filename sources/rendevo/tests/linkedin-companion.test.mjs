@@ -389,11 +389,13 @@ test('une extension déjà associée reste connectée sans nouvelle saisie ni pe
   assert.equal(storage.companionToken, 'persisted-token');
 });
 
-test('un code pour instance HTTP privée permet une association locale contrôlée', async () => {
-  const { elem, permissions, requests, storage } = await simulatePopup('https://www.linkedin.com/feed/');
+test('un ZIP personnalisé HTTP privé associe sur le port exact sans nouvelle permission', async () => {
+  const { elem, permissions, requests, storage } = await simulatePopup(
+    'https://www.linkedin.com/feed/', [], { installedOrigin: 'http://192.168.1.16:8288' },
+  );
   await pair(elem, 'http://192.168.1.16:8288');
   assert.equal(permissions.length, 1);
-  assert.deepEqual(Array.from(permissions[0].origins), ['http://192.168.1.16:8288/*']);
+  assert.deepEqual(Array.from(permissions[0].origins), ['http://192.168.1.16/*']);
   assert.equal(requests[0].url, 'http://192.168.1.16:8288/api/companion/exchange');
   assert.equal(storage.rendevoOrigin, 'http://192.168.1.16:8288');
 });
