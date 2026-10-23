@@ -36,12 +36,12 @@ export class AiService {
     return true; // OpenAI-compatible endpoints like Ollama may not need a key
   }
 
-  async complete(ws, { system, user, maxTokens = 700, temperature, settingsOverride }) {
+  async complete(ws, { system, user, maxTokens = 700, temperature, settingsOverride, timeoutMs = 60000 }) {
     const s = settingsOverride || this.settingsFor(ws);
     if (s.provider === 'none' || !s.model || (s.provider === 'anthropic' && !s.api_key)) throw new Error('IA non configurée');
     const t = temperature ?? s.temperature;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60000);
+    const timer = setTimeout(() => ctrl.abort(), Math.min(60000, Math.max(10000, timeoutMs)));
     try {
       if (s.provider === 'anthropic') {
         const base = s.base_url.includes('anthropic.com') ? s.base_url : 'https://api.anthropic.com/v1';
