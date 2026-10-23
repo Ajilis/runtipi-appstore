@@ -45,6 +45,76 @@ export function normalizeSearchResults(data, limit = 10) {
   return out;
 }
 
+// Degoog's native JSON API uses GET /api/search?q=... and returns { results:
+// [{ url, title, snippet }] }. The optional search API key is a Bearer token.
+// URLs are restricted to an HTTP(S) origin or its exact /api/search endpoint.
+export function normalizeDegoogUrl(input) {
+  if (typeof input !== 'string' || input.length > 400) throw new Error('URL DeGoog invalide');
+  let parsed;
+  try { parsed = new URL(input.trim()); } catch { throw new Error('URL DeGoog invalide'); }
+  const host = parsed.hostname.toLowerCase();
+  const octets = host.split('.');
+  const ipv4 = octets.length === 4 && octets.every((n) => /^\\d{1,3}$/.test(n) && Number(n) <= 255);
+  const privateIp = ipv4 && (Number(octets[0]) === 10 || Number(octets[0]) === 127
+    || (Number(octets[0]) === 192 && Number(octets[1]) === 168)
+    || (Number(octets[0]) === 172 && Number(octets[1]) >= 16 && Number(octets[1]) <= 31));
+  const privateHttp = host === 'localhost' || host === '[::1]' || privateIp;
+  if ((parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && privateHttp))
+    || parsed.username || parsed.password || parsed.search || parsed.hash
+    || !['/', '/api/search'].includes(parsed.pathname)
+    || !host || host.includes('*') || (ipv4 && !privateIp && parsed.protocol === 'http:')) {
+    throw new Error('URL DeGoog refusée : HTTPS ou HTTP sur IP privée/localhost uniquement');
+  }
+  return parsed.origin;
+}
+
+export function normalizeDegoogResults(data, limit = 10) {
+  const seen = new Set(), items = [];
+  for (const item of Array.isArray(data?.results) ? data.results.slice(0, 250) : []) {
+    const url = normalizePublicProfileUrl(item?.url);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    items.push({
+      linkedin_url: url,
+      title: String(item.title || '').replace(/<[^>]*>/g, '').replace(/\\s*[|–—-]\\s*LinkedIn.*$/i, '').trim().slice(0, 160),
+      description: String(item.snippet || item.content || '').replace(/<[^>]*>/g, '').trim().slice(0, 280),
+      source: 'DeGoog (index web)',
+    });
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
+export async function discoverDegoogProfiles({ baseUrl, apiKey = '', criteria, fetcher = fetch }) {
+  const url = new URL('/api/search', normalizeDegoogUrl(baseUrl));
+  url.searchParams.set('q', criteria.searchQuery);
+  url.searchParams.set('type', 'web');
+  url.searchParams.set('lang', 'fr');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetcher(url, {
+      method: 'GET',
+      redirect: 'error',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}),
+      },
+    });
+    if ([401, 403].includes(response.status)) throw new Error('Clé API DeGoog invalide ou accès non autorisé');
+    if (response.status === 429) throw new Error('Limite de requêtes DeGoog atteinte');
+    if (!response.ok) throw new Error('Le moteur DeGoog a renvoyé HTTP ' + response.status);
+    const data = await response.json();
+    if (!Array.isArray(data?.results)) throw new Error('Format de réponse DeGoog invalide');
+    return normalizeDegoogResults(data, criteria.limit);
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('La recherche a dépassé 12 secondes');
+    if (/^(Clé API DeGoog|Limite de requêtes DeGoog|Le moteur DeGoog|Format de réponse DeGoog|La recherche a dépassé)/.test(err?.message || '')) throw err;
+    throw new Error('Le service DeGoog est temporairement inaccessible');
+  } finally { clearTimeout(timeout); }
+}
+
 export async function discoverPublicProfiles({ apiKey, criteria, fetcher = fetch }) {
   if (!apiKey || !/^\S{8,512}$/.test(apiKey)) throw new Error('Clé de recherche Brave manquante');
   const url = new URL(BRAVE_SEARCH);
