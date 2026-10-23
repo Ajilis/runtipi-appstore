@@ -139,6 +139,7 @@ async function loadCampaigns() {
     api('/api/companion/status'), api('/api/companion/campaigns'),
   ]);
   byId('workspace').textContent = state.workspace || 'Rendevo';
+  byId('rendevoVersion').textContent = state.rendevo_version ? 'v' + state.rendevo_version : 'non communiquée';
   const previous = campaign.value;
   const previousSearch = searchTerms.value;
   campaignSuggestions = new Map((list.items || []).map(({ id, search_keywords }) => [
@@ -160,6 +161,7 @@ async function loadCampaigns() {
 }
 
 async function init() {
+  byId('companionVersion').textContent = 'Companion v' + companionVersion;
   say('');
   const stored = await chrome.storage.local.get(['rendevoOrigin', 'companionToken']);
   rendevoOrigin = localOrigin(stored.rendevoOrigin) || '';
