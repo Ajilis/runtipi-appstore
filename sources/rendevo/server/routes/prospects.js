@@ -4,6 +4,7 @@ import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
 import { normalizeJobKeyword, professionalTitlePrompt } from '../services/job-titles.js';
 import { parseProfessionalTitleResponse } from '../services/job-title-parser.js';
+import { classifyAiGenerationFailure } from '../services/ai-diagnostics.js';
 import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, discoverDegoogPage, DEGOOG_MAX_PAGES, DISCOVERY_IMPORT_MAX, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
@@ -151,37 +152,38 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     if (Date.now() - last < 12000) throw bad('Une génération IA toutes les 12 secondes au maximum');
     if (recentTitleRequests.size > 2000) recentTitleRequests.clear();
     recentTitleRequests.set(identity, Date.now());
-    // A model can pass the short connection test yet return JSON inside
-    // Markdown, a table rather than JSON, or a truncated lengthy response.
-    // Parse common formats first; retry only a formatting error with fewer rows.
+    // The quick "OK" connection test uses only 16 output tokens. A long
+    // classification request can still exhaust a model, proxy or CPU budget.
+    // Use a compact first response, then retry once with a substantially
+    // smaller prompt for parsing failures or transient network interruptions.
     let formatError;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const prompt = professionalTitlePrompt(keyword);
-      const userPrompt = attempt === 0 ? prompt
-        : prompt.replace('au maximum 24 lignes', 'au maximum 12 lignes')
-          + '\nIMPORTANT : fais une réponse COURTE (maximum 12 lignes), complète et fermée, sans explications, dans un JSON valide. Si le modèle ne peut produire du JSON, utilise un tableau Markdown à quatre colonnes.';
+      const userPrompt = attempt === 0
+        ? professionalTitlePrompt(keyword).replace('au maximum 24 lignes', 'au maximum 12 lignes')
+        : [
+          'Tu es un expert des intitulés de postes professionnels en France.',
+          'Mot-clé : ' + JSON.stringify(keyword),
+          'Propose AU MAXIMUM 6 fonctions liées : postes courants, féminins/masculins,',
+          'synonymes, variantes anglaises, fonctions voisines, anciennes ou honorifiques.',
+          'Les catégories sont indicatives et NON officielles sur LinkedIn.',
+          'Réponds UNIQUEMENT en JSON valide et court :',
+          '{"rows":[{"category":"Métier","title":"Poste","variants":["Synonyme"],"relation":"Lien au mot-clé"}]}',
+          'Pas de texte supplémentaire. Termine impérativement toutes les accolades.',
+        ].join('\\n');
       let responseText;
       try {
         responseText = await ai.complete(ctx.state.ws, {
-          system: 'Tu classes les intitulés professionnels et réponds par un tableau structuré, en JSON valide si possible. Respecte le format des quatre colonnes demandé. Aucun autre texte.',
+          system: 'Classe les métiers à partir du mot-clé. Réponds par un JSON complet et concis, sans autre texte.',
           user: userPrompt,
-          maxTokens: attempt === 0 ? 3400 : 2000,
+          maxTokens: attempt === 0 ? 1200 : 700,
+          timeoutMs: attempt === 0 ? 30000 : 20000,
           temperature: 0.2,
         });
       } catch (error) {
-        // Provider details may include the saved token, request IDs or internal
-        // infrastructure information; never relay the raw error to the client.
-        const message = String(error?.message || '');
-        const status = /(?:LLM|Anthropic) HTTP (\d{3})/.exec(message)?.[1];
-        if (status === '401' || status === '403') throw bad('Le fournisseur IA refuse la clé API (HTTP ' + status + '). Vérifiez les identifiants dans Réglages → Intelligence artificielle.');
-        if (status === '404') throw bad('Le modèle ou la route /chat/completions est introuvable (HTTP 404). Vérifiez le modèle sélectionné.');
-        if (status === '429') throw bad('Le fournisseur IA limite les requêtes (HTTP 429). Réessayez après son délai de régulation.');
-        if (status === '400' || status === '422') throw bad('Le fournisseur IA refuse les paramètres de génération (HTTP ' + status + '). Vérifiez que le modèle accepte /chat/completions, max_tokens et temperature.');
-        if (status) throw bad('Le fournisseur IA est indisponible ou refuse la génération (HTTP ' + status + ').');
-        if (error?.name === 'AbortError' || /timed?\s*out|timeout|aborted|délai|dépassé/i.test(message)) {
-          throw bad('Le modèle IA a dépassé le délai de réponse de 60 secondes. Essayez un modèle plus rapide.');
-        }
-        throw bad('Le fournisseur IA a interrompu la génération. Vérifiez le modèle et sa disponibilité dans Réglages → Intelligence artificielle.');
+        const diagnostic = classifyAiGenerationFailure(error);
+        if (attempt === 0 && diagnostic.retryable) continue;
+        const suffix = attempt > 0 ? ' La tentative de génération réduite a également échoué.' : '';
+        throw bad(diagnostic.message + suffix + ' (code ' + diagnostic.code + ')');
       }
       try {
         return { keyword, rows: parseProfessionalTitleResponse(responseText) };
