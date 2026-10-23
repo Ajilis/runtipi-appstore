@@ -15,7 +15,7 @@
 #   data/postgres -> base de données PostgreSQL
 services:
   rendevo:
-    image: ghcr.io/ajilis/rendevo:0.2.9
+    image: ghcr.io/ajilis/rendevo:0.2.10
     restart: unless-stopped
     environment:
       DATABASE_URL: "postgres://rendevo:${RENDEVO_DB_PASSWORD}@rendevo-db:5432/rendevo"
