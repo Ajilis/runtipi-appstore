@@ -13,7 +13,7 @@ test('mot-clé : respecte le champ Poste recherché, interdit valeurs vides et c
   }
 });
 
-test('prompt IA : nouveau JSON compact value-label-keywords, avec tous les champs du formulaire', () => {
+test('prompt IA : JSON compact value-label-keywords sans secteur, avec les trois champs de recherche', () => {
   const form = normalizeJobFormFields({
     title: 'Directeur technique', industry: 'Industrie', location: 'Lyon', keywords: 'B2B',
   });
@@ -23,13 +23,14 @@ test('prompt IA : nouveau JSON compact value-label-keywords, avec tous les champ
     '(variantes, fonctions proches, anciens titres)', 'sans doublons',
     'Réponds uniquement en JSON compact',
     '[{"value":"identifiant","label":"Intitulé","keywords":["synonymes"]}]',
-    '"Poste recherché":"Directeur technique"', '"Secteur":"Industrie"',
+    '"Poste recherché":"Directeur technique"',
     '"Localisation":"Lyon"', '"Mots-clés":"B2B"',
   ]) assert.ok(p.includes(fragment), fragment);
-  assert.doesNotMatch(p, /"rows"|Catégorie|Intitulé principal|Markdown/);
+  assert.doesNotMatch(p, /"rows"|Catégorie|Intitulé principal|Markdown|Secteur|Industrie/);
   assert.equal(professionalTitlePrompt('Directeur technique').includes('Directeur technique'), true);
   assert.throws(() => normalizeJobFormFields('texte'), /invalides/);
-  assert.throws(() => normalizeJobFormFields({ industry: ['bad'] }), /invalides/);
+  assert.deepEqual(Object.keys(form), ['title', 'location', 'keywords']);
+  assert.equal(normalizeJobFormFields({ title: 'CTO', industry: ['ignored'] }).title, 'CTO');
   assert.throws(() => normalizeJobFormFields({ keywords: 'x'.repeat(121) }), /invalides/);
 });
 
@@ -119,7 +120,7 @@ test('route : utilise uniquement le connecteur IA actif et retourne un tableau s
   assert.equal(h.prompts.length, 1);
   assert.equal(h.prompts[0].maxTokens, 1200);
   assert.match(h.prompts[0].user, /Commercial/);
-  assert.match(h.prompts[0].user, /"Secteur":"Logiciel"/);
+  assert.doesNotMatch(h.prompts[0].user, /Secteur|Logiciel/);
   assert.match(h.prompts[0].user, /"Localisation":"Paris"/);
   assert.match(h.prompts[0].user, /"Mots-clés":"SaaS"/);
   assert.deepEqual(h.headers, [['Cache-Control', 'no-store']]);
@@ -145,7 +146,8 @@ test('interface : baguette magique alimente uniquement les tags, sans panneau d�
   assert.match(src, /Générer les intitulés de poste avec l’IA/);
   assert.match(src, /api\/discovery\/job-titles/);
   assert.match(src, /fields: \{/);
-  assert.match(src, /industry: criteria\.industry \|\| fromCampaign/);
+  assert.doesNotMatch(src, /industry: criteria\.industry \|\| fromCampaign/);
+  assert.match(src, /industry: ''/);
   assert.match(src, /location: criteria\.location \|\| fromCampaign/);
   assert.match(src, /keywords: criteria\.keywords \|\| fromCampaign/);
   assert.match(src, /setTitleTags\(recommended\)/);
@@ -159,17 +161,19 @@ test('interface : baguette magique alimente uniquement les tags, sans panneau d�
   assert.doesNotMatch(src, /aria-label="Intitulés de postes suggérés par l’IA"/);
 });
 
-test('interface : les quatre champs et les options de recherche sont empilés verticalement', () => {
+test('interface : les trois champs et les options de recherche sont empilés verticalement', () => {
   const src = fs.readFileSync(new URL('../web/src/pages/Prospects.jsx', import.meta.url), 'utf8');
   const searchArea = src.slice(src.indexOf('<Field label="Campagne de destination">'),
     src.indexOf('<p className="small soft">DeGoog définit le nombre'));
   assert.match(searchArea, /className="stack" style=\{\{ '--gap': '12px' \}\}>\s*\{\[/);
   assert.match(searchArea, /className="stack" style=\{\{ '--gap': '12px' \}\}>\s*<Field label="Profils retenus/);
-  for (const field of ['Poste recherché', 'Secteur', 'Localisation', 'Mots-clés',
+  for (const field of ['Poste recherché', 'Localisation', 'Mots-clés',
     'Profils retenus par page', 'Affichage des résultats DeGoog']) {
     assert.ok(searchArea.includes(field), field);
   }
   assert.doesNotMatch(searchArea, /className="grid-2"/);
+  assert.doesNotMatch(searchArea, /Secteur|industries|Ex\. Logiciel B2B/);
+  assert.doesNotMatch(src, /Recherche des profils professionnels|déjà indexés sur le web|Ni Rendevo ni Chrome Companion/);
 });
 
 
