@@ -30,12 +30,12 @@ export function CompanionSettings() {
       <div className="panel-head"><h3>Rendevo Companion — connexion directe</h3></div>
       <div className="panel-pad stack" style={{ '--gap': '12px' }}>
         <p className="small soft">L'extension Chrome dialogue directement avec Rendevo : elle affiche tes campagnes Companion et peut importer, après prévisualisation et validation, les profils de la page de recherche LinkedIn ouverte ou l'URL d'un profil sélectionné. Aucun cookie LinkedIn n'est transféré, aucun message n'est envoyé automatiquement.</p>
-        <p className="small soft">Un seul code suffit : il inclut l’adresse de cette instance Rendevo et le secret temporaire. Il n’est plus nécessaire de saisir le site séparément dans Companion.</p>
+        <p className="small soft">Télécharge le Companion <strong>personnalisé pour {base}</strong> : Chrome connaît ainsi l’adresse du serveur dès l’installation. Le code unique sert ensuite uniquement à associer ton compte, sans nouvelle demande d’accès au site.</p>
         <div className="row wrap">
           <button className="btn primary" disabled={busy} onClick={makeCode}>Générer un code d'association</button>
-          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V22.zip">Télécharger l’extension Chrome (.zip)</a>
+          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V23.zip">Télécharger Companion pour mon serveur (.zip)</a>
         </div>
-        <p className="small soft">Téléchargement direct depuis ton serveur Rendevo, sans GitHub. Décompresse le ZIP, puis ouvre <code>chrome://extensions</code> → Mode développeur → Charger l’extension non empaquetée et sélectionne le dossier contenant <code>manifest.json</code>.</p>
+        <p className="small soft">Ce ZIP contient un <code>manifest.json</code> spécifique à ton serveur. Décompresse-le puis ouvre <code>chrome://extensions</code> → Mode développeur → Charger l’extension non empaquetée (ou remplace les fichiers du dossier Companion existant puis clique sur Actualiser). Vérifie les permissions du site dans les détails de l’extension. Chrome peut ne pas afficher de fenêtre distincte pour une extension non empaquetée ; l’autorisation reste contrôlable dans Chrome.</p>
         {pairing && (
           <div className="alert info stack" style={{ '--gap': '8px' }}>
             <strong>Code à usage unique — valable 5 minutes</strong>
@@ -43,7 +43,7 @@ export function CompanionSettings() {
               <input className="input grow" value={pairing.portableCode} readOnly aria-label="Code unique d'association" autoComplete="off" />
               <button className="btn" onClick={() => copy(pairing.portableCode, toast)}>Copier le code unique</button>
             </div>
-            <p className="small">Dans Companion V22, colle uniquement ce code puis clique sur « Associer le Companion ». Vérifie que Chrome demande bien l'accès à <strong>{pairing.origin}</strong> avant de l'autoriser. Code valable 5 minutes, une seule utilisation.</p>
+            <p className="small">Dans Companion V23 installé depuis ce serveur, colle ce seul code puis clique sur « Associer le Companion ». Aucun nouvel accès au site n’est demandé à ce moment : la permission pour <strong>{pairing.origin}</strong> est déjà déclarée à l’installation. Code valable 5 minutes, une seule utilisation.</p>
           </div>
         )}
         <div className="section-title">Extensions associées</div>

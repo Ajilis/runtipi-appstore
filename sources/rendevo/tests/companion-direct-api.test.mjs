@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { companionOriginAndPermission, personalizedManifest, personalizedPopup } from '../server/lib/companion-bundle.js';
 import { Router } from '../server/lib/http.js';
 import { sha256 } from '../server/lib/crypto.js';
 import { registerCompanion, normalizeCompanionProfile, normalizeCompanionVersion, companionSearchTerms } from '../server/routes/companion.js';
@@ -139,10 +141,13 @@ test('ne conserve ni paramètres de tracking ni fausses URLs LinkedIn', () => {
   }
 });
 
-test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’accès', async () => {
+test('le serveur livre un ZIP Chrome personnalisé, protégé et sans permission générale', async () => {
   const router = new Router();
   let checked = false;
-  registerCompanion(router, { db: {}, agent: {}, config: { staticDir: '/app/web/dist' } }, {
+  const configuredOrigin = 'https://rdv.exemple.fr';
+  registerCompanion(router, {
+    db: {}, agent: {}, config: { staticDir: '/app/web/dist', publicUrl: configuredOrigin },
+  }, {
     requireAuth: async () => { checked = true; },
     requireAdmin: async () => {},
   });
@@ -150,23 +155,68 @@ test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’acc�
   assert.ok(matched);
   assert.equal(matched.route.handlers.length, 2);
   const called = [];
+  let downloadedZip;
   const ctx = {
     header: (key, value) => called.push({ key, value }),
-    sendFile: async (file, options) => called.push({ file, options }),
+    sendFile: async (file, options) => {
+      downloadedZip = file;
+      assert.equal(fs.existsSync(file), true);
+      assert.equal(options.cache, 'no-store');
+      assert.equal(options.download, 'Rendevo-Companion-V23.zip');
+      const entries = execFileSync('unzip', ['-Z', '-1', file], { encoding: 'utf8' }).trim().split('\n').sort();
+      assert.deepEqual(entries, ['README.md', 'manifest.json', 'popup.css', 'popup.html', 'popup.js']);
+      const manifest = JSON.parse(execFileSync('unzip', ['-p', file, 'manifest.json'], { encoding: 'utf8' }));
+      assert.deepEqual(manifest.host_permissions, ['https://rdv.exemple.fr/*']);
+      assert.equal(manifest.optional_host_permissions, undefined);
+      assert.deepEqual(manifest.permissions, ['activeTab', 'scripting', 'storage', 'permissions']);
+      assert.equal(manifest.version, '0.2.12');
+      const script = execFileSync('unzip', ['-p', file, 'popup.js'], { encoding: 'utf8' });
+      assert.match(script, /const installedRendevoOrigin = 'https:\/\/rdv\.exemple\.fr'|const installedRendevoOrigin = "https:\/\/rdv\.exemple\.fr"/);
+      assert.doesNotMatch(script, /chrome\.permissions\.request/);
+    },
   };
   for (const handler of matched.route.handlers) await handler(ctx);
   assert.equal(checked, true);
   assert.ok(called.some((x) => x.key === 'Cache-Control' && x.value === 'no-store'));
-  assert.ok(called.some((x) => x.file === '/app/web/dist/Rendevo-Companion.zip'
-    && x.options.download === 'Rendevo-Companion-V22.zip'));
+  assert.equal(fs.existsSync(downloadedZip), false, 'ZIP temporaire supprimé après réponse');
+  assert.equal(downloadedZip.startsWith('/app/web/dist'), false, 'ZIP absent du répertoire public');
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V22\.zip"/);
-  assert.doesNotMatch(ui, /Télécharger Companion \(GitHub Actions\)/);
+  assert.match(ui, /download="Rendevo-Companion-V23\.zip"/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
-  assert.match(docker, /COPY extension \/extension/);
-  assert.match(docker, /zip -q -j \/Rendevo-Companion\.zip/);
-  assert.match(docker, /COPY --from=companion-package \/Rendevo-Companion\.zip \.\/web\/dist\/Rendevo-Companion\.zip/);
+  assert.match(docker, /COPY extension \.\/extension/);
+  assert.match(docker, /tzdata zip/);
+  assert.doesNotMatch(docker, /COPY --from=companion-package/);
+});
+
+test('la génération d’une extension refuse URL hostile et permission globale', () => {
+  assert.deepEqual(companionOriginAndPermission('https://rdv.exemple.fr:8443'), {
+    origin: 'https://rdv.exemple.fr:8443',
+    permission: 'https://rdv.exemple.fr/*',
+  });
+  assert.deepEqual(companionOriginAndPermission('http://192.168.1.16:8288'), {
+    origin: 'http://192.168.1.16:8288',
+    permission: 'http://192.168.1.16/*',
+  });
+  for (const invalid of [
+    '', 'http://public.example.com', 'https://foo.example.com/path',
+    'https://foo.example.com?origin=evil', 'https://foo.example.com#x',
+    'https://user:password@rdv.example.com', 'https://*.example.com',
+    'https://bad.example.com.evil.test/other', 'javascript:alert(1)',
+    'http://8.8.8.8:8288', 'http://192.168.300.1:8288',
+  ]) {
+    if (invalid === 'https://bad.example.com.evil.test/other') {
+      assert.throws(() => companionOriginAndPermission(invalid));
+    } else assert.throws(() => companionOriginAndPermission(invalid), invalid);
+  }
+  const manifest = personalizedManifest({
+    manifest_version: 3,
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
+  }, 'https://rdv.exemple.fr');
+  assert.equal(manifest.optional_host_permissions, undefined);
+  assert.deepEqual(manifest.host_permissions, ['https://rdv.exemple.fr/*']);
+  assert.equal(personalizedPopup("const installedRendevoOrigin = '';", 'http://10.0.0.2:8288'),
+    'const installedRendevoOrigin = "http://10.0.0.2:8288";');
 });
 
 test('les campagnes fournissent uniquement des mots-clés de ciblage pour la recherche manuelle', () => {

@@ -1,5 +1,11 @@
 # Rendevo — sources
 
+## V23 (0.2.12) : Companion personnalisé pour ton serveur
+
+Depuis **Réglages → Intégrations**, chaque utilisateur authentifié peut télécharger `Rendevo-Companion-V23.zip` généré à la demande. Le manifeste Chrome intégré déclare une permission **obligatoire** limitée à l'hôte de l'URL publique configurée. Elle est accordée/contrôlable au chargement de l'extension et **n'est plus demandée lors de l'association**. La génération refuse HTTP public, URL non racine ou caractères non autorisés ; seul le domaine configuré est inscrit. Le ZIP est temporaire, effacé après envoi et jamais publié dans `web/dist`. Le JS compagnon contient aussi l'origine exacte (y compris son port) et refuse les codes uniques destinés à un autre serveur. `chrome.permissions.contains` vérifie qu'un utilisateur n'a pas désactivé l'autorisation. Réinstallation dans le même dossier pour conserver les jetons existants ; aucun cookie LinkedIn.
+
+**Note :** Chrome peut ne pas afficher de boîte de dialogue lors du chargement manuel d'une extension non empaquetée, mais la permission est bien inscrite dans son manifeste et contrôlable dans ses paramètres. Les patterns Chrome couvrent les ports du même hôte (pas un port isolé). **PUBLIC_URL doit être correctement configuré**.
+
 ## V22 (0.2.11) : un seul code d'association pour Chrome Companion
 
 Depuis **Réglages → Intégrations**, Rendevo génère un code portable regroupant l'origine de l'instance et le secret à usage unique de 5 minutes. Dans **Companion V22**, un seul champ « Code d'association Rendevo » est nécessaire. Le compagnon décode localement l'URL, valide l'origine HTTPS ou HTTP privé, affiche le domaine, demande la permission Chrome uniquement pour cette origine, puis échange le **secret seul** avec l'API actuelle. L'URL et le code ne sont plus saisis séparément. Aucune nouvelle permission LinkedIn ni récupération de cookies. Les extensions déjà associées et la validation du jeton existant sont préservées. Anciennes extensions V21 et antérieures : utiliser le parcours de couplage de leur version ou installer V22.

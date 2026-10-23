@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 22** · **Version Rendevo : 0.2.11**
+**Version du catalogue Runtipi : 23** · **Version Rendevo : 0.2.12**
+
+**Nouveau V23 — Companion personnalisé pour ton serveur.** Rendevo génère un ZIP Chrome unique sur demande, après connexion. Le manifeste de cette extension déclare l'autorisation d'accès à ton seul hôte Rendevo lors de l'installation. Plus de demande d'autorisation au moment d'entrer le code d'association. Le Companion vérifie que le code correspond exactement au serveur intégré. Pas de permission sur tous les sites, ni accès permanent à LinkedIn. Si Chrome n'affiche pas de fenêtre pendant le chargement manuel, le site autorisé reste consultable et modifiable dans les réglages de l'extension. Les associations existantes sont conservées en mettant à jour le même dossier.
 
 **Nouveau V22 — association Chrome Companion en un seul code.** Dans Réglages → Intégrations, générer et copier le code d'association unique. Le code contient l'adresse du site Rendevo et le secret à usage unique. Dans Companion V22, **un seul champ** : coller le code, contrôler l'adresse affichée, cliquer « Associer le Companion » et autoriser Chrome sur cette origine. Plus besoin de coller d'abord l'URL du serveur. Les associations existantes continuent de fonctionner, sans récupération de cookies ni permissions LinkedIn supplémentaires.
 
