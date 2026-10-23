@@ -2,6 +2,14 @@ import path from 'node:path';
 import { bad, forbidden, unauthorized } from '../lib/http.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 
+// Accept semver-like browser extension versions only (untrusted client metadata).
+export function normalizeCompanionVersion(input) {
+  if (typeof input !== 'string') return null;
+  const version = input.trim();
+  return /^\d{1,3}\.\d{1,3}\.\d{1,4}(?:-[a-zA-Z0-9.-]{1,32})?$/.test(version)
+    ? version : null;
+}
+
 export function normalizeCompanionProfile(input) {
   if (typeof input !== 'string' || input.length > 512) return null;
   try {
@@ -35,7 +43,7 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     ctx.header('Cache-Control', 'no-store');
     await ctx.sendFile(path.join(deps.config.staticDir, 'Rendevo-Companion.zip'), {
       cache: 'no-store',
-      download: 'Rendevo-Companion-V20.zip',
+      download: 'Rendevo-Companion-V21.zip',
     });
   });
 
@@ -53,7 +61,7 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
 
   router.get('/api/companion/devices', requireAuth, async (ctx) => {
     const { rows } = await db.query(
-      'SELECT id, name, prefix, created_at, last_used_at, expires_at FROM companion_devices WHERE workspace_id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now() ORDER BY created_at DESC',
+      'SELECT id, name, prefix, created_at, last_used_at, expires_at, extension_version FROM companion_devices WHERE workspace_id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now() ORDER BY created_at DESC',
       [ctx.state.ws.id, ctx.state.user.id],
     );
     ctx.header('Cache-Control', 'no-store');
@@ -81,8 +89,8 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     const deviceName = String(body.device_name || 'Chrome Companion').trim().slice(0, 80) || 'Chrome Companion';
     const token = randomToken(32);
     const { rows: devices } = await db.query(
-      "INSERT INTO companion_devices(workspace_id,user_id,name,token_hash,prefix,expires_at) VALUES ($1,$2,$3,$4,$5,now() + interval '90 days') RETURNING id, expires_at",
-      [rows[0].workspace_id, rows[0].user_id, deviceName, sha256(token), token.slice(0, 10)],
+      "INSERT INTO companion_devices(workspace_id,user_id,name,token_hash,prefix,expires_at,extension_version) VALUES ($1,$2,$3,$4,$5,now() + interval '90 days',$6) RETURNING id, expires_at",
+      [rows[0].workspace_id, rows[0].user_id, deviceName, sha256(token), token.slice(0, 10), normalizeCompanionVersion(body.version)],
     );
     ctx.header('Cache-Control', 'no-store');
     return { token, expires_at: devices[0].expires_at };
@@ -93,12 +101,12 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
     if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw unauthorized('Associez de nouveau Rendevo Companion');
     const { rows } = await db.query(
-      `UPDATE companion_devices d SET last_used_at = now()
+      `UPDATE companion_devices d SET last_used_at = now(), extension_version = COALESCE($2, d.extension_version)
        FROM memberships m JOIN users u ON u.id = m.user_id
        WHERE d.token_hash = $1 AND d.user_id = m.user_id AND d.workspace_id = m.workspace_id
          AND d.revoked_at IS NULL AND d.expires_at > now() AND m.role <> 'client'
        RETURNING d.id, d.workspace_id, d.user_id, d.expires_at`,
-      [sha256(token)],
+      [sha256(token), normalizeCompanionVersion(ctx.req.headers['x-companion-version'])],
     );
     if (!rows.length) throw unauthorized('Extension révoquée, expirée ou accès retiré');
     ctx.state.companion = rows[0];
