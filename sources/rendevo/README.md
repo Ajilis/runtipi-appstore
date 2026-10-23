@@ -1,5 +1,12 @@
 # Rendevo — sources
 
+## V26 (0.2.15) : tester la connexion DeGoog avant l’enregistrement
+
+Dans **Réglages → Recherche**, le bouton **Tester la connexion** envoie une requête réelle à l’API `GET /api/search` de l’instance DeGoog renseignée. Le test accepte une clé API Bearer facultative (ou réutilise une clé enregistrée **uniquement si le domaine est inchangé**), contrôle l’accès HTTP, le format JSON `results[]` et la disponibilité, sans modifier la configuration de l’espace et sans transmettre la clé au navigateur dans la réponse. Il peut réussir même avec zéro profil indexé, puisque cela prouve que l’API est opérationnelle, sans garantir des résultats de prospection.
+
+**Enregistrer le moteur** reste désactivé avant un test réussi et se désactive immédiatement après une modification de l’URL, de la clé ou de l’option de suppression de clé. Le serveur fournit un jeton de validation **à usage unique valable 3 minutes**, lié à cet utilisateur, cet espace, cette URL et l’empreinte de la clé. Il refuse l’enregistrement d’une configuration DeGoog qui n’a pas été testée (même via l’API). Les configurations historiques Brave ne changent pas. Un refus d’authentification, un format incompatible ou une indisponibilité affiche un message exploitable ; les secrets restent masqués. Un test n’enregistre rien en base.
+
+
 ## V25 (0.2.14) : version serveur dans Companion, moteur DeGoog dans Réglages → Recherche
 
 **Companion V25** indique sa version Chrome (manifeste) dans l’en-tête et affiche la version de l’instance Rendevo connectée, reçue de l’API `/api/companion/status` après authentification du jeton d’appareil. Le formulaire de première association reste minimal et ne contacte pas le serveur sans code valide.
