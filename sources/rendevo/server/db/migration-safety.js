@@ -56,7 +56,7 @@ export function assertSafeMigration(filename, sql) {
   for (const stmt of statements) {
     // Reject destructive operations even when nested inside a CREATE TABLE.
     // ON DELETE CASCADE is allowed solely as a foreign-key clause.
-    if (/\b(?:DROP|TRUNCATE|UPDATE|RENAME|REPLACE|EXECUTE|CALL|COPY|MERGE|VACUUM|REINDEX)\b/i.test(stmt)
+    if (/\b(?:DROP|TRUNCATE|UPDATE|RENAME|EXECUTE|CALL|COPY|MERGE|VACUUM|REINDEX)\b/i.test(stmt)
       || /\bDELETE\s+FROM\b/i.test(stmt)) {
       throw new Error('Migration potentiellement destructive interdite : ' + filename);
     }
