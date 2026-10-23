@@ -1,5 +1,16 @@
 # Rendevo — sources
 
+## V30 (0.2.19) : connecteur IA compatible OpenAI générique et sélection des modèles
+
+Dans **Réglages → Intelligence artificielle**, choisir **OpenAI compatible (serveur personnalisé)**, renseigner l'adresse de base de l'API (par exemple `https://llm.example.fr/v1`, `https://api.mistral.ai/v1` ou `http://ollama:11434/v1` sur un réseau local) puis éventuellement la clé API. Le bouton **Récupérer la liste des modèles** utilise **`GET {base_url}/models`** avec `Authorization: Bearer <clé>` seulement si une clé est requise. Il affiche les identifiants des modèles renvoyés par `data[].id`; l'utilisateur en choisit un dans la liste. Le champ Modèle reste éditable pour les fournisseurs qui ne prennent pas en charge `/models`.
+
+**Tester la connexion (sans enregistrer)** fait une véritable génération avec **`POST {base_url}/chat/completions`**, sur l'URL, le modèle et la clé *non encore enregistrés*. Une erreur n'écrase donc plus les anciens réglages. **Enregistrer** écrit ensuite le fournisseur, l'URL et l'identifiant du modèle dans l'espace, chiffre le jeton sur le serveur et préserve l'ancienne clé seulement si l'URL et le fournisseur restent identiques. Une URL différente ne reçoit jamais automatiquement la clé précédente. La réponse de `GET /api/settings` ne comprend plus le texte chiffré de la clé ; seul `has_api_key` est renvoyé. La récupération des modèles n'écrit pas en base.
+
+Les URL publiques nécessitent HTTPS. HTTP est accepté pour les instances locales (localhost, IP privée ou nom d'hôte Docker local) ; aucune redirection vers un autre serveur n'est suivie. Les requêtes ont une limite de temps, et les erreurs des fournisseurs sont contrôlées sans exposer les clés. La liste `GET /models` prouve que l'API annonce un modèle mais ne garantit pas que celui-ci prend en charge `/chat/completions` : utiliser le bouton Tester avant enregistrement. Les modèles n'implémentant que `/responses` ne sont pas encore pris en charge par l'agent.
+
+Aucune migration SQL ni suppression de données pour V30. Les tests CI PostgreSQL de conservation des anciennes bases continuent de bloquer les publications Docker.
+
+
 ## V29 (0.2.18) : pagination DeGoog, défilement infini et import de 200 contacts
 
 DeGoog expose **`GET /api/search?q=...&page=N`** (pagination à partir de 1). Sa réponse JSON peut inclure `totalPages`, mais cette information est facultative selon les moteurs de recherche activés. DeGoog ne dispose pas d'un paramètre API « infinite scroll » : Rendevo implémente ce mode en demandant les pages suivantes à l'API.
