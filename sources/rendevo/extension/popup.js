@@ -46,6 +46,7 @@ function parsePairingCode(input) {
   if (!match) return null;
   try {
     const decoded = decodeURIComponent(match[1]);
+    if (match[1] !== encodeURIComponent(decoded)) return null;
     const origin = localOrigin(decoded);
     if (!origin || origin !== decoded) return null;
     return { origin, secret: match[2] };
