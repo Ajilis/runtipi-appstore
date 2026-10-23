@@ -102,7 +102,7 @@ function harness() {
   async function invoke(method, path, body = {}) {
     const m = router.match(method, path);
     assert.ok(m, path);
-    const ctx = { state: {}, params: m.params, json: async () => body };
+    const ctx = { state: {}, params: m.params, json: async () => body, header: () => {} };
     let value;
     for (const handler of m.route.handlers) value = await handler(ctx);
     return value;
