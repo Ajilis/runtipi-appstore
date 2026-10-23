@@ -182,7 +182,7 @@ test('le serveur livre un ZIP Chrome personnalisé, protégé et sans permission
   assert.equal(downloadedZip.startsWith('/app/web/dist'), false, 'ZIP absent du répertoire public');
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V23\.zip"/);
+  assert.match(ui, /download="Rendevo-Companion-V24\.zip"/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /COPY extension \.\/extension/);
   assert.match(docker, /tzdata zip/);
