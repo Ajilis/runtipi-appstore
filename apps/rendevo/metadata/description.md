@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 26** · **Version Rendevo : 0.2.15**
+**Version du catalogue Runtipi : 27** · **Version Rendevo : 0.2.16**
+
+**Nouveau V27 — mises à jour PostgreSQL conservatrices.** Les anciennes bases Rendevo sont migrées **sans effacer de table ni d'enregistrement** : mutations SQL destructrices interdites, migrations historiques vérifiées par empreintes SHA-256, verrou et transaction uniques, rollback si erreur. La CI applique les migrations sur une véritable base PostgreSQL historique contenant des prospects et des campagnes, et bloque la publication des images tant que la conservation des données n'est pas vérifiée. Les volumes persistants Runtipi restent inchangés. Une sauvegarde régulière reste recommandée.
 
 **Nouveau V26 — Tester le moteur DeGoog avant sauvegarde.** Dans Réglages → Recherche, le bouton **Tester la connexion** vérifie réellement l’accès réseau, la clé API (si fournie) et le format des résultats. L’enregistrement est désactivé tant que le test échoue, puis autorisé seulement pour les mêmes paramètres et pendant 3 minutes. Le test ne stocke aucune clé et n’affecte pas la configuration précédente. L’application contrôle également cette validation côté serveur pour empêcher les enregistrements non testés.
 
