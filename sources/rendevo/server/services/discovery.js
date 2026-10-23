@@ -22,7 +22,7 @@ export function normalizeDiscoveryCriteria(input = {}, defaults = {}) {
   const industry = clean(input.industry === undefined ? first('industries') : input.industry);
   const location = clean(input.location === undefined ? first('locations') : input.location);
   const keywords = clean(input.keywords === undefined ? first('keywords') : input.keywords);
-  const limit = Math.max(1, Math.min(20, Math.trunc(Number(input.limit) || 10)));
+  const limit = Math.max(1, Math.min(50, Math.trunc(Number(input.limit) || 20)));
   if (![title, industry, location, keywords].some(Boolean)) {
     throw new Error('Indiquez un poste, un secteur, une localisation ou des mots-clés');
   }
