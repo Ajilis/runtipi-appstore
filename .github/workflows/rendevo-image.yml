@@ -73,7 +73,7 @@ jobs:
         working-directory: sources/rendevo
         run: |
           node --check extension/popup.js
-          node -e 'const m = require("./extension/manifest.json"); if (m.manifest_version !== 3 || JSON.stringify(m.permissions) !== JSON.stringify(["activeTab", "scripting", "storage", "permissions"]) || m.optional_host_permissions !== undefined || m.host_permissions || m.content_scripts || m.background throw new Error("Unexpected Chrome Companion permissions");'
+          node -e 'const m = require("./extension/manifest.json"); if (m.manifest_version !== 3 || JSON.stringify(m.permissions) !== JSON.stringify(["activeTab", "scripting", "storage", "permissions"]) || m.optional_host_permissions !== undefined || m.host_permissions || m.content_scripts || m.background) throw new Error("Unexpected Chrome Companion permissions");'
 
       - name: Chrome Companion templates (not installable until personalized by Rendevo)
         uses: actions/upload-artifact@v4
