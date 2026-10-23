@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 21** · **Version Rendevo : 0.2.10**
+**Version du catalogue Runtipi : 22** · **Version Rendevo : 0.2.11**
+
+**Nouveau V22 — association Chrome Companion en un seul code.** Dans Réglages → Intégrations, générer et copier le code d'association unique. Le code contient l'adresse du site Rendevo et le secret à usage unique. Dans Companion V22, **un seul champ** : coller le code, contrôler l'adresse affichée, cliquer « Associer le Companion » et autoriser Chrome sur cette origine. Plus besoin de coller d'abord l'URL du serveur. Les associations existantes continuent de fonctionner, sans récupération de cookies ni permissions LinkedIn supplémentaires.
 
 **Nouveau V21 — versions visibles et renommage de campagnes.** La version Rendevo s'affiche discrètement sur la connexion et près du profil dans la barre latérale. Le bouton **Renommer** figure maintenant sur chaque campagne ; il modifie uniquement le nom de la campagne. La version réelle du Chrome Companion associé est visible dans **Réglages → Extensions associées**, ainsi que la dernière version déclarée de l'utilisateur dans **Réglages → Comptes LinkedIn** pour les comptes Companion. Si un ancien Companion ne transmet pas encore sa version, la mention « non communiquée » apparaît. Aucun nouveau cookie ni secret n'est demandé.
 
