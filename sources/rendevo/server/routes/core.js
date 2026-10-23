@@ -7,6 +7,7 @@ import { normalizeLinkedinCookies } from '../services/providers/linkedin-cookie.
 import { linkedinVerificationChange } from '../services/providers/linkedin-status.js';
 import { linkedinCheckPatch, linkedinRetrySeconds, LINKEDIN_CHECK_COOLDOWN_SECONDS } from '../services/providers/linkedin-diagnostics.js';
 import { assistedCampaignSettings } from '../services/providers/linkedin-assisted.js';
+import { normalizeOpenAIBaseUrl } from '../services/ai-models.js';
 
 const SECTIONS = ['offer', 'icp', 'voice', 'availability', 'schedule', 'goal', 'ai', 'public_url', 'onboarding_done'];
 
@@ -14,6 +15,7 @@ function maskSettings(s) {
   const out = { ...s };
   if (out.ai) {
     out.ai = { ...out.ai, has_api_key: !!out.ai.api_key_enc };
+    delete out.ai.api_key_enc;
     delete out.ai.api_key_enc;
   }
   if (out.discovery) {
@@ -80,12 +82,24 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
       let value = body[key];
       if (key === 'ai') {
         const prev = settings.ai || {};
+        const provider = ['none', 'openai', 'anthropic'].includes(value.provider)
+          ? value.provider : prev.provider || 'none';
+        let baseUrl = String(value.base_url ?? prev.base_url ?? '').trim();
+        if (provider === 'openai') {
+          try { baseUrl = normalizeOpenAIBaseUrl(baseUrl); }
+          catch (error) { throw bad(error.message); }
+        }
+        const sameEndpoint = prev.provider === provider
+          && String(prev.base_url || '').replace(/\/+$/, '') === baseUrl;
+        const typed = typeof value.api_key === 'string' ? value.api_key.trim() : '';
+        if (typed.length > 2048 || /[\r\n]/.test(typed)) throw bad('Clé API IA invalide');
         value = {
-          provider: ['none', 'openai', 'anthropic'].includes(value.provider) ? value.provider : prev.provider || 'none',
-          base_url: String(value.base_url ?? prev.base_url ?? '').trim(),
-          model: String(value.model ?? prev.model ?? '').trim(),
+          provider, base_url: baseUrl,
+          model: String(value.model ?? prev.model ?? '').trim().slice(0, 200),
           temperature: Math.min(1.2, Math.max(0, Number(value.temperature ?? prev.temperature ?? 0.7))),
-          api_key_enc: value.api_key === '' && value.clear_key ? '' : value.api_key ? vault.encrypt(value.api_key) : prev.api_key_enc || '',
+          // Changing endpoints never carries a secret over to the new host.
+          api_key_enc: value.clear_key ? '' : typed ? vault.encrypt(typed)
+            : sameEndpoint ? prev.api_key_enc || '' : '',
         };
       }
       if (key === 'icp') {
@@ -100,10 +114,54 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     return { settings: maskSettings(settings) };
   });
 
-  router.post('/api/settings/ai/test', requireAuth, async (ctx) => {
-    const ws = await agent.workspace(ctx.state.ws.id);
-    if (!ai.enabled(ws)) throw bad('Renseignez un fournisseur et un modèle (et une clé pour Anthropic).');
-    try { return await ai.test(ws); } catch (e) { throw bad(`Échec du test : ${e.message}`); }
+  // Preview credentials use the unsaved draft. Never persist or expose them
+  // while fetching models or testing a chat completion. A previously saved
+  // token may be reused only for exactly the same endpoint and provider.
+  function aiCandidate(ctx, body) {
+    const saved = ctx.state.ws.settings?.ai || {};
+    const provider = body.provider || saved.provider || deps.config.ai?.provider || 'none';
+    if (!['openai', 'anthropic'].includes(provider)) throw bad('Choisissez un fournisseur IA');
+    const baseUrlRaw = String(body.base_url ?? saved.base_url ?? deps.config.ai?.base_url ?? '').trim();
+    let baseUrl;
+    try {
+      baseUrl = provider === 'openai' ? normalizeOpenAIBaseUrl(baseUrlRaw) : baseUrlRaw.replace(/\/+$/, '');
+    } catch (error) { throw bad(error.message); }
+    const isSame = saved.provider === provider
+      && String(saved.base_url || '').replace(/\/+$/, '') === baseUrl;
+    const defaultConfig = deps.config.ai || {};
+    const matchesDefault = defaultConfig.provider === provider
+      && String(defaultConfig.base_url || '').replace(/\/+$/, '') === baseUrl;
+    const typed = typeof body.api_key === 'string' ? body.api_key.trim() : '';
+    if (typed.length > 2048 || /[\r\n]/.test(typed)) throw bad('Clé API IA invalide');
+    const apiKey = body.clear_key ? '' : typed
+      || (isSame && saved.api_key_enc ? vault.decrypt(saved.api_key_enc)
+        : matchesDefault ? defaultConfig.api_key || '' : '');
+    return {
+      provider, base_url: baseUrl,
+      model: String(body.model ?? saved.model ?? defaultConfig.model ?? '').trim().slice(0, 200),
+      temperature: Math.min(1.2, Math.max(0, Number(body.temperature ?? saved.temperature ?? 0.7))),
+      api_key: apiKey,
+    };
+  }
+
+  router.post('/api/settings/ai/models', requireAuth, requireAdmin, async (ctx) => {
+    const body = await ctx.json(4096);
+    const candidate = aiCandidate(ctx, body);
+    if (candidate.provider !== 'openai') throw bad('La liste automatique est réservée aux API compatibles OpenAI');
+    try {
+      const models = await ai.listModels({ baseUrl: candidate.base_url, apiKey: candidate.api_key });
+      return { models, total: models.length };
+    } catch (error) { throw bad(error.message); }
+  });
+
+  router.post('/api/settings/ai/test', requireAuth, requireAdmin, async (ctx) => {
+    let body = {};
+    try { body = await ctx.json(4096) || {}; } catch { /* Legacy clients may send an empty body. */ }
+    const ws = ctx.state.ws;
+    const candidate = aiCandidate(ctx, body);
+    if (!candidate.model) throw bad('Sélectionnez un modèle avant de tester');
+    try { return await ai.test(ws, { settingsOverride: candidate }); }
+    catch (error) { throw bad('Échec du test : ' + error.message); }
   });
 
   router.post('/api/offer/analyze', requireAuth, async (ctx) => {
