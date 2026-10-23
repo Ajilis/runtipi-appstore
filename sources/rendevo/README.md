@@ -1,5 +1,11 @@
 # Rendevo — sources
 
+## Améliorations V21 (0.2.10 / catalogue Runtipi V21)
+
+- La page de connexion affiche la version réelle renvoyée par `GET /api/auth/state`. Une fois connecté, la version de `GET /api/me` s'affiche en petit sous le profil dans la barre latérale.
+- Les campagnes sont renommables depuis **Campagnes → Renommer**, avec validation du nom (1 à 120 caractères) et mise à jour dédiée `PATCH /api/campaigns/:id/name`, protégée par les droits administrateur et limitée à l'espace. Dans l'éditeur, le nom est également clairement modifiable.
+- Chrome Companion V21 transmet `chrome.runtime.getManifest().version` lors de l'association et via un en-tête de ses appels authentifiés. La migration `003_companion_version.sql` ajoute une colonne facultative à `companion_devices` sans affecter les sessions existantes. **Réglages → Intégrations** affiche la version de chaque extension, et **Réglages → Comptes LinkedIn** montre la dernière version déclarée par une extension associée à l'utilisateur dans cet espace, sans prétendre qu'il s'agit d'une connexion temps réel. Pour les anciennes extensions, la version apparaît comme inconnue jusqu'à la mise à jour et une nouvelle utilisation.
+
 Agent IA de prospection LinkedIn auto-hébergé, inspiré des fonctionnalités de MimikFlow (produit indépendant, marque et code originaux). Empaqueté pour Runtipi dans [`apps/rendevo`](../../apps/rendevo).
 
 ## Architecture
