@@ -17,7 +17,7 @@ test('prompt : reprend les huit instructions demandées, sans catégories offici
   for (const fragment of [
     'Tu es un expert en classification des fonctions professionnelles',
     '**Mot-clé fourni :** "Directeur technique"',
-    'variantes d’intitulés utilisées en France', 'formes masculines, féminines',
+    'variantes d'intitulés utilisées en France', 'formes masculines, féminines',
     'hiérarchiquement ou institutionnellement', 'anciennes fonctions et les titres honorifiques',
     'traductions anglaises pertinentes', 'sans doublons', 'fonctions voisines pertinentes',
     'catégories officielles de LinkedIn', 'Catégorie', 'Intitulé principal',
