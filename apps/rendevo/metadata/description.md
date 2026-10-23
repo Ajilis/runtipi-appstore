@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 31** · **Version Rendevo : 0.2.20**
+**Version du catalogue Runtipi : 32** · **Version Rendevo : 0.2.21**
+
+**Nouveau V32 — correction de la génération des intitulés IA.** La baguette magique accepte désormais les réponses JSON entourées de Markdown, les tableaux Markdown à quatre colonnes et les tableaux JSON équivalents fournis par les modèles compatibles OpenAI. Pour limiter les réponses tronquées, Rendevo demande une liste plus courte et peut effectuer une seconde tentative automatique. Les messages d'échec sont spécifiques (authentification, quota, modèle, durée, réponse incomplète) sans dévoiler les secrets. Le modèle enregistré reste inchangé ; aucune migration PostgreSQL n'est nécessaire.
 
 **Nouveau V31 — baguette magique dans « Poste recherché ».** Dans Trouver des prospects → Recherche web publique, l'icône demande au connecteur IA actif une classification structurée des métiers associés au mot-clé saisi. Le tableau expose la catégorie, l'intitulé principal, les variantes féminines/masculines, synonymes et anglais pertinents et le lien avec le mot-clé. Un menu déroulant permet de choisir un intitulé ou une variante avant de lancer la recherche DeGoog manuellement. Les résultats IA sont des suggestions et non des catégories officielles LinkedIn. Aucun enregistrement n'est modifié, aucune migration de base n'est nécessaire.
 
