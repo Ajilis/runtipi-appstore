@@ -162,7 +162,8 @@ test('interface : résultats affichés pour approbation avant appel d’import e
   const core = fs.readFileSync(new URL('../server/routes/core.js', import.meta.url), 'utf8');
   assert.match(ui, /api\/discovery\/search/);
   assert.match(ui, /api\/discovery\/import/);
-  assert.doesNotMatch(ui, /api\/discovery\/config/);
+  assert.match(ui, /api\/discovery\/config/); // lecture de l'état uniquement
+  assert.doesNotMatch(ui, /Enregistrer la clé|saveKey/);
   assert.match(fs.readFileSync(new URL('../web/src/components/SearchSettings.jsx', import.meta.url), 'utf8'), /api\/discovery\/config/);
   assert.match(ui, /checked=\{!!chosen\[item\.linkedin_url\]\}/);
   assert.match(ui, /Import(er|er les).*profils sélectionnés/);
