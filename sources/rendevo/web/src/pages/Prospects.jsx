@@ -255,6 +255,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
   const [limit, setLimit] = useState(10);
   const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
   const [results, setResults] = useState(null);
+  const [searchInfo, setSearchInfo] = useState(null);
   const [chosen, setChosen] = useState({});
   const [names, setNames] = useState({});
   const [run, busy] = useAction();
@@ -275,9 +276,13 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     };
     const response = await api('/api/discovery/search', { method: 'POST', body: input });
     setResults(response.items);
+    setSearchInfo(response);
     setChosen({});
     setNames(Object.fromEntries(response.items.map((item) => [item.linkedin_url, suggestion(item.title)])));
-  }, 'Recherche terminée : vérifiez les profils avant import');
+    return response;
+  }, (response) => response?.found
+    ? `${response.found} profils trouvés : vérifiez-les avant import`
+    : 'Aucun profil trouvé ; consultez le détail des dorks et élargissez les critères');
   const importSelected = () => run(async () => {
     const response = await api('/api/discovery/import', {
       method: 'POST',
@@ -342,12 +347,13 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
         ) : (
           <>
             <div className="alert info small">
-              Recherche des profils professionnels <strong>déjà indexés sur le web</strong> par ton moteur de recherche configuré.
+              Recherche des profils professionnels <strong>déjà indexés sur le web</strong> par ton moteur de recherche configuré,
+              à l'aide de requêtes ciblées <code>site:linkedin.com/in/</code> (dorks LinkedIn).
               Ni Rendevo ni Chrome Companion ne consultent LinkedIn automatiquement. Les résultats sont des suggestions à vérifier :
               certains postes ou entreprises peuvent être anciens.
             </div>
             <Field label="Campagne de destination">
-              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); setResults(null); }} />
+              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); setResults(null); setSearchInfo(null); }} />
             </Field>
             <div className="grid-2">
               {[
@@ -383,7 +389,20 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                     Tout sélectionner
                   </button>
                 </div>
-                {!results.length && <p className="small soft">Aucun profil correspondant trouvé dans l'index public. Essayez des critères plus larges.</p>}
+                {searchInfo?.provider === 'degoog' && <div className="panel panel-pad stack" style={{ '--gap': '5px' }}>
+                  <strong className="small">Dorks réellement envoyés à DeGoog</strong>
+                  {(searchInfo.attempts || []).map((attempt, index) =>
+                    <div key={index} className="small">
+                      <code style={{ overflowWrap: 'anywhere' }}>{attempt.query}</code>
+                      <span className="soft"> — {attempt.results} résultats du moteur, {attempt.profiles} profil(s) LinkedIn retenus</span>
+                    </div>)}
+                </div>}
+                {!results.length && <p className="small soft">
+                  Aucun profil LinkedIn exploitable trouvé dans l'index public.
+                  Essayez un seul poste ou une seule ville. Vérifiez aussi que l'instance DeGoog
+                  utilise des moteurs qui indexent les profils LinkedIn publics (le test de connexion valide l'API,
+                  pas la présence de profils).
+                </p>}
                 {results.map((item) => (
                   <div className="panel panel-pad stack" style={{ '--gap': '7px' }} key={item.linkedin_url}>
                     <label className="row" style={{ gap: 10 }}>
