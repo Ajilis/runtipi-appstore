@@ -101,7 +101,7 @@ test('route : utilise uniquement le connecteur IA actif et retourne un tableau s
 test('route : aucun modèle actif, requête invalide ou erreur fournisseur ne révèle de secret', async () => {
   await assert.rejects(() => harness({ aiEnabled: false }).invoke({ keyword: 'Architecte' }),
     /Aucun connecteur IA actif/);
-  await assert.rejects(() => harness().invoke({ keyword: '' }), /Poste recherché/);
+  await assert.rejects(() => harness().invoke({ keyword: '' }), /mot-clé/);
   const h = harness({ failure: true });
   await assert.rejects(() => h.invoke({ keyword: 'Chef de projet' }), (error) => {
     assert.match(error.message, /La génération des intitulés a échoué/);
