@@ -48,7 +48,8 @@ export function normalizeDiscoveryCriteria(input = {}, defaults = {}) {
     }
     titles = [...unique.values()];
   } else {
-    const legacy = clean(input.title === undefined ? first('titles') : input.title, MAX_TITLE_LENGTH);
+    // Legacy single-title clients previously accepted up to 90 characters.
+    const legacy = clean(input.title === undefined ? first('titles') : input.title);
     titles = legacy ? [legacy] : [];
   }
   const title = titles[0] || '';
