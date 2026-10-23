@@ -98,6 +98,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav a.active { background: var(--encre-weak); color: var(--encre); }
 .nav a .count { margin-left: auto; font-size: 0.75rem; font-weight: 650; padding: 1px 7px; border-radius: 99px; background: var(--hl); color: var(--hl-ink); }
 .side-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+.app-version { margin-top: 6px; font-size: 0.72rem; }
 .ws-switch { width: 100%; }
 .main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 64px; max-width: 1320px; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
@@ -355,7 +356,8 @@ button.list-item { width: 100%; border-left: 0; border-right: 0; border-top: 0; 
 .auth-side .agenda { margin-top: 36px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-width: 440px; }
 .auth-side .agenda div { height: 34px; border-radius: 5px; border: 1px dashed rgba(255,255,255,.28); }
 .auth-side .agenda div.b { background: rgba(255,255,255,.95); border: 0; color: var(--encre); font-size: 0.7rem; font-weight: 650; padding: 4px 6px; }
-.auth-main { display: flex; align-items: center; justify-content: center; padding: 32px 20px; }
+.auth-main { display: flex; align-items: center; justify-content: center; padding: 32px 20px 58px; position: relative; }
+.auth-version { position: absolute; bottom: 16px; left: 22px; font-size: 0.72rem; color: var(--ink-3); }
 .auth-card { width: min(400px, 100%); }
 @media (max-width: 860px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } }
 
