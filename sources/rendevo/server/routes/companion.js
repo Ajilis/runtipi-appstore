@@ -123,6 +123,7 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
   router.get('/api/companion/status', requireDevice, async (ctx) => ({
     connected: true,
     workspace: ctx.state.ws.name,
+    rendevo_version: deps.config?.version || '',
     expires_at: ctx.state.companion.expires_at,
   }));
 
