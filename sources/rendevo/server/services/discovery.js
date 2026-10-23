@@ -30,7 +30,7 @@ export function titleOrGroup(titles) {
 
 export function normalizeDiscoveryCriteria(input = {}, defaults = {}) {
   const clean = (value, max = 90) => String(value ?? '').trim()
-    .replace(/[\\r\\n\\t"\\\\<>|]/g, ' ').replace(/\\s+/g, ' ').slice(0, max);
+    .replace(/[\r\n\t"\\<>|]/g, ' ').replace(/\s+/g, ' ').slice(0, max);
   const first = (key) => Array.isArray(defaults[key]) ? defaults[key][0] : '';
   const industry = clean(input.industry === undefined ? first('industries') : input.industry);
   const location = clean(input.location === undefined ? first('locations') : input.location);
