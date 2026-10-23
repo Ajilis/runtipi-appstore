@@ -8,15 +8,14 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V23 • autorisation à l’installation</span></header>
+  <header><strong>Rendevo Companion</strong><span>V24</span></header>
   <main>
     <section id="pairing">
-      <label for="paircode">Code d’association Rendevo</label>
+      <label for="paircode">Code d’association</label>
       <input id="paircode" type="text" spellcheck="false" autocomplete="off"
-        placeholder="Colle le code depuis Réglages → Intégrations" maxlength="512">
-      <p id="pairOrigin" class="notice" aria-live="polite">Ce code contient l'adresse de ton instance Rendevo. Il est valable 5 minutes.</p>
+        placeholder="Colle ton code Rendevo" maxlength="512">
       <button id="connect" type="button" disabled>Associer le Companion</button>
-      <p class="notice">Le serveur a été déclaré dans les permissions lors de l’installation de cette extension personnalisée. Aucune nouvelle autorisation n’est demandée ici.</p>
+      <p id="pairError" class="pair-error" role="alert" hidden></p>
     </section>
     <section id="connected" hidden>
       <p class="connected">Connectée à <strong id="workspace"></strong></p>
@@ -54,10 +53,9 @@
       <p id="bulkPreview" class="profile" aria-live="polite">Aucun lien sélectionné.</p>
       <button id="submitBulk" type="button" disabled>Confirmer et importer les profils dans Rendevo</button>
       <button id="messages" type="button" class="secondary">Ouvrir les messages dans Rendevo</button>
+      <p class="notice">Seules les URLs validées sont transmises à Rendevo. Companion ne lit pas les cookies LinkedIn et n’envoie aucun message ni invitation.</p>
     </section>
-    <p id="status" role="status" aria-live="polite"></p>
-    <p class="notice">Seules les URLs que tu confirmes sont transmises à ton serveur Rendevo.
-       Elle ne lit pas les cookies LinkedIn et n’envoie aucun message ou invitation.</p>
+    <p id="status" role="status" aria-live="polite" hidden></p>
   </main>
 </body>
 </html>

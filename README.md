@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V24 (0.2.13)** : **première association Chrome Companion minimaliste** (un champ de code + un bouton), suppression des textes techniques et des messages de dissociation résiduels sur l’écran non connecté. [Documentation Companion](sources/rendevo/extension/README.md).
+
 **Rendevo V23 (0.2.12)** : téléchargement d'un **Companion Chrome personnalisé à ton serveur** ; accès au seul hôte Rendevo déclaré à l'installation, plus de demande d'autorisation lors de l'association par code. [Installer Companion](sources/rendevo/extension/README.md).
 
 **Rendevo V22 (0.2.11)** : association Chrome Companion avec **un seul code à copier-coller** (adresse du serveur + secret temporaire), autorisation Chrome limitée au serveur indiqué. [Documentation du Companion](sources/rendevo/extension/README.md).

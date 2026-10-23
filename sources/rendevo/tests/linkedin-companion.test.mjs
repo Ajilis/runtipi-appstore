@@ -87,7 +87,7 @@ async function simulatePopup(currentTabUrl, pageUrls = [], {
   const context = {
     document: { getElementById: elem, createElement: () => ({ value: '', textContent: '' }) },
     chrome: {
-      runtime: { getManifest: () => ({ version: '0.2.12' }) },
+      runtime: { getManifest: () => ({ version: '0.2.13' }) },
       permissions: { contains: async (x) => { permissions.push(x); return grant; } },
       storage: { local: {
         get: async () => ({ ...storage }),
@@ -142,6 +142,10 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.equal(storage.rendevoOrigin, undefined);
   assert.equal(permissions.length, 0);
   assert.equal(requests.length, 0);
+  assert.equal(elem('pairing').hidden, false);
+  assert.equal(elem('connected').hidden, true);
+  assert.equal(elem('pairError').hidden, true);
+  assert.equal(elem('status').hidden, true);
   await pair(elem);
   assert.equal(storage.rendevoOrigin, 'https://rendevo.exemple.fr');
   assert.equal(permissions.length, 1);
@@ -160,8 +164,8 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.equal(requests[3].url, 'https://rendevo.exemple.fr/api/companion/prospects');
   assert.equal(requests[3].options.method, 'POST');
   assert.equal(requests[3].options.credentials, 'omit');
-  assert.equal(requests[3].options.headers['X-Companion-Version'], '0.2.12');
-  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.12');
+  assert.equal(requests[3].options.headers['X-Companion-Version'], '0.2.13');
+  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.13');
   assert.equal(requests[3].options.headers.Authorization, 'Bearer ' + storage.companionToken);
   const sent = JSON.parse(requests[3].options.body);
   assert.equal(sent.campaign_id, 'campaign-1');
@@ -405,7 +409,7 @@ test('le code d’une autre instance est bloqué même si un Companion est déj�
   elem('paircode').value = portableCode('https://autre.example.fr');
   elem('paircode').events.input();
   assert.equal(elem('connect').disabled, true);
-  assert.match(elem('pairOrigin').textContent, /autre serveur/);
+  assert.match(elem('pairError').textContent, /autre serveur/);
   await elem('connect').events.click();
   assert.equal(permissions.length, 0);
   assert.equal(requests.length, 0);
@@ -418,8 +422,63 @@ test('un Companion non personnalisé refuse de contacter un serveur', async () =
   elem('paircode').value = portableCode();
   elem('paircode').events.input();
   assert.equal(elem('connect').disabled, true);
-  assert.match(elem('pairOrigin').textContent, /pas personnalisée/);
+  assert.match(elem('pairError').textContent, /Télécharge Companion/);
   await elem('connect').events.click();
   assert.equal(permissions.length, 0);
   assert.equal(requests.length, 0);
+});
+
+test('première association : interface épurée, sans texte technique, permission ou confidentialité', async () => {
+  const popup = fs.readFileSync(new URL('../extension/popup.html', import.meta.url), 'utf8');
+  const pairingMarkup = /<section id="pairing">([\s\S]*?)<\/section>/.exec(popup)?.[1];
+  assert.ok(pairingMarkup);
+  assert.match(pairingMarkup, /<label for="paircode">Code d’association<\/label>/);
+  assert.match(pairingMarkup, /id="paircode"/);
+  assert.match(pairingMarkup, /id="connect"/);
+  assert.match(pairingMarkup, /id="pairError"[^>]*hidden/);
+  assert.doesNotMatch(pairingMarkup, /Serveur intégré|permissions|Seules les URLs|5 minutes/);
+  assert.doesNotMatch(popup, /Serveur intégré|Extension dissociée localement|Le serveur a été déclaré dans les permissions/);
+  assert.ok(popup.indexOf('Seules les URLs validées') > popup.indexOf('id="connected"'));
+  assert.ok(popup.indexOf('Seules les URLs validées') < popup.indexOf('</section>', popup.indexOf('id="connected"')));
+  const { elem, requests, permissions } = await simulatePopup('https://www.linkedin.com/feed/');
+  assert.equal(elem('pairing').hidden, false);
+  assert.equal(elem('connected').hidden, true);
+  assert.equal(elem('pairError').hidden, true);
+  assert.equal(elem('status').hidden, true);
+  assert.equal(requests.length, 0);
+  assert.equal(permissions.length, 0);
+  elem('paircode').value = portableCode();
+  elem('paircode').events.input();
+  assert.equal(elem('pairError').hidden, true);
+  assert.equal(elem('connect').disabled, false);
+});
+
+test('après dissociation : seul le formulaire réapparaît, aucun ancien message ne reste', async () => {
+  const { elem, storage } = await simulatePopup('https://www.linkedin.com/feed/');
+  await pair(elem);
+  assert.equal(elem('connected').hidden, false);
+  assert.equal(elem('status').hidden, false);
+  await elem('disconnect').events.click();
+  assert.equal(storage.companionToken, undefined);
+  assert.equal(elem('pairing').hidden, false);
+  assert.equal(elem('connected').hidden, true);
+  assert.equal(elem('pairError').hidden, true);
+  assert.equal(elem('status').hidden, true);
+  assert.equal(elem('status').textContent, '');
+  assert.equal(elem('connect').disabled, true);
+});
+
+test('première association : seules les erreurs utiles sont rendues visibles', async () => {
+  const { elem } = await simulatePopup('https://www.linkedin.com/feed/');
+  elem('paircode').value = 'mauvais-code';
+  elem('paircode').events.input();
+  assert.equal(elem('pairError').hidden, false);
+  assert.match(elem('pairError').textContent, /Code invalide/);
+  elem('paircode').value = portableCode('https://autre.example.fr');
+  elem('paircode').events.input();
+  assert.equal(elem('pairError').hidden, false);
+  assert.match(elem('pairError').textContent, /autre serveur/);
+  elem('paircode').value = '';
+  elem('paircode').events.input();
+  assert.equal(elem('pairError').hidden, true);
 });

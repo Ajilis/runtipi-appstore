@@ -8,7 +8,7 @@ const companionVersion = chrome.runtime.getManifest().version;
 // Replaced only when the authenticated Rendevo server packages its personalized ZIP.
 const installedRendevoOrigin = '';
 const code = byId('paircode'), campaign = byId('campaign');
-const pairOrigin = byId('pairOrigin'), connectedOrigin = byId('connectedOrigin');
+const pairError = byId('pairError'), connectedOrigin = byId('connectedOrigin');
 const profile = byId('profile'), statusEl = byId('status');
 const connect = byId('connect');
 const pairing = byId('pairing'), connected = byId('connected');
@@ -76,19 +76,24 @@ function isLinkedinPeopleSearchPage(input) {
   } catch { return false; }
 }
 
-function say(message) { statusEl.textContent = message; }
+function say(message) {
+  statusEl.textContent = message;
+  statusEl.hidden = !message;
+}
 function update() {
   pairing.hidden = !!deviceToken;
   connected.hidden = !deviceToken;
   const pairingDetails = parsePairingCode(code.value);
-  pairOrigin.textContent = !installedRendevoOrigin
-    ? 'Cette extension n’est pas personnalisée. Télécharge le ZIP depuis Réglages → Intégrations.'
-    : pairingDetails && pairingDetails.origin !== installedRendevoOrigin
-      ? 'Code pour un autre serveur (' + pairingDetails.origin + '). Télécharge son Companion.'
-      : pairingDetails
-        ? 'Serveur autorisé à l’installation : ' + installedRendevoOrigin
-        : code.value.trim() ? 'Code non reconnu : copie le code complet depuis Rendevo.'
-          : 'Serveur intégré : ' + installedRendevoOrigin + '. Colle ton code (5 minutes).';
+  // Keep the first-association screen minimal: show feedback only for errors.
+  const error = !installedRendevoOrigin
+    ? 'Télécharge Companion depuis ton serveur Rendevo.'
+    : code.value.trim() && !pairingDetails
+      ? 'Code invalide. Copie le code complet depuis Rendevo.'
+      : pairingDetails && pairingDetails.origin !== installedRendevoOrigin
+        ? 'Ce code appartient à un autre serveur Rendevo.'
+        : '';
+  pairError.textContent = error;
+  pairError.hidden = !error || !!deviceToken;
   connect.disabled = busy || !!deviceToken || !pairingDetails
     || pairingDetails.origin !== installedRendevoOrigin;
   importBtn.disabled = busy || !deviceToken || !profileUrl;
@@ -155,6 +160,7 @@ async function loadCampaigns() {
 }
 
 async function init() {
+  say('');
   const stored = await chrome.storage.local.get(['rendevoOrigin', 'companionToken']);
   rendevoOrigin = localOrigin(stored.rendevoOrigin) || '';
   deviceToken = String(stored.companionToken || '');
@@ -356,8 +362,8 @@ disconnect.addEventListener('click', async () => {
   deviceToken = '';
   await chrome.storage.local.remove('companionToken');
   byId('workspace').textContent = '';
+  say('');
   update();
-  say("Extension dissociée localement. Pour révoquer l'ancien jeton, ouvre Rendevo → Réglages → Intégrations.");
 });
 
 init().catch((err) => say(err.message || 'Impossible de lire les réglages Chrome.'));

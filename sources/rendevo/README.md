@@ -1,5 +1,9 @@
 # Rendevo — sources
 
+## V24 (0.2.13) : écran d'association Chrome Companion minimal
+
+Le popup de **première association** présente seulement le champ de code et le bouton d'association, sans textes de diagnostic réseau ou d'avertissement de confidentialité. L'origine du serveur reste embarquée dans le ZIP personnalisé et vérifiée silencieusement lors de la validation du code. Seules les erreurs nécessitant une intervention sont affichées. Le texte de dissociation n'est plus conservé après retour au formulaire. La zone « Connectée » conserve ses fonctions de campagnes et d'import. Les règles d'autorisation et de confidentialité restent inchangées.
+
 ## V23 (0.2.12) : Companion personnalisé pour ton serveur
 
 Depuis **Réglages → Intégrations**, chaque utilisateur authentifié peut télécharger `Rendevo-Companion-V23.zip` généré à la demande. Le manifeste Chrome intégré déclare une permission **obligatoire** limitée à l'hôte de l'URL publique configurée. Elle est accordée/contrôlable au chargement de l'extension et **n'est plus demandée lors de l'association**. La génération refuse HTTP public, URL non racine ou caractères non autorisés ; seul le domaine configuré est inscrit. Le ZIP est temporaire, effacé après envoi et jamais publié dans `web/dist`. Le JS compagnon contient aussi l'origine exacte (y compris son port) et refuse les codes uniques destinés à un autre serveur. `chrome.permissions.contains` vérifie qu'un utilisateur n'a pas désactivé l'autorisation. Réinstallation dans le même dossier pour conserver les jetons existants ; aucun cookie LinkedIn.
