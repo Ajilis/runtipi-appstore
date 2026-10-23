@@ -33,7 +33,7 @@ export function CompanionSettings() {
         <p className="small soft">Télécharge le Companion <strong>personnalisé pour {base}</strong> : Chrome connaît ainsi l’adresse du serveur dès l’installation. Le code unique sert ensuite uniquement à associer ton compte, sans nouvelle demande d’accès au site.</p>
         <div className="row wrap">
           <button className="btn primary" disabled={busy} onClick={makeCode}>Générer un code d'association</button>
-          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V27.zip">Télécharger Companion pour mon serveur (.zip)</a>
+          <a className="btn" href="/api/companion/download" download="Rendevo-Companion-V28.zip">Télécharger Companion pour mon serveur (.zip)</a>
         </div>
         <p className="small soft">Ce ZIP contient un <code>manifest.json</code> spécifique à ton serveur. Décompresse-le puis ouvre <code>chrome://extensions</code> → Mode développeur → Charger l’extension non empaquetée (ou remplace les fichiers du dossier Companion existant puis clique sur Actualiser). Vérifie les permissions du site dans les détails de l’extension. Chrome peut ne pas afficher de fenêtre distincte pour une extension non empaquetée ; l’autorisation reste contrôlable dans Chrome.</p>
         {pairing && (
@@ -43,7 +43,7 @@ export function CompanionSettings() {
               <input className="input grow" value={pairing.portableCode} readOnly aria-label="Code unique d'association" autoComplete="off" />
               <button className="btn" onClick={() => copy(pairing.portableCode, toast)}>Copier le code unique</button>
             </div>
-            <p className="small">Dans Companion V27 installé depuis ce serveur, colle ce seul code puis clique sur « Associer le Companion ». Aucun nouvel accès au site n’est demandé à ce moment : la permission pour <strong>{pairing.origin}</strong> est déjà déclarée à l’installation. Code valable 5 minutes, une seule utilisation.</p>
+            <p className="small">Dans Companion V28 installé depuis ce serveur, colle ce seul code puis clique sur « Associer le Companion ». Aucun nouvel accès au site n’est demandé à ce moment : la permission pour <strong>{pairing.origin}</strong> est déjà déclarée à l’installation. Code valable 5 minutes, une seule utilisation.</p>
           </div>
         )}
         <div className="section-title">Extensions associées</div>
