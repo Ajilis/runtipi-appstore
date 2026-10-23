@@ -54,7 +54,7 @@ export function normalizeDegoogUrl(input) {
   try { parsed = new URL(input.trim()); } catch { throw new Error('URL DeGoog invalide'); }
   const host = parsed.hostname.toLowerCase();
   const octets = host.split('.');
-  const ipv4 = octets.length === 4 && octets.every((n) => /^\\d{1,3}$/.test(n) && Number(n) <= 255);
+  const ipv4 = octets.length === 4 && octets.every((n) => /^\d{1,3}$/.test(n) && Number(n) <= 255);
   const privateIp = ipv4 && (Number(octets[0]) === 10 || Number(octets[0]) === 127
     || (Number(octets[0]) === 192 && Number(octets[1]) === 168)
     || (Number(octets[0]) === 172 && Number(octets[1]) >= 16 && Number(octets[1]) <= 31));
@@ -76,7 +76,7 @@ export function normalizeDegoogResults(data, limit = 10) {
     seen.add(url);
     items.push({
       linkedin_url: url,
-      title: String(item.title || '').replace(/<[^>]*>/g, '').replace(/\\s*[|–—-]\\s*LinkedIn.*$/i, '').trim().slice(0, 160),
+      title: String(item.title || '').replace(/<[^>]*>/g, '').replace(/\s*[|–—-]\s*LinkedIn.*$/i, '').trim().slice(0, 160),
       description: String(item.snippet || item.content || '').replace(/<[^>]*>/g, '').trim().slice(0, 280),
       source: 'DeGoog (index web)',
     });
