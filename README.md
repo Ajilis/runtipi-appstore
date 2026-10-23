@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V23 (0.2.12)** : téléchargement d'un **Companion Chrome personnalisé à ton serveur** ; accès au seul hôte Rendevo déclaré à l'installation, plus de demande d'autorisation lors de l'association par code. [Installer Companion](sources/rendevo/extension/README.md).
+
 **Rendevo V22 (0.2.11)** : association Chrome Companion avec **un seul code à copier-coller** (adresse du serveur + secret temporaire), autorisation Chrome limitée au serveur indiqué. [Documentation du Companion](sources/rendevo/extension/README.md).
 
 **Rendevo V21 (0.2.10)** : version du produit sur la connexion et la barre latérale, bouton pour renommer les campagnes, et version Chrome Companion affichée dans la liste des comptes LinkedIn et des extensions associées. [Voir la documentation Rendevo](sources/rendevo/README.md).
