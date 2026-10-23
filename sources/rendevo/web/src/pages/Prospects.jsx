@@ -292,7 +292,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     return response;
   }, (response) => `${response.rows.length} intitulés proposés par le modèle IA actif`);
   const addTitleTag = (value) => {
-    const title = String(value || '').replace(/\\s+/g, ' ').trim();
+    const title = String(value || '').replace(/\s+/g, ' ').trim();
     if (!title) return;
     if (title.length > 70) { toast('Un intitulé ne peut pas dépasser 70 caractères', 'err'); return; }
     if (titleTags.length >= 8) { toast('8 intitulés maximum pour un même dork', 'err'); return; }
@@ -319,9 +319,9 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
   };
   const search = () => run(async () => {
     const input = {
-      ...(titleTagsEdited || titleTags.length
-        ? { titles: [...titleTags], ...(titleTags.length ? {} : { title: criteria.title }) }
-        : { title: criteria.title || fromCampaign('titles') }),
+      ...(titleTags.length
+        ? { titles: titleTags }
+        : { title: criteria.title || (titleTagsEdited ? '' : fromCampaign('titles')) }),
       industry: criteria.industry || fromCampaign('industries'),
       location: criteria.location || fromCampaign('locations'),
       keywords: criteria.keywords || fromCampaign('keywords'),
