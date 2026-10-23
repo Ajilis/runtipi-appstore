@@ -1,5 +1,18 @@
 # Rendevo — sources
 
+## V37 (0.2.26) : prompt IA compact fondé sur les champs du formulaire
+
+Dans **Prospects → Trouver des prospects → Recherche web publique → Poste recherché**, la baguette magique utilise désormais les **quatre champs de recherche** : Poste recherché, Secteur, Localisation et Mots-clés (avec les valeurs de la cible de campagne pour les champs non renseignés). Le prompt de classification a été remplacé par :
+
+> À partir de « champs du formulaire », génère les intitulés de postes LinkedIn associés (variantes, fonctions proches, anciens titres), sans doublons. Réponds uniquement en JSON compact : `[{"value":"identifiant","label":"Intitulé","keywords":["synonymes"]}]`.
+
+Au moment de l'appel, **« champs du formulaire »** est remplacé par les valeurs réellement saisies dans une représentation JSON, sans modifier les critères de recherche et sans communiquer les clés de connexion au modèle. Le connecteur IA déjà actif (dont Vultr) reste utilisé.
+
+Les réponses **JSON en tableau** sont lues directement : `label` est l'intitulé affiché comme **tag coloré**, `value` est un identifiant technique et **n'est pas utilisé comme poste**, `keywords` contient les synonymes. La déduplication des labels, la limite de huit tags et l'absence de panneau détaillé restent inchangées. Les anciennes réponses IA (format `{"rows":[...]}` ou tableau Markdown) restent reconnues pour conserver la compatibilité. En cas de génération incomplète, la tentative raccourcie demande le même format `value/label/keywords`.
+
+La recherche DeGoog n'est pas lancée automatiquement ; les tags choisis restent assemblés par `OR` pour le dork LinkedIn. Aucun changement des réglages du connecteur, des données PostgreSQL ou des migrations.
+
+
 ## V36 (0.2.25) : recherche publique compacte et champs verticaux
 
 Dans **Prospects → Trouver des prospects → Recherche web publique**, la baguette magique continue d'utiliser le **connecteur IA actif** pour remplacer le mot-clé initial par une série de **tags de postes colorés et supprimables par une croix**. Cependant, le panneau **« Fonctions proposées pour… »**, le tableau détaillé des intitulés générés et le menu déroulant de variantes ne sont **plus affichés**. Cette suppression concerne exclusivement la présentation, pas l'API ni le moteur IA.
