@@ -101,7 +101,7 @@ test('dork : requêtes exactes puis relâchées, pour profils publics indexés',
 });
 
 test('DeGoog : fallback dorks sur vrais résultats non LinkedIn sans jamais consulter LinkedIn', async () => {
-  const criteria = normalizeDiscoveryCriteria({ title: 'Directeur marketing', location: 'Paris' });
+  const criteria = normalizeDiscoveryCriteria({ title: 'Directeur marketing', location: 'Paris', industry: 'SaaS', keywords: 'B2B' });
   const observed = [], attempts = [];
   const mock = async (url, opts) => {
     observed.push({ host: url.hostname, q: url.searchParams.get('q'), opts });
