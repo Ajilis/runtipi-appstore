@@ -21,7 +21,6 @@ export function normalizeJobFormFields(fields = {}, keyword = '') {
   };
   return {
     title: clean(keyword || fields.title),
-    industry: clean(fields.industry),
     location: clean(fields.location),
     keywords: clean(fields.keywords),
   };
@@ -32,7 +31,6 @@ export function professionalTitlePrompt(fields) {
   const context = normalizeJobFormFields(source);
   const form = {
     'Poste recherché': context.title,
-    Secteur: context.industry,
     Localisation: context.location,
     'Mots-clés': context.keywords,
   };
