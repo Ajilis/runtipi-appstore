@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V38 (0.2.27)** : suppression du secteur et du bloc informatif de la recherche web publique ; prompt IA sur les trois champs restants, sans secteur caché issu de la campagne. [Documentation](sources/rendevo/README.md).
+
 **Rendevo V37 (0.2.26)** : nouveau prompt compact pour la baguette magique basé sur les champs de recherche et sortie JSON `value/label/keywords`, affichée directement sous forme de tags de postes. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V36 (0.2.25)** : recherche publique simplifiée sans tableau de fonctions suggérées par l'IA ; affichage conservé en tags colorés et champs de recherche empilés verticalement. [Documentation](sources/rendevo/README.md).

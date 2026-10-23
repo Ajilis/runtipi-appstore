@@ -253,7 +253,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
   const [mode, setMode] = useState(companionCampaigns.length ? 'linkedin' : 'web');
   const [campaign, setCampaign] = useState(assisted[0]?.id || '');
   const [limit, setLimit] = useState(20);
-  const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
+  const [criteria, setCriteria] = useState({ title: '', location: '', keywords: '' });
   const [titleTags, setTitleTags] = useState([]);
   const [titleTagsEdited, setTitleTagsEdited] = useState(false);
   const [runWizard, wizardBusy] = useAction();
@@ -286,7 +286,6 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
         keyword,
         fields: {
           title: keyword,
-          industry: criteria.industry || fromCampaign('industries'),
           location: criteria.location || fromCampaign('locations'),
           keywords: criteria.keywords || fromCampaign('keywords'),
         },
@@ -336,7 +335,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
       ...(titleTags.length
         ? { titles: titleTags }
         : { title: criteria.title || (titleTagsEdited ? '' : fromCampaign('titles')) }),
-      industry: criteria.industry || fromCampaign('industries'),
+      industry: '', // Never reapply the hidden campaign industry to the public-search dork.
       location: criteria.location || fromCampaign('locations'),
       keywords: criteria.keywords || fromCampaign('keywords'),
       limit,
@@ -461,19 +460,12 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
           </div>
         ) : (
           <>
-            <div className="alert info small">
-              Recherche des profils professionnels <strong>déjà indexés sur le web</strong> par ton moteur de recherche configuré,
-              à l'aide de requêtes ciblées <code>site:linkedin.com/in/</code> (dorks LinkedIn).
-              Ni Rendevo ni Chrome Companion ne consultent LinkedIn automatiquement. Les résultats sont des suggestions à vérifier :
-              certains postes ou entreprises peuvent être anciens.
-            </div>
             <Field label="Campagne de destination">
               <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); clearSearch(); setTitleTags([]); setTitleTagsEdited(false); }} />
             </Field>
             <div className="stack" style={{ '--gap': '12px' }}>
               {[
                 ['title', 'Poste recherché', 'titles', 'Ex. Directeur marketing'],
-                ['industry', 'Secteur', 'industries', 'Ex. Logiciel B2B'],
                 ['location', 'Localisation', 'locations', 'Ex. Paris'],
                 ['keywords', 'Mots-clés', 'keywords', 'Ex. SaaS'],
               ].map(([field, label, source, example]) => (

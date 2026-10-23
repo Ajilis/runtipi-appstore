@@ -1,5 +1,14 @@
 # Rendevo — sources
 
+## V38 (0.2.27) : formulaire épuré sans secteur ni texte d’introduction
+
+Dans **Prospects → Trouver des prospects → Recherche web publique**, le champ **Secteur** et le paragraphe d’information commençant par « Recherche des profils professionnels déjà indexés sur le web… » sont supprimés. Les champs **Poste recherché**, **Localisation**, **Mots-clés**, **Profils retenus par page** et **Affichage des résultats DeGoog** restent disposés verticalement, avec la campagne de destination au-dessus.
+
+La baguette magique IA tient désormais compte **uniquement des trois critères visibles** : Poste recherché, Localisation et Mots-clés, sans inclure de secteur, même s'il existe une cible de campagne. La recherche publique transmet également `industry: ''` explicitement pour empêcher la réintroduction indirecte d'un secteur de campagne dans le dork final. Les anciens clients API qui transmettent volontairement un secteur restent compatibles. Les tags colorés et le groupe `OR` entre intitulés restent identiques.
+
+Cette évolution concerne uniquement la présentation et la recherche publique. Elle ne modifie ni les campagnes existantes, ni la configuration du moteur, ni le connecteur IA Vultr, ni les données persistantes de PostgreSQL. Aucune migration SQL.
+
+
 ## V37 (0.2.26) : prompt IA compact fondé sur les champs du formulaire
 
 Dans **Prospects → Trouver des prospects → Recherche web publique → Poste recherché**, la baguette magique utilise désormais les **quatre champs de recherche** : Poste recherché, Secteur, Localisation et Mots-clés (avec les valeurs de la cible de campagne pour les champs non renseignés). Le prompt de classification a été remplacé par :
