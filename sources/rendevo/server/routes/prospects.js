@@ -2,6 +2,7 @@ import { bad, notFound } from '../lib/http.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
+import { normalizeJobKeyword, professionalTitlePrompt, normalizeProfessionalTitles } from '../services/job-titles.js';
 import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, discoverDegoogPage, DEGOOG_MAX_PAGES, DISCOVERY_IMPORT_MAX, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
@@ -17,7 +18,8 @@ export const STAGES = [
 ];
 
 export function registerProspects(router, deps, { requireAuth, requireAdmin }, { fetcher = fetch } = {}) {
-  const { db, agent, vault } = deps;
+  const { db, agent, vault, ai } = deps;
+  const recentTitleRequests = new Map();
   const recentSearches = new Map();
   // Single-use, short-lived proof that the *exact* pending DeGoog URL and
   // credentials have passed a real search. Never stores plaintext API keys.
@@ -129,6 +131,37 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     return provider === 'brave'
       ? { provider, has_api_key: !!encrypted }
       : exposed(settings);
+  });
+
+  // Classify a keyword with the *active workspace AI model*.
+  // This route is read-only: it does not save a search, modify a campaign, or
+  // create prospects. Suggestions become search criteria only upon selection.
+  router.post('/api/discovery/job-titles', requireAuth, async (ctx) => {
+    ctx.header('Cache-Control', 'no-store');
+    const body = await ctx.json(2048);
+    let keyword;
+    try { keyword = normalizeJobKeyword(body.keyword); }
+    catch (error) { throw bad(error.message); }
+    if (!ai?.enabled(ctx.state.ws)) {
+      throw bad('Aucun connecteur IA actif : configurez un modèle dans Réglages → Intelligence artificielle');
+    }
+    const identity = ctx.state.ws.id + ':' + ctx.state.user.id;
+    const last = recentTitleRequests.get(identity) || 0;
+    if (Date.now() - last < 12000) throw bad('Une génération IA toutes les 12 secondes au maximum');
+    if (recentTitleRequests.size > 2000) recentTitleRequests.clear();
+    recentTitleRequests.set(identity, Date.now());
+    try {
+      const result = await ai.completeJson(ctx.state.ws, {
+        system: 'Tu classes les intitulés professionnels en lien avec un mot-clé. Respecte toutes les instructions de l’utilisateur et produis exclusivement un objet JSON avec rows. Tu ne fournis ni conseil LinkedIn officiel ni texte hors JSON.',
+        user: professionalTitlePrompt(keyword),
+        maxTokens: 3800, temperature: 0.25,
+      });
+      return { keyword, rows: normalizeProfessionalTitles(result) };
+    } catch (error) {
+      // Prevent raw provider response, token or remote header from being exposed.
+      if (/^(Réponse IA incompatible|Le modèle IA n’a proposé)/.test(error.message)) throw bad(error.message);
+      throw bad('La génération des intitulés a échoué avec le modèle IA actif. Vérifiez sa compatibilité JSON dans Réglages → Intelligence artificielle.');
+    }
   });
 
   router.post('/api/discovery/search', requireAuth, async (ctx) => {
