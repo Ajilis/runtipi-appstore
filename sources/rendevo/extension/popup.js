@@ -5,9 +5,10 @@
 // no LinkedIn cookies, external search API calls or background crawling.
 const byId = (id) => document.getElementById(id);
 const companionVersion = chrome.runtime.getManifest().version;
-const base = byId('base'), code = byId('paircode'), campaign = byId('campaign');
+const code = byId('paircode'), campaign = byId('campaign');
+const pairOrigin = byId('pairOrigin'), connectedOrigin = byId('connectedOrigin');
 const profile = byId('profile'), statusEl = byId('status');
-const save = byId('save'), connect = byId('connect');
+const connect = byId('connect');
 const pairing = byId('pairing'), connected = byId('connected');
 const importBtn = byId('import'), refresh = byId('refresh');
 const messages = byId('messages'), disconnect = byId('disconnect');
@@ -38,6 +39,20 @@ function localOrigin(input) {
   } catch { return null; }
 }
 
+// Portable V22 code: RDV1.<percent-encoded exact Rendevo origin>.<32-char one-time secret>.
+// This encoding is transport only: Chrome still prompts for this origin's permission.
+function parsePairingCode(input) {
+  const match = /^RDV1\.(.{1,350})\.([A-Za-z0-9_-]{32})$/.exec(String(input || '').trim());
+  if (!match) return null;
+  try {
+    const decoded = decodeURIComponent(match[1]);
+    if (match[1] !== encodeURIComponent(decoded)) return null;
+    const origin = localOrigin(decoded);
+    if (!origin || origin !== decoded) return null;
+    return { origin, secret: match[2] };
+  } catch { return null; }
+}
+
 function normalizedLinkedinProfileUrl(input) {
   try {
     if (typeof input !== 'string' || input.length > 512) return null;
@@ -63,14 +78,18 @@ function say(message) { statusEl.textContent = message; }
 function update() {
   pairing.hidden = !!deviceToken;
   connected.hidden = !deviceToken;
-  connect.disabled = busy || !rendevoOrigin || !code.value.trim() || !!deviceToken;
+  const pairingDetails = parsePairingCode(code.value);
+  pairOrigin.textContent = pairingDetails
+    ? 'Instance contenue dans le code : ' + pairingDetails.origin
+    : code.value.trim() ? 'Code non reconnu : copie le nouveau code complet depuis Rendevo (V22).'
+      : "Le code inclut l’adresse de Rendevo et expire après 5 minutes.";
+  connect.disabled = busy || !!deviceToken || !pairingDetails;
   importBtn.disabled = busy || !deviceToken || !profileUrl;
   refresh.disabled = busy || !deviceToken;
   searchLinkedin.disabled = busy || !deviceToken || !searchTerms.value.trim();
   analyzeBulk.disabled = busy || !deviceToken || !bulkUrls.value.trim();
   readLinkedinPage.disabled = busy || !deviceToken || !searchPageUrl;
   submitBulk.disabled = busy || !deviceToken || !preparedBulk.length;
-  save.disabled = busy;
   disconnect.disabled = busy;
   messages.disabled = busy;
 }
@@ -132,7 +151,7 @@ async function init() {
   const stored = await chrome.storage.local.get(['rendevoOrigin', 'companionToken']);
   rendevoOrigin = localOrigin(stored.rendevoOrigin) || '';
   deviceToken = String(stored.companionToken || '');
-  base.value = rendevoOrigin;
+  connectedOrigin.textContent = rendevoOrigin || '';
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   profileUrl = normalizedLinkedinProfileUrl(tabs[0]?.url);
   searchPageUrl = isLinkedinPeopleSearchPage(tabs[0]?.url) ? tabs[0].url : null;
@@ -143,23 +162,6 @@ async function init() {
     catch (err) { say(err.message); }
   }
 }
-
-save.addEventListener('click', async () => {
-  const origin = localOrigin(base.value);
-  if (!origin) { say('Adresse HTTPS requise (HTTP autorisé seulement sur réseau privé).'); return; }
-  // Chrome requests access to this specific Rendevo origin, not all websites.
-  const granted = await chrome.permissions.request({ origins: [origin + '/*'] });
-  if (!granted) { say("L'autorisation de communiquer avec Rendevo a été refusée."); return; }
-  if (origin !== rendevoOrigin) {
-    deviceToken = '';
-    await chrome.storage.local.remove('companionToken');
-  }
-  rendevoOrigin = origin;
-  base.value = origin;
-  await chrome.storage.local.set({ rendevoOrigin: origin });
-  say('Instance autorisée. Crée un code dans Rendevo → Réglages → Intégrations.');
-  update();
-});
 
 code.addEventListener('input', update);
 searchTerms.addEventListener('input', update);
@@ -287,19 +289,29 @@ searchLinkedin.addEventListener('click', async () => {
 });
 
 connect.addEventListener('click', async () => {
-  if (!rendevoOrigin || deviceToken || busy) return;
+  const details = parsePairingCode(code.value);
+  if (!details || deviceToken || busy) return;
+  const priorOrigin = rendevoOrigin;
   setBusy(true);
   try {
+    // Permission request must occur directly in this user click.
+    const granted = await chrome.permissions.request({ origins: [details.origin + '/*'] });
+    if (!granted) throw new Error('Autorisation Chrome refusée : aucun code envoyé.');
+    rendevoOrigin = details.origin;
+    // The URL-bearing code is never submitted to the server; only the secret is.
     const result = await api('/api/companion/exchange', {
-      method: 'POST', body: { code: code.value.trim(), device_name: 'Chrome Companion', version: companionVersion }, token: '',
+      method: 'POST', body: { code: details.secret, device_name: 'Chrome Companion', version: companionVersion }, token: '',
     });
     deviceToken = result.token;
-    await chrome.storage.local.set({ companionToken: deviceToken });
+    await chrome.storage.local.set({ companionToken: deviceToken, rendevoOrigin });
+    connectedOrigin.textContent = rendevoOrigin;
     code.value = '';
     await loadCampaigns();
-    say('Extension associée directement à Rendevo.');
-  } catch (err) { say(err.message); }
-  finally { setBusy(false); }
+    say('Extension associée à ' + rendevoOrigin + '.');
+  } catch (err) {
+    if (!deviceToken) rendevoOrigin = priorOrigin;
+    say(err.message);
+  } finally { setBusy(false); }
 });
 
 refresh.addEventListener('click', async () => {

@@ -43,7 +43,7 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     ctx.header('Cache-Control', 'no-store');
     await ctx.sendFile(path.join(deps.config.staticDir, 'Rendevo-Companion.zip'), {
       cache: 'no-store',
-      download: 'Rendevo-Companion-V21.zip',
+      download: 'Rendevo-Companion-V22.zip',
     });
   });
 

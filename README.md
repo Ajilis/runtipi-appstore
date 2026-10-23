@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V22 (0.2.11)** : association Chrome Companion avec **un seul code à copier-coller** (adresse du serveur + secret temporaire), autorisation Chrome limitée au serveur indiqué. [Documentation du Companion](sources/rendevo/extension/README.md).
+
 **Rendevo V21 (0.2.10)** : version du produit sur la connexion et la barre latérale, bouton pour renommer les campagnes, et version Chrome Companion affichée dans la liste des comptes LinkedIn et des extensions associées. [Voir la documentation Rendevo](sources/rendevo/README.md).
 
 **Rendevo V20 (0.2.9)** : Chrome Companion peut lire sur clic les liens des profils de la page de recherche LinkedIn Personnes affichée dans Chrome, puis les prévisualiser pour import confirmé (sans cookies ni navigation automatique). Voir [les instructions](sources/rendevo/extension/README.md).

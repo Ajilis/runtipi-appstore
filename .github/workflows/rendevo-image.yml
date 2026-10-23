@@ -78,7 +78,7 @@ jobs:
       - name: Downloadable Chrome Companion package
         uses: actions/upload-artifact@v4
         with:
-          name: Rendevo-Companion-V21
+          name: Rendevo-Companion-V22
           path: |
             sources/rendevo/extension/manifest.json
             sources/rendevo/extension/popup.html

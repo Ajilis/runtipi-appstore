@@ -8,6 +8,15 @@ import { assistedCampaignSettings, assistedMessageApproval } from '../server/ser
 
 const extensionFile = new URL('../extension/popup.js', import.meta.url);
 const manifest = JSON.parse(fs.readFileSync(new URL('../extension/manifest.json', import.meta.url), 'utf8'));
+const secret = 'A'.repeat(32);
+const portableCode = (origin = 'https://rendevo.exemple.fr', rawSecret = secret) =>
+  'RDV1.' + encodeURIComponent(origin) + '.' + rawSecret;
+async function pair(elem, origin = 'https://rendevo.exemple.fr') {
+  elem('paircode').value = portableCode(origin);
+  elem('paircode').events.input();
+  assert.equal(elem('connect').disabled, false);
+  await elem('connect').events.click();
+}
 
 test('extension MV3 : lecture ponctuelle de l’onglet sans cookies ni permission LinkedIn permanente', () => {
   assert.equal(manifest.manifest_version, 3);
@@ -60,7 +69,7 @@ test('compte Companion n’effectue aucun appel externe et interdit les envois e
   assert.match(inbox, /body\.confirmed !== true/);
 });
 
-async function simulatePopup(currentTabUrl, pageUrls = []) {
+async function simulatePopup(currentTabUrl, pageUrls = [], { grant = true, stored = {} } = {}) {
   const elements = new Map();
   function elem(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -71,12 +80,12 @@ async function simulatePopup(currentTabUrl, pageUrls = []) {
     });
     return elements.get(id);
   }
-  const createdTabs = [], requests = [], permissions = [], executions = [], storage = {};
+  const createdTabs = [], requests = [], permissions = [], executions = [], storage = { ...stored };
   const context = {
     document: { getElementById: elem, createElement: () => ({ value: '', textContent: '' }) },
     chrome: {
-      runtime: { getManifest: () => ({ version: '0.2.10' }) },
-      permissions: { request: async (x) => { permissions.push(x); return true; } },
+      runtime: { getManifest: () => ({ version: '0.2.11' }) },
+      permissions: { request: async (x) => { permissions.push(x); return grant; } },
       storage: { local: {
         get: async () => ({ ...storage }),
         set: async (patch) => Object.assign(storage, patch),
@@ -125,15 +134,16 @@ async function simulatePopup(currentTabUrl, pageUrls = []) {
 test('l’extension échange directement le code, lit les campagnes, importe uniquement sur clic', async () => {
   const { elem, storage, createdTabs, requests, permissions } = await simulatePopup('https://www.linkedin.com/in/camille/?trk=tracking');
   assert.equal(elem('import').disabled, true);
-  elem('base').value = 'https://rendevo.exemple.fr/';
-  await elem('save').events.click();
+  assert.equal(storage.rendevoOrigin, undefined);
+  assert.equal(permissions.length, 0);
+  assert.equal(requests.length, 0);
+  await pair(elem);
   assert.equal(storage.rendevoOrigin, 'https://rendevo.exemple.fr');
   assert.equal(permissions.length, 1);
   assert.deepEqual(Array.from(permissions[0].origins), ['https://rendevo.exemple.fr/*']);
   assert.equal(createdTabs.length, 0);
-  elem('paircode').value = 'example-one-time-code';
-  elem('paircode').events.input();
-  await elem('connect').events.click();
+  assert.equal(JSON.parse(requests[0].options.body).code, secret);
+  assert.equal(requests[0].options.body.includes('RDV1.'), false);
   assert.ok(storage.companionToken);
   assert.equal(elem('connected').hidden, false);
   assert.equal(elem('workspace').textContent, 'Mon espace');
@@ -145,8 +155,8 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.equal(requests[3].url, 'https://rendevo.exemple.fr/api/companion/prospects');
   assert.equal(requests[3].options.method, 'POST');
   assert.equal(requests[3].options.credentials, 'omit');
-  assert.equal(requests[3].options.headers['X-Companion-Version'], '0.2.10');
-  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.10');
+  assert.equal(requests[3].options.headers['X-Companion-Version'], '0.2.11');
+  assert.equal(JSON.parse(requests[0].options.body).version, '0.2.11');
   assert.equal(requests[3].options.headers.Authorization, 'Bearer ' + storage.companionToken);
   const sent = JSON.parse(requests[3].options.body);
   assert.equal(sent.campaign_id, 'campaign-1');
@@ -154,22 +164,43 @@ test('l’extension échange directement le code, lit les campagnes, importe uni
   assert.equal(createdTabs.length, 0);
 });
 
-test('l’extension refuse les origines invalides et les faux domaines LinkedIn', async () => {
-  const { elem, storage, requests, createdTabs } = await simulatePopup('https://linkedin.com.attacker.example/in/camille/');
-  elem('base').value = 'https://rendevo.exemple.fr/path';
-  await elem('save').events.click();
+test('l’extension bloque les codes invalides, origines non conformes et faux profils LinkedIn', async () => {
+  const { elem, storage, requests, createdTabs, permissions } = await simulatePopup('https://linkedin.com.attacker.example/in/camille/');
+  const invalid = [
+    'some-code', secret, 'RDV1.https://rendevo.exemple.fr.' + secret,
+    portableCode('https://rendevo.exemple.fr/path'),
+    portableCode('http://public.example.com'),
+    portableCode('https://user:pass@rendevo.exemple.fr'),
+    portableCode('https://rendevo.exemple.fr?query=secret'),
+    'RDV1.%XX.' + secret,
+    'RDV1.' + encodeURIComponent('https://rendevo.exemple.fr') + '.BAD',
+  ];
+  for (const candidate of invalid) {
+    elem('paircode').value = candidate;
+    elem('paircode').events.input();
+    assert.equal(elem('connect').disabled, true, candidate);
+    await elem('connect').events.click();
+  }
   assert.equal(storage.rendevoOrigin, undefined);
-  elem('base').value = 'http://public.example.com';
-  await elem('save').events.click();
-  assert.equal(storage.rendevoOrigin, undefined);
-  elem('base').value = 'https://rendevo.exemple.fr';
-  await elem('save').events.click();
-  elem('paircode').value = 'some-code';
-  elem('paircode').events.input();
-  await elem('connect').events.click();
+  assert.equal(permissions.length, 0);
+  assert.equal(requests.length, 0);
+  await pair(elem);
   assert.equal(elem('import').disabled, true);
   assert.equal(requests.filter((r) => r.url.includes('/prospects')).length, 0);
   assert.equal(createdTabs.length, 0);
+});
+
+test('un refus de permission Chrome ne transmet aucun code et ne conserve aucune origine', async () => {
+  const { elem, requests, permissions, storage } =
+    await simulatePopup('https://www.linkedin.com/feed/', [], { grant: false });
+  elem('paircode').value = portableCode();
+  elem('paircode').events.input();
+  await elem('connect').events.click();
+  assert.equal(permissions.length, 1);
+  assert.equal(requests.length, 0);
+  assert.equal(storage.companionToken, undefined);
+  assert.equal(storage.rendevoOrigin, undefined);
+  assert.equal(elem('connected').hidden, true);
 });
 
 test('l’interface Rendevo propose une association directe et la révocation', () => {
@@ -179,17 +210,18 @@ test('l’interface Rendevo propose une association directe et la révocation', 
   assert.match(component, /api\/companion\/pairings/);
   assert.match(component, /api\/companion\/devices/);
   assert.match(component, /Générer un code d'association/);
+  assert.match(component, /RDV1\./);
+  assert.match(component, /Copier le code unique/);
+  const html = fs.readFileSync(new URL('../extension/popup.html', import.meta.url), 'utf8');
+  assert.match(html, /id="paircode"/);
+  assert.doesNotMatch(html, /id="base"|id="save"/);
   assert.match(component, /Révoquer/);
 });
 
 test('recherche native LinkedIn lancée sur clic avec la cible fournie par Rendevo, sans scraping', async () => {
   const { elem, requests, createdTabs } = await simulatePopup('https://www.linkedin.com/feed/');
-  elem('base').value = 'https://rendevo.exemple.fr';
-  await elem('save').events.click();
   assert.equal(elem('searchLinkedin').disabled, true);
-  elem('paircode').value = 'one-time-code';
-  elem('paircode').events.input();
-  await elem('connect').events.click();
+  await pair(elem);
   assert.equal(elem('searchLinkedin').disabled, true); // no campaign selected or search text
   elem('campaign').value = 'campaign-1';
   elem('campaign').events.change();
@@ -223,11 +255,7 @@ test('l’interface propose le mode recherche LinkedIn Companion sans clé Brave
 
 test('Companion : coller, prévisualiser puis importer un lot sans lire l’onglet LinkedIn', async () => {
   const { elem, requests, createdTabs } = await simulatePopup('https://www.linkedin.com/search/results/people/?keywords=directeur');
-  elem('base').value = 'https://rendevo.exemple.fr';
-  await elem('save').events.click();
-  elem('paircode').value = 'some-one-time-code';
-  elem('paircode').events.input();
-  await elem('connect').events.click();
+  await pair(elem);
   elem('campaign').value = 'campaign-1';
   elem('campaign').events.change();
   const before = requests.length;
@@ -263,11 +291,7 @@ test('Companion : coller, prévisualiser puis importer un lot sans lire l’ongl
 
 test('Companion : faux domaine LinkedIn et liste modifiée bloquent l’envoi jusqu’à nouvelle validation', async () => {
   const { elem, requests } = await simulatePopup('https://www.linkedin.com/search/results/people/');
-  elem('base').value = 'https://rendevo.exemple.fr';
-  await elem('save').events.click();
-  elem('paircode').value = 'one-time-code';
-  elem('paircode').events.input();
-  await elem('connect').events.click();
+  await pair(elem);
   const before = requests.length;
   elem('bulkUrls').value = 'https://linkedin.com.evil.test/in/camille/';
   elem('bulkUrls').events.input();
@@ -297,11 +321,7 @@ test('Companion lit uniquement la page Personnes sur clic, prévisualise et impo
       'https://www.linkedin.com/jobs/',
     ],
   );
-  elem('base').value = 'https://rendevo.exemple.fr';
-  await elem('save').events.click();
-  elem('paircode').value = 'some-one-time-code';
-  elem('paircode').events.input();
-  await elem('connect').events.click();
+  await pair(elem);
   elem('campaign').value = 'campaign-1';
   elem('campaign').events.change();
   const before = requests.length;
@@ -331,11 +351,7 @@ test('Companion lit uniquement la page Personnes sur clic, prévisualise et impo
 
 test('Companion ne lit pas les pages LinkedIn non autorisées et invalide toute sélection modifiée', async () => {
   const { elem, requests, executions } = await simulatePopup('https://www.linkedin.com/feed/');
-  elem('base').value = 'https://rendevo.exemple.fr';
-  await elem('save').events.click();
-  elem('paircode').value = 'some-one-time-code';
-  elem('paircode').events.input();
-  await elem('connect').events.click();
+  await pair(elem);
   assert.equal(elem('readLinkedinPage').disabled, true);
   assert.equal(executions.length, 0);
   assert.equal(requests.filter((r) => r.url.includes('/prospects')).length, 0);
@@ -343,15 +359,34 @@ test('Companion ne lit pas les pages LinkedIn non autorisées et invalide toute 
   const page = await simulatePopup('https://www.linkedin.com/search/results/people/', [
     'https://www.linkedin.com/in/alice/',
   ]);
-  page.elem('base').value = 'https://rendevo.exemple.fr';
-  await page.elem('save').events.click();
-  page.elem('paircode').value = 'some-one-time-code';
-  page.elem('paircode').events.input();
-  await page.elem('connect').events.click();
+  await pair(page.elem);
   await page.elem('readLinkedinPage').events.click();
   assert.equal(page.elem('submitBulk').disabled, false);
   page.elem('bulkUrls').value += '\nhttps://www.linkedin.com/in/bob/';
   page.elem('bulkUrls').events.input();
   assert.equal(page.elem('submitBulk').disabled, true);
   assert.equal(page.requests.filter((r) => r.url.includes('/prospects')).length, 0);
+});
+
+test('une extension déjà associée reste connectée sans nouvelle saisie ni permission', async () => {
+  const { elem, requests, permissions, storage } = await simulatePopup(
+    'https://www.linkedin.com/feed/', [], {
+      stored: { rendevoOrigin: 'https://rendevo.exemple.fr', companionToken: 'persisted-token' },
+    },
+  );
+  assert.equal(elem('pairing').hidden, true);
+  assert.equal(elem('connected').hidden, false);
+  assert.equal(elem('connectedOrigin').textContent, 'https://rendevo.exemple.fr');
+  assert.equal(permissions.length, 0);
+  assert.equal(requests.length, 2);
+  assert.equal(storage.companionToken, 'persisted-token');
+});
+
+test('un code pour instance HTTP privée permet une association locale contrôlée', async () => {
+  const { elem, permissions, requests, storage } = await simulatePopup('https://www.linkedin.com/feed/');
+  await pair(elem, 'http://192.168.1.16:8288');
+  assert.equal(permissions.length, 1);
+  assert.deepEqual(Array.from(permissions[0].origins), ['http://192.168.1.16:8288/*']);
+  assert.equal(requests[0].url, 'http://192.168.1.16:8288/api/companion/exchange');
+  assert.equal(storage.rendevoOrigin, 'http://192.168.1.16:8288');
 });

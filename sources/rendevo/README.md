@@ -1,5 +1,9 @@
 # Rendevo — sources
 
+## V22 (0.2.11) : un seul code d'association pour Chrome Companion
+
+Depuis **Réglages → Intégrations**, Rendevo génère un code portable regroupant l'origine de l'instance et le secret à usage unique de 5 minutes. Dans **Companion V22**, un seul champ « Code d'association Rendevo » est nécessaire. Le compagnon décode localement l'URL, valide l'origine HTTPS ou HTTP privé, affiche le domaine, demande la permission Chrome uniquement pour cette origine, puis échange le **secret seul** avec l'API actuelle. L'URL et le code ne sont plus saisis séparément. Aucune nouvelle permission LinkedIn ni récupération de cookies. Les extensions déjà associées et la validation du jeton existant sont préservées. Anciennes extensions V21 et antérieures : utiliser le parcours de couplage de leur version ou installer V22.
+
 ## Améliorations V21 (0.2.10 / catalogue Runtipi V21)
 
 - La page de connexion affiche la version réelle renvoyée par `GET /api/auth/state`. Une fois connecté, la version de `GET /api/me` s'affiche en petit sous le profil dans la barre latérale.
