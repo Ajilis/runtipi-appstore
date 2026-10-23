@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { Router } from '../server/lib/http.js';
 import { registerProspects } from '../server/routes/prospects.js';
 import { normalizeJobKeyword, professionalTitlePrompt, normalizeProfessionalTitles } from '../server/services/job-titles.js';
+import { parseProfessionalTitleResponse } from '../server/services/job-title-parser.js';
 
 test('mot-clé : respecte le champ Poste recherché, interdit valeurs vides et caractères de contrôle', () => {
   assert.equal(normalizeJobKeyword('  Directeur   commercial  '), 'Directeur commercial');
@@ -54,16 +55,16 @@ function harness({ aiEnabled = true, output, failure } = {}) {
   const prompts = [], mutated = [], headers = [];
   const ai = {
     enabled(ws) { assert.equal(ws, workspace); return aiEnabled; },
-    async completeJson(ws, opts) {
+    async complete(ws, opts) {
       assert.equal(ws, workspace);
       prompts.push(opts);
       if (failure) throw Error('private-provider-token-DO-NOT-EXPOSE');
-      return output || { rows: [{
+      return typeof output === 'string' ? output : JSON.stringify(output || { rows: [{
         category: 'Fonctions actuelles',
         title: 'Directeur commercial',
         variants: ['Directrice commerciale', 'Head of Sales'],
         relation: 'Fonction directement associée',
-      }] };
+      }] });
     },
   };
   const db = { async query(...a) { mutated.push(a); throw Error('No database access expected'); } };
@@ -92,7 +93,7 @@ test('route : utilise uniquement le connecteur IA actif et retourne un tableau s
   assert.equal(result.rows[0].title, 'Directeur commercial');
   assert.equal(h.mutated.length, 0);
   assert.equal(h.prompts.length, 1);
-  assert.equal(h.prompts[0].maxTokens, 3800);
+  assert.equal(h.prompts[0].maxTokens, 3400);
   assert.match(h.prompts[0].user, /Commercial/);
   assert.deepEqual(h.headers, [['Cache-Control', 'no-store']]);
   await assert.rejects(() => h.invoke({ keyword: 'Autre métier' }), /12 secondes/);
@@ -104,7 +105,7 @@ test('route : aucun modèle actif, requête invalide ou erreur fournisseur ne r�
   await assert.rejects(() => harness().invoke({ keyword: '' }), /mot-clé/);
   const h = harness({ failure: true });
   await assert.rejects(() => h.invoke({ keyword: 'Chef de projet' }), (error) => {
-    assert.match(error.message, /La génération des intitulés a échoué/);
+    assert.match(error.message, /fournisseur IA a interrompu la génération/);
     assert.doesNotMatch(error.message, /private-provider-token/);
     return true;
   });
