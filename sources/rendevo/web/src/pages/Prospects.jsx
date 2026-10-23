@@ -254,7 +254,6 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
   const [campaign, setCampaign] = useState(assisted[0]?.id || '');
   const [limit, setLimit] = useState(10);
   const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
-  const [key, setKey] = useState('');
   const [results, setResults] = useState(null);
   const [chosen, setChosen] = useState({});
   const [names, setNames] = useState({});
@@ -266,11 +265,6 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     const lead = String(title || '').split(/\s+[-–—|]\s+/)[0].trim();
     return lead.split(/\s+/).length <= 5 ? lead : '';
   };
-  const saveKey = () => run(async () => {
-    await api('/api/discovery/config', { method: 'POST', body: { api_key: key } });
-    setKey('');
-    config.reload();
-  }, 'Clé Brave enregistrée et chiffrée');
   const search = () => run(async () => {
     const input = {
       title: criteria.title || fromCampaign('titles'),
@@ -323,7 +317,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
         {mode === 'linkedin' ? (
           <div className="stack" style={{ '--gap': '12px' }}>
             <div className="alert info">
-              Recherche directement sur <strong>LinkedIn dans ton navigateur connecté</strong>, sans clé Brave ni cookie transféré.
+              Recherche directement sur <strong>LinkedIn dans ton navigateur connecté</strong>, sans moteur web externe ni cookie transféré.
               Le compagnon peut lire sur clic les liens des résultats chargés dans l'onglet LinkedIn ; tu vérifies les liens avant import.
             </div>
             <Field label="Campagne Companion">
@@ -348,7 +342,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
         ) : (
           <>
             <div className="alert info small">
-              Recherche des profils professionnels <strong>déjà indexés sur le web</strong> par Brave Search.
+              Recherche des profils professionnels <strong>déjà indexés sur le web</strong> par ton moteur de recherche configuré.
               Ni Rendevo ni Chrome Companion ne consultent LinkedIn automatiquement. Les résultats sont des suggestions à vérifier :
               certains postes ou entreprises peuvent être anciens.
             </div>
@@ -372,24 +366,11 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               <input className="input num" type="number" min="1" max="20" value={limit}
                 onChange={(e) => setLimit(Math.max(1, Math.min(20, Number(e.target.value) || 10)))} />
             </Field>
-            {config.loading ? <p className="small soft">Vérification de la configuration de recherche…</p> : (
-              <div className="panel panel-pad stack" style={{ '--gap': '10px' }}>
-                <strong>Recherche Brave : {config.data?.has_api_key ? 'Clé configurée' : 'Clé API à configurer'}</strong>
-                <p className="small soft">La recherche requiert une clé personnelle Brave Search API, indépendante de LinkedIn.
-                  Elle est chiffrée dans Rendevo. Le service Brave peut être payant selon votre utilisation.</p>
-                <a href="https://api-dashboard.search.brave.com/" target="_blank" rel="noopener noreferrer" className="small">
-                  Obtenir une clé API Brave Search <LuExternalLink />
-                </a>
-                <Field label={config.data?.has_api_key ? 'Remplacer la clé Brave (facultatif)' : 'Clé API Brave Search'}>
-                  <input className="input" type="password" value={key} autoComplete="off" spellCheck={false}
-                    onChange={(e) => setKey(e.target.value)} placeholder="Clé API non affichée après enregistrement" />
-                </Field>
-                <button className="btn" style={{ alignSelf: 'flex-start' }} disabled={busy || key.trim().length < 8}
-                  onClick={saveKey}>Enregistrer la clé</button>
-              </div>
+            {!config.loading && !config.data?.configured && (
+              <p className="small soft">Aucun moteur de recherche configuré. <a href="/reglages?tab=recherche">Configurer dans Réglages → Recherche</a>.</p>
             )}
             <div className="row wrap">
-              <button className="btn primary" disabled={busy || !config.data?.has_api_key} onClick={search}>
+              <button className="btn primary" disabled={busy || !config.data?.configured} onClick={search}>
                 {busy ? <span className="spinner" /> : <LuSearch />}Rechercher des profils
               </button>
               <span className="small soft">Une recherche sur clic ; aucun ajout sans sélection.</span>

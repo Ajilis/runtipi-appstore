@@ -1,7 +1,7 @@
 import { bad, notFound } from '../lib/http.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
-import { normalizeDiscoveryCriteria, discoverPublicProfiles, normalizePublicProfileUrl } from '../services/discovery.js';
+import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
   p.status, p.stage, p.tags, p.signals, p.campaign_id, p.needs_human, p.human_reason, p.last_reply_at, p.last_contact_at, p.created_at, p.updated_at, p.source, p.callback_at`;
@@ -19,34 +19,64 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
   const { db, agent, vault } = deps;
   const recentSearches = new Map();
 
-  // Only encrypted API keys are persisted; neither this endpoint nor /api/settings
-  // should expose a search provider credential.
-  router.get('/api/discovery/config', requireAuth, async (ctx) => ({
-    provider: 'brave',
-    has_api_key: !!ctx.state.ws.settings?.discovery?.brave_api_key_enc,
-  }));
+  // Legacy Brave workspaces keep their existing encrypted key until replaced.
+  // New DeGoog workspaces store a validated URL and optionally an encrypted
+  // Bearer token. Credentials never appear in config endpoints or logs.
+  const providerOf = (settings = {}) => settings.provider
+    || (settings.brave_api_key_enc ? 'brave' : 'degoog');
+  const exposed = (settings = {}) => {
+    const provider = providerOf(settings);
+    return {
+      provider,
+      base_url: provider === 'degoog' ? settings.base_url || '' : '',
+      has_api_key: !!(provider === 'brave' ? settings.brave_api_key_enc : settings.api_key_enc),
+      configured: provider === 'brave' ? !!settings.brave_api_key_enc : !!settings.base_url,
+    };
+  };
+
+  router.get('/api/discovery/config', requireAuth, async (ctx) =>
+    exposed(ctx.state.ws.settings?.discovery));
 
   router.post('/api/discovery/config', requireAuth, requireAdmin, async (ctx) => {
     const body = await ctx.json(4096);
     const previous = ctx.state.ws.settings?.discovery || {};
-    let encrypted = previous.brave_api_key_enc || '';
+    // Accept old clients posting only api_key (Brave), without changing them.
+    const provider = body.provider || (body.base_url !== undefined ? 'degoog' : body.api_key && !previous.base_url ? 'brave' : providerOf(previous));
+    if (!['brave', 'degoog'].includes(provider)) throw bad('Moteur de recherche inconnu');
+    const oldProvider = providerOf(previous);
+    const keyName = provider === 'brave' ? 'brave_api_key_enc' : 'api_key_enc';
+    let encrypted = oldProvider === provider ? previous[keyName] || '' : '';
     if (body.clear_key === true) encrypted = '';
-    else if (body.api_key) {
+    else if (body.api_key !== undefined && String(body.api_key).trim()) {
       const key = String(body.api_key).trim();
-      if (!/^\S{8,512}$/.test(key)) throw bad('Clé API Brave invalide');
+      if (!/^\S{8,512}$/.test(key)) throw bad('Clé API invalide (8 à 512 caractères)');
       encrypted = vault.encrypt(key);
+    }
+    let settings;
+    if (provider === 'brave') {
+      settings = { provider, brave_api_key_enc: encrypted };
+    } else {
+      let baseUrl;
+      try { baseUrl = normalizeDegoogUrl(body.base_url ?? (oldProvider === 'degoog' ? previous.base_url : '')); }
+      catch (err) { throw bad(err.message); }
+      settings = { provider, base_url: baseUrl, api_key_enc: encrypted };
     }
     await db.query(
       "UPDATE workspaces SET settings = jsonb_set(settings, '{discovery}', $2::jsonb, true) WHERE id = $1",
-      [ctx.state.ws.id, JSON.stringify({ brave_api_key_enc: encrypted })],
+      [ctx.state.ws.id, JSON.stringify(settings)],
     );
-    return { provider: 'brave', has_api_key: !!encrypted };
+    // POST returns the masked settings in the same format as GET.
+    return provider === 'brave'
+      ? { provider, has_api_key: !!encrypted }
+      : exposed(settings);
   });
 
   router.post('/api/discovery/search', requireAuth, async (ctx) => {
     const settings = ctx.state.ws.settings?.discovery || {};
-    const key = vault.decrypt(settings.brave_api_key_enc || '');
-    if (!key) throw bad('Configurez une clé API Brave Search pour activer la recherche web');
+    const provider = providerOf(settings);
+    const key = vault.decrypt(provider === 'brave' ? settings.brave_api_key_enc || '' : settings.api_key_enc || '');
+    if (provider === 'brave' && !key) throw bad('Configurez une clé API Brave Search dans Réglages → Recherche');
+    if (provider === 'degoog' && !settings.base_url) throw bad('Configurez l’URL DeGoog dans Réglages → Recherche');
     const input = await ctx.json(4096);
     let criteria;
     try { criteria = normalizeDiscoveryCriteria(input, ctx.state.ws.settings?.icp || {}); }
@@ -57,8 +87,10 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     if (recentSearches.size > 2000) recentSearches.clear();
     recentSearches.set(id, Date.now());
     try {
-      const items = await discoverPublicProfiles({ apiKey: key, criteria, fetcher });
-      return { items, found: items.length, query: criteria.searchQuery, provider: 'brave' };
+      const items = provider === 'brave'
+        ? await discoverPublicProfiles({ apiKey: key, criteria, fetcher })
+        : await discoverDegoogProfiles({ baseUrl: settings.base_url, apiKey: key, criteria, fetcher });
+      return { items, found: items.length, query: criteria.searchQuery, provider };
     } catch (err) { throw bad(err.message); }
   });
 

@@ -1,5 +1,12 @@
 # Rendevo — sources
 
+## V25 (0.2.14) : version serveur dans Companion, moteur DeGoog dans Réglages → Recherche
+
+**Companion V25** indique sa version Chrome (manifeste) dans l’en-tête et affiche la version de l’instance Rendevo connectée, reçue de l’API `/api/companion/status` après authentification du jeton d’appareil. Le formulaire de première association reste minimal et ne contacte pas le serveur sans code valide.
+
+**Trouver des prospects → Recherche web publique** n’affiche plus de champ de configuration du moteur ou de clé. Ces options sont maintenant dans **Réglages → Recherche** : URL d’une instance [DeGoog](https://github.com/degoog-org/degoog) auto-hébergée et clé API facultative. Rendevo appelle **`GET {URL}/api/search?q=...&type=web&lang=fr`** et lit `results[].url/title/snippet`. Si DeGoog exige une clé de recherche, elle est envoyée dans `Authorization: Bearer <clé>`; sinon l’URL suffit. L’URL est limitée à HTTPS (ou HTTP sur localhost/IP privée), sans credentials, chemin non reconnu ni paramètres. Les clés sont chiffrées par le coffre Rendevo ; les API de lecture ne révèlent pas le secret. La recherche reste manuelle, limitée en cadence et à vingt suggestions de profils LinkedIn valides, sans import avant confirmation. Les anciens espaces configurés sur Brave peuvent continuer à utiliser Brave jusqu’à l’enregistrement d’une URL DeGoog. Les données d’anciennes recherches ou campagnes ne sont pas modifiées.
+
+
 ## V24 (0.2.13) : écran d'association Chrome Companion minimal
 
 Le popup de **première association** présente seulement le champ de code et le bouton d'association, sans textes de diagnostic réseau ou d'avertissement de confidentialité. L'origine du serveur reste embarquée dans le ZIP personnalisé et vérifiée silencieusement lors de la validation du code. Seules les erreurs nécessitant une intervention sont affichées. Le texte de dissociation n'est plus conservé après retour au formulaire. La zone « Connectée » conserve ses fonctions de campagnes et d'import. Les règles d'autorisation et de confidentialité restent inchangées.

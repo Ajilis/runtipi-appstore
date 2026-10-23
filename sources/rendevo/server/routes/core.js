@@ -17,7 +17,14 @@ function maskSettings(s) {
     delete out.ai.api_key_enc;
   }
   if (out.discovery) {
-    out.discovery = { has_api_key: !!out.discovery.brave_api_key_enc };
+    const current = out.discovery;
+    const provider = current.provider || (current.brave_api_key_enc ? 'brave' : 'degoog');
+    out.discovery = {
+      provider,
+      base_url: provider === 'degoog' ? current.base_url || '' : '',
+      has_api_key: !!(provider === 'brave' ? current.brave_api_key_enc : current.api_key_enc),
+      configured: provider === 'brave' ? !!current.brave_api_key_enc : !!current.base_url,
+    };
   }
   return out;
 }

@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 24** · **Version Rendevo : 0.2.13**
+**Version du catalogue Runtipi : 25** · **Version Rendevo : 0.2.14**
+
+**Nouveau V25 — Recherche DeGoog et versions Companion.** Le popup Chrome affiche maintenant la version de Rendevo connectée et sa version Companion. La configuration du moteur est retirée de « Trouver des prospects » et déplacée dans le nouveau sous-menu **Réglages → Recherche**. Renseignez l’URL de votre moteur DeGoog compatible `GET /api/search`, puis éventuellement sa clé API Bearer, chiffrée dans Rendevo. Les clés existantes Brave sont conservées tant que vous n’enregistrez pas un moteur DeGoog. Les résultats publics sont toujours vérifiés manuellement avant import.
 
 **Nouveau V24 — première association Companion simplifiée.** À l'ouverture, le popup Chrome affiche uniquement le champ du code d'association et le bouton « Associer le Companion ». Les informations de serveur intégré, de permissions et de confidentialité ne sont pas affichées avant la connexion. Un message apparaît seulement en cas d'erreur utile. Après dissociation, le formulaire est propre et aucun ancien message ne reste visible.
 

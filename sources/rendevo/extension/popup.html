@@ -8,7 +8,7 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V24</span></header>
+  <header><strong>Rendevo Companion</strong><span id="companionVersion"></span></header>
   <main>
     <section id="pairing">
       <label for="paircode">Code d’association</label>
@@ -20,6 +20,7 @@
     <section id="connected" hidden>
       <p class="connected">Connectée à <strong id="workspace"></strong></p>
       <p class="notice">Instance : <span id="connectedOrigin"></span></p>
+      <p class="notice">Version Rendevo : <strong id="rendevoVersion">—</strong></p>
       <button id="disconnect" type="button" class="secondary">Dissocier cette extension</button>
       <hr>
       <label for="campaign">Campagne Rendevo</label>
