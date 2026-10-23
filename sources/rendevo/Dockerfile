@@ -1,21 +1,16 @@
-# Emballe l'extension depuis les mêmes fichiers que la version publiée.
-# L'archive est servie par l'instance Rendevo (pas par des artefacts GitHub expirables).
-FROM alpine:3.21 AS companion-package
-RUN apk add --no-cache zip
-COPY extension /extension
-RUN cd /extension && zip -q -j /Rendevo-Companion.zip manifest.json popup.html popup.js popup.css README.md
-
+# Le ZIP Companion est personnalisé par le serveur à chaque téléchargement
+# avec la seule origine Rendevo déclarée comme permission Chrome obligatoire.
 # Rendevo - image de production
 # Aucune dépendance npm à l'exécution : serveur Node.js natif + interface déjà compilée (web/dist).
 FROM node:22-alpine
 
-ARG APP_VERSION=0.2.11
+ARG APP_VERSION=0.2.12
 LABEL org.opencontainers.image.title="Rendevo" \
       org.opencontainers.image.description="Agent IA de prospection LinkedIn auto-hébergé" \
       org.opencontainers.image.source="https://github.com/Ajilis/runtipi-appstore" \
       org.opencontainers.image.version="${APP_VERSION}"
 
-RUN apk add --no-cache su-exec tzdata
+RUN apk add --no-cache su-exec tzdata zip
 
 ENV NODE_ENV=production \
     APP_VERSION=${APP_VERSION} \
@@ -27,7 +22,7 @@ WORKDIR /app
 COPY package.json ./
 COPY server ./server
 COPY web/dist ./web/dist
-COPY --from=companion-package /Rendevo-Companion.zip ./web/dist/Rendevo-Companion.zip
+COPY extension ./extension
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /data/config /data/uploads && chown -R node:node /data
 
