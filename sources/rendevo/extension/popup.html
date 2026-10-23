@@ -8,7 +8,7 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V22 • association simplifiée</span></header>
+  <header><strong>Rendevo Companion</strong><span>V23 • autorisation à l’installation</span></header>
   <main>
     <section id="pairing">
       <label for="paircode">Code d’association Rendevo</label>
@@ -16,7 +16,7 @@
         placeholder="Colle le code depuis Réglages → Intégrations" maxlength="512">
       <p id="pairOrigin" class="notice" aria-live="polite">Ce code contient l'adresse de ton instance Rendevo. Il est valable 5 minutes.</p>
       <button id="connect" type="button" disabled>Associer le Companion</button>
-      <p class="notice">Chrome demandera l'autorisation d'accéder uniquement à ton instance Rendevo.</p>
+      <p class="notice">Le serveur a été déclaré dans les permissions lors de l’installation de cette extension personnalisée. Aucune nouvelle autorisation n’est demandée ici.</p>
     </section>
     <section id="connected" hidden>
       <p class="connected">Connectée à <strong id="workspace"></strong></p>
