@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 37** · **Version Rendevo : 0.2.26**
+**Version du catalogue Runtipi : 38** · **Version Rendevo : 0.2.27**
+
+**Nouveau V38 — recherche publique simplifiée.** Le champ « Secteur » est supprimé, ainsi que le texte introductif détaillant l'indexation web et les dorks LinkedIn. L'IA de la baguette magique prend maintenant en compte uniquement le poste, la localisation et les mots-clés ; aucun secteur de campagne ne peut être réintroduit silencieusement dans cette recherche. Les tags colorés, les dorks OU, la pagination et les réglages enregistrés restent inchangés. Aucune migration PostgreSQL.
 
 **Nouveau V37 — prompt IA compact pour la baguette magique.** Tous les champs de la recherche publique (poste, secteur, localisation et mots-clés) servent de contexte pour proposer les intitulés LinkedIn, variantes, fonctions proches et anciens titres. Le modèle reçoit une demande courte avec réponse JSON `[{"value":"identifiant","label":"Intitulé","keywords":["synonymes"]}]`. Les labels deviennent des tags colorés, supprimables individuellement et combinés par `OR` dans DeGoog. Aucun changement de configuration Vultr ni de données PostgreSQL.
 
