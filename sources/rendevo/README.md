@@ -1,5 +1,18 @@
 # Rendevo — sources
 
+## V34 (0.2.23) : connecteur compatible Vultr Serverless Inference
+
+**API :** [documentation Vultr](https://api.vultrinference.com/docs). Dans **Réglages → Intelligence artificielle**, choisir **Vultr Serverless Inference** (fournisseur OpenAI compatible), URL exacte `https://api.vultrinference.com/v1`, puis renseigner la clé Vultr en Bearer et sélectionner un **modèle de chat/génération de texte**. Une configuration déjà enregistrée sur cette URL continue à fonctionner sans ressaisir la clé.
+
+- Le bouton **Récupérer la liste des modèles** appelle `GET /v1/models?format=openrouter&output_modalities=text` pour ne proposer que les modèles qui produisent du texte : la liste générale Vultr comporte aussi des modèles images, audio, embeddings et vidéo, inadaptés à `/chat/completions`.
+- Le connecteur envoie **`max_completion_tokens`** au lieu de l'ancien `max_tokens`, comme décrit par Vultr. Pendant la classification structurée des postes, il transmet `reasoning: {"enabled":false}` pour demander une réponse utile plutôt que de consommer le budget de sortie en raisonnement (certains modèles peuvent toutefois raisonner malgré ce réglage).
+- Un modèle Vultr inconnu peut être remplacé silencieusement par le modèle par défaut : Rendevo compare **`response.model`** avec le modèle demandé et retourne **`AI_MODEL_MISMATCH`** plutôt que d'afficher un faux succès. Les alias documentés `:express` et `-normalize` sont tolérés.
+- Pour la baguette magique, le délai de génération est légèrement étendu sur Vultr (45 secondes, puis 35 secondes si un repli est nécessaire) tout en restant dans la limite habituelle d'un proxy HTTP synchrone. Leurs files d'attente peuvent être plus longues : un résultat reste alors impossible à garantir sans changer de modèle ou de réseau.
+- Les connecteurs OpenAI compatibles **autres que Vultr restent inchangés** : pas de `reasoning` Vultr et conservation de `max_tokens` par défaut.
+
+La requête et ses détails sont **validés avec des tests de simulation de l'API Vultr**. Le serveur réel n'a pas été interrogé avec la clé privée de l'utilisateur ; le bouton **Tester la connexion (sans enregistrer)** permet de valider la génération sur son modèle. Aucune migration ni suppression de données, modification de clé ou remplacement des réglages IA enregistrés.
+
+
 ## V33 (0.2.22) : corriger « Le fournisseur IA a interrompu la génération »
 
 Dans **Prospects → Trouver des prospects → Recherche web publique**, le bouton baguette magique conserve le même connecteur IA enregistré, mais ne demande plus immédiatement une réponse longue de 3 400 tokens. La requête principale est limitée à **1 200 tokens** et une douzaine de métiers pertinents ; en cas de connexion interrompue, de délai dépassé, de réponse vide ou de limite de tokens atteinte, Rendevo essaie **une seule fois** une génération simplifiée à **700 tokens**, six postes, avec des délais bornés. Les erreurs définitives de DNS, de connexion refusée, de TLS, d'authentification et de paramètres API ne sont pas répétées.

@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 33** · **Version Rendevo : 0.2.22**
+**Version du catalogue Runtipi : 34** · **Version Rendevo : 0.2.23**
+
+**Nouveau V34 — Vultr Serverless Inference.** Préréglage dédié avec URL `https://api.vultrinference.com/v1`, liste filtrée des modèles produisant du texte, `max_completion_tokens` pour la génération et contrôle du raisonnement sur la baguette magique. Rendevo vérifie aussi que Vultr répond réellement avec le modèle sélectionné au lieu de substituer silencieusement son modèle par défaut. Aucun changement des autres API OpenAI compatibles, de la clé API enregistrée ni de la base PostgreSQL.
 
 **Nouveau V33 — correctif des interruptions d'IA sur la baguette magique.** Les générations « Poste recherché » sont désormais courtes, avec une seule tentative de secours si le serveur IA coupe la connexion, atteint son délai ou renvoie une sortie vide ou limitée en tokens. Les erreurs identifient l'origine : DNS, connexion refusée, TLS, socket interrompue, timeout, HTTP et quota, sans exposer les secrets de l'API. Le modèle et ses paramètres déjà enregistrés ne sont pas modifiés. Aucun changement de schéma PostgreSQL ni perte de données.
 

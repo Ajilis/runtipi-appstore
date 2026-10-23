@@ -216,6 +216,7 @@ function Accounts({ limits }) {
 const AI_PRESETS = [
   { id: 'none', label: 'Aucune (modèles intégrés)', provider: 'none' },
   { id: 'openai', label: 'OpenAI', provider: 'openai', base_url: 'https://api.openai.com/v1' },
+  { id: 'vultr', label: 'Vultr Serverless Inference', provider: 'openai', base_url: 'https://api.vultrinference.com/v1' },
   { id: 'custom', label: 'OpenAI compatible (serveur personnalisé)', provider: 'openai', base_url: '' },
   { id: 'anthropic', label: 'Anthropic (Claude)', provider: 'anthropic', base_url: 'https://api.anthropic.com/v1' },
   { id: 'mistral', label: 'Mistral AI', provider: 'openai', base_url: 'https://api.mistral.ai/v1' },
@@ -318,7 +319,7 @@ function AiSettings({ data, draft, setDraft, reload }) {
                 </select>
               </Field>
             )}
-            <Field label="Modèle" hint="Modèle sélectionné ou nom exact à saisir si le serveur ne propose pas GET /models. Un modèle listé n'est pas nécessairement compatible avec /chat/completions : utilisez Tester la connexion.">
+            <Field label="Modèle" hint="Modèle sélectionné ou nom exact à saisir si le serveur ne propose pas GET /models. Un modèle listé n'est pas nécessairement compatible avec /chat/completions : utilisez Tester la connexion. Avec Vultr, choisissez un modèle de chat dans la liste : un identifiant inconnu peut être remplacé par le modèle par défaut.">
               <input className="input" value={ai.model || ''}
                 onChange={(e) => set({ model: e.target.value })} maxLength={200} placeholder="Modèle du fournisseur" />
             </Field>

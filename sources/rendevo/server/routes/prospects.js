@@ -5,6 +5,7 @@ import { normalizeSignal } from '../services/scoring.js';
 import { normalizeJobKeyword, professionalTitlePrompt } from '../services/job-titles.js';
 import { parseProfessionalTitleResponse } from '../services/job-title-parser.js';
 import { classifyAiGenerationFailure } from '../services/ai-diagnostics.js';
+import { isVultrInferenceBaseUrl } from '../services/ai-models.js';
 import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, discoverDegoogPage, DEGOOG_MAX_PAGES, DISCOVERY_IMPORT_MAX, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
@@ -156,6 +157,9 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     // classification request can still exhaust a model, proxy or CPU budget.
     // Use a compact first response, then retry once with a substantially
     // smaller prompt for parsing failures or transient network interruptions.
+    const vultr = isVultrInferenceBaseUrl(
+      ai.settingsFor?.(ctx.state.ws)?.base_url || ctx.state.ws.settings?.ai?.base_url || '',
+    );
     let formatError;
     for (let attempt = 0; attempt < 2; attempt++) {
       const userPrompt = attempt === 0
@@ -176,7 +180,12 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
           system: 'Classe les métiers à partir du mot-clé. Réponds par un JSON complet et concis, sans autre texte.',
           user: userPrompt,
           maxTokens: attempt === 0 ? 1200 : 700,
-          timeoutMs: attempt === 0 ? 30000 : 20000,
+          // Vultr may queue inference requests, and a reasoning model can
+          // answer later than the quick "OK" settings check. Keep the two
+          // synchronous requests under a typical 100-second reverse proxy cap.
+          timeoutMs: vultr ? (attempt === 0 ? 45000 : 35000)
+            : (attempt === 0 ? 30000 : 20000),
+          structured: true,
           temperature: 0.2,
         });
       } catch (error) {

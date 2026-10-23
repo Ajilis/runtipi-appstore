@@ -29,6 +29,10 @@ export function classifyAiGenerationFailure(error) {
     };
   }
 
+  if (message === 'AI_MODEL_MISMATCH') return {
+    code: 'AI_MODEL_MISMATCH', retryable: false,
+    message: 'Vultr a répondu avec un autre modèle que celui demandé. Rechargez la liste des modèles et choisissez un modèle de chat valide.',
+  };
   if (message === 'AI_OUTPUT_TRUNCATED') return {
     code: 'AI_OUTPUT_TRUNCATED', retryable: true,
     message: 'Le modèle IA a épuisé sa limite de génération avant de terminer le tableau.',

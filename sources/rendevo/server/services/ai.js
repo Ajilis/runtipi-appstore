@@ -2,7 +2,7 @@
 // agent. Each task has a deterministic fallback so the product keeps working
 // without an API key (useful for tests and for the "manual" mode).
 import { formatSlotFr, formatSlotEn, pick } from '../lib/util.js';
-import { listOpenAIModels, normalizeOpenAIBaseUrl } from './ai-models.js';
+import { listOpenAIModels, normalizeOpenAIBaseUrl, isVultrInferenceBaseUrl } from './ai-models.js';
 
 export class AiService {
   constructor({ config, vault, logger = console, fetcher = fetch }) {
@@ -36,7 +36,7 @@ export class AiService {
     return true; // OpenAI-compatible endpoints like Ollama may not need a key
   }
 
-  async complete(ws, { system, user, maxTokens = 700, temperature, settingsOverride, timeoutMs = 60000 }) {
+  async complete(ws, { system, user, maxTokens = 700, temperature, settingsOverride, timeoutMs = 60000, structured = false }) {
     const s = settingsOverride || this.settingsFor(ws);
     if (s.provider === 'none' || !s.model || (s.provider === 'anthropic' && !s.api_key)) throw new Error('IA non configurée');
     const t = temperature ?? s.temperature;
@@ -57,22 +57,36 @@ export class AiService {
       }
       const headers = { 'content-type': 'application/json' };
       if (s.api_key) headers.authorization = `Bearer ${s.api_key}`;
+      const vultr = isVultrInferenceBaseUrl(s.base_url);
+      const payload = {
+        model: s.model,
+        temperature: t,
+        ...(vultr ? {
+          max_completion_tokens: maxTokens,
+          // Vultr's reasoning models otherwise spend the output-token budget
+          // thinking. Classification needs usable JSON, not long reasoning.
+          ...(structured ? { reasoning: { enabled: false } } : {}),
+        } : { max_tokens: maxTokens }),
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      };
       const res = await this.fetcher(`${normalizeOpenAIBaseUrl(s.base_url)}/chat/completions`, {
         redirect: 'error',
         method: 'POST',
         signal: ctrl.signal,
         headers,
-        body: JSON.stringify({
-          model: s.model,
-          temperature: t,
-          max_tokens: maxTokens,
-          messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const detail = String(data.error?.message || '').slice(0, 220).replaceAll(s.api_key || '\\0', '[secret]');
         throw new Error('LLM HTTP ' + res.status + (detail ? ' : ' + detail : ''));
+      }
+      // Unlike most OpenAI endpoints, Vultr can silently route an unknown
+      // model ID to its default model. Never represent that as success.
+      if (vultr && typeof data.model === 'string' && data.model) {
+        const requested = s.model.replace(/-normalize$/, '').replace(/:express$/, '');
+        const actual = data.model.replace(/-normalize$/, '');
+        if (requested !== actual) throw new Error('AI_MODEL_MISMATCH');
       }
       const choice = data.choices?.[0];
       // Some reasoning models spend their whole token budget on reasoning and
