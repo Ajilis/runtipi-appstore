@@ -1,5 +1,14 @@
 # Rendevo — sources
 
+## V33 (0.2.22) : corriger « Le fournisseur IA a interrompu la génération »
+
+Dans **Prospects → Trouver des prospects → Recherche web publique**, le bouton baguette magique conserve le même connecteur IA enregistré, mais ne demande plus immédiatement une réponse longue de 3 400 tokens. La requête principale est limitée à **1 200 tokens** et une douzaine de métiers pertinents ; en cas de connexion interrompue, de délai dépassé, de réponse vide ou de limite de tokens atteinte, Rendevo essaie **une seule fois** une génération simplifiée à **700 tokens**, six postes, avec des délais bornés. Les erreurs définitives de DNS, de connexion refusée, de TLS, d'authentification et de paramètres API ne sont pas répétées.
+
+Les erreurs montrent désormais un **code technique stable sans secret** : `AI_CONNECTION_RESET`, `AI_TIMEOUT`, `AI_DNS`, `AI_CONNECTION_REFUSED`, `AI_TLS`, `AI_PARAMETERS`, `AI_AUTH`, `AI_RATE_LIMIT`, `AI_OUTPUT_TRUNCATED` et autres. Pour les pannes réseau, l'accès au modèle doit être vérifié **depuis le conteneur Rendevo**, pas seulement depuis le navigateur ou la machine hôte. Les coupures sur génération longue peuvent notamment provenir d'un proxy, d'un timeout ou d'un serveur IA à court de ressources. Un bouton « Tester la connexion » qui réussit avec « OK » ne valide pas les requêtes longues.
+
+Les réponses `/chat/completions` dont le `content` est un tableau de blocs texte sont aussi acceptées. Un `finish_reason: length` est détecté comme une limite de génération plutôt que comme une erreur indéfinie. Les messages d'erreur exposés restent indépendants du corps HTTP distant et de la clé API. Les réglages IA existants **ne sont ni remplacés ni effacés** ; aucune migration de schéma PostgreSQL et aucun effacement de prospects, campagnes ou autres données.
+
+
 ## V32 (0.2.21) : correction du générateur d’intitulés avec l’IA déjà configurée
 
 La baguette magique **Prospects → Trouver des prospects → Recherche web publique → Poste recherché** n’impose plus un JSON strictement formaté en `{"rows":[...]}` et ne renvoie plus systématiquement le même message d’échec générique. Le serveur accepte désormais un JSON entouré de balises `json`, un tableau JSON, certaines variantes des noms des colonnes, ainsi que les **tableaux Markdown à quatre colonnes** parfois renvoyés par des modèles OpenAI compatibles. La normalisation, le nettoyage, les limites et la déduplication de V31 restent appliqués.
