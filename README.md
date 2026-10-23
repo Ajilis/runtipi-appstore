@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V25 (0.2.14)** : Chrome Companion affiche désormais la version de Rendevo connectée ; le moteur de prospection web se configure dans **Réglages → Recherche** par URL DeGoog et clé API Bearer facultative. [Documentation du serveur](sources/rendevo/README.md).
+
 **Rendevo V24 (0.2.13)** : **première association Chrome Companion minimaliste** (un champ de code + un bouton), suppression des textes techniques et des messages de dissociation résiduels sur l’écran non connecté. [Documentation Companion](sources/rendevo/extension/README.md).
 
 **Rendevo V23 (0.2.12)** : téléchargement d'un **Companion Chrome personnalisé à ton serveur** ; accès au seul hôte Rendevo déclaré à l'installation, plus de demande d'autorisation lors de l'association par code. [Installer Companion](sources/rendevo/extension/README.md).
