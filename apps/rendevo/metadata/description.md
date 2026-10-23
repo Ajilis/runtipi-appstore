@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 29** · **Version Rendevo : 0.2.18**
+**Version du catalogue Runtipi : 30** · **Version Rendevo : 0.2.19**
+
+**Nouveau V30 — connecteur IA générique OpenAI compatible.** Configurez n’importe quel serveur proposant les routes `/models` et `/chat/completions`, avec une URL de base personnalisée et une clé API facultative si le serveur n'en exige pas. Dans Réglages → Intelligence artificielle, **Récupérer la liste des modèles** permet d'afficher les identifiants et d'en sélectionner un avant enregistrement. **Tester la connexion** lance une génération sur les paramètres provisoires sans effacer une configuration existante. Les clés restent chiffrées et ne sont réutilisées que sur le même serveur. Aucun changement destructif de PostgreSQL.
 
 **Nouveau V29 — pagination de la recherche DeGoog et import jusqu'à 200 contacts.** L'API DeGoog permet `page=N` et peut retourner `totalPages`. Rendevo propose deux modes : **Charger la page suivante** ou **Défilement infini**. La sélection et les noms vérifiés sont conservés entre pages ; les profils sont dédoublonnés. Il est maintenant possible d'importer **200 contacts LinkedIn** en une seule opération après validation manuelle, dans une limite de 20 pages de recherche. Aucun changement destructif de la base PostgreSQL.
 

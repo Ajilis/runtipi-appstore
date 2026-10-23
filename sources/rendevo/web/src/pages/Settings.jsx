@@ -216,6 +216,7 @@ function Accounts({ limits }) {
 const AI_PRESETS = [
   { id: 'none', label: 'Aucune (modèles intégrés)', provider: 'none' },
   { id: 'openai', label: 'OpenAI', provider: 'openai', base_url: 'https://api.openai.com/v1' },
+  { id: 'custom', label: 'OpenAI compatible (serveur personnalisé)', provider: 'openai', base_url: '' },
   { id: 'anthropic', label: 'Anthropic (Claude)', provider: 'anthropic', base_url: 'https://api.anthropic.com/v1' },
   { id: 'mistral', label: 'Mistral AI', provider: 'openai', base_url: 'https://api.mistral.ai/v1' },
   { id: 'openrouter', label: 'OpenRouter', provider: 'openai', base_url: 'https://openrouter.ai/api/v1' },
@@ -225,47 +226,126 @@ const AI_PRESETS = [
 function AiSettings({ data, draft, setDraft, reload }) {
   const ai = draft.ai || { provider: 'none' };
   const [key, setKey] = useState('');
+  const [models, setModels] = useState([]);
+  const [modelsFor, setModelsFor] = useState('');
+  const [listing, setListing] = useState(false);
   const [run, busy] = useAction();
   const toast = useToast();
-  const set = (patch) => setDraft({ ...draft, ai: { ...ai, ...patch } });
+  const fingerprint = JSON.stringify([ai.provider, ai.base_url || '', key]);
+  const availableModels = modelsFor === fingerprint ? models : [];
+  const set = (patch) => setDraft((prev) => ({
+    ...prev, ai: { ...(prev.ai || {}), ...patch },
+  }));
   const save = () => run(async () => {
-    await api('/api/settings', { method: 'PATCH', body: { ai: { ...ai, api_key: key || undefined } } });
+    if (ai.provider !== 'none' && (!ai.base_url?.trim() || !ai.model?.trim())) {
+      throw new Error('Renseigne une URL d’API et sélectionne un modèle');
+    }
+    await api('/api/settings', { method: 'PATCH', body: {
+      ai: { ...ai, api_key: key || undefined },
+    } });
     setKey('');
+    setModelsFor('');
     reload();
-  }, 'Réglages IA enregistrés');
+  }, 'Configuration IA enregistrée');
+  const loadModels = async () => {
+    if (listing || busy) return;
+    setListing(true);
+    setModelsFor('');
+    try {
+      const response = await api('/api/settings/ai/models', {
+        method: 'POST',
+        body: { provider: ai.provider, base_url: ai.base_url, api_key: key || undefined },
+      });
+      setModels(response.models || []);
+      setModelsFor(fingerprint);
+      toast(response.total
+        ? `${response.total} modèles disponibles — sélectionnez-en un dans la liste`
+        : 'Connexion établie, mais aucun modèle annoncé par cette API');
+    } catch (error) {
+      toast(error.message || 'Impossible de récupérer les modèles', 'err');
+    } finally { setListing(false); }
+  };
   const test = () => run(async () => {
-    await api('/api/settings', { method: 'PATCH', body: { ai: { ...ai, api_key: key || undefined } } });
-    setKey('');
-    const r = await api('/api/settings/ai/test', { method: 'POST' });
-    toast(`Connexion réussie en ${r.ms} ms`);
-    reload();
+    if (!ai.model?.trim()) throw new Error('Sélectionne d’abord un modèle');
+    // Test the unsaved draft; a failed test must not replace working settings.
+    const response = await api('/api/settings/ai/test', {
+      method: 'POST',
+      body: { ...ai, api_key: key || undefined },
+    });
+    toast(`Connexion et génération réussies en ${response.ms} ms`);
   });
+  const chosenPreset = AI_PRESETS.find((p) => p.provider === ai.provider
+    && (p.provider !== 'openai' || (p.id !== 'custom' && p.base_url === ai.base_url)))?.id
+    || (ai.provider === 'openai' ? 'custom' : ai.provider || 'none');
   return (
     <div className="stack" style={{ '--gap': '16px' }}>
-      <div className={`alert ${data.ai_enabled ? 'ok' : ''}`}>{data.ai_enabled ? 'L\'IA est active : messages, qualification de l\'offre et setter sont rédigés par le modèle.' : 'Sans IA, Rendevo utilise des modèles de messages intégrés et des règles pour le setter. Branchez un modèle pour des messages vraiment personnalisés.'}</div>
+      <div className={`alert ${data.ai_enabled ? 'ok' : ''}`}>
+        {data.ai_enabled
+          ? 'Un modèle IA est enregistré. Vous pouvez tester un autre serveur et ses modèles sans remplacer la configuration actuelle.'
+          : 'Sans IA, Rendevo utilise des modèles de messages intégrés. Configurez une API compatible OpenAI pour personnaliser les réponses.'}
+      </div>
       <div className="panel panel-pad stack" style={{ '--gap': '14px' }}>
         <Field label="Fournisseur">
-          <select className="select" value={AI_PRESETS.find((p) => p.provider === ai.provider && (p.provider !== 'openai' || p.base_url === ai.base_url))?.id || (ai.provider === 'openai' ? 'openai' : ai.provider || 'none')}
-            onChange={(e) => { const p = AI_PRESETS.find((x) => x.id === e.target.value); set({ provider: p.provider, base_url: p.base_url || '' }); }}>
+          <select className="select" value={chosenPreset} onChange={(e) => {
+            const p = AI_PRESETS.find((item) => item.id === e.target.value);
+            if (!p) return;
+            set({ provider: p.provider, base_url: p.base_url || '', model: '' });
+            setKey('');
+            setModels([]);
+            setModelsFor('');
+          }}>
             {AI_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
         </Field>
         {ai.provider !== 'none' && (
           <>
-            <Field label="URL de l'API" hint="Toute API compatible OpenAI fonctionne (/chat/completions)."><input className="input" value={ai.base_url || ''} onChange={(e) => set({ base_url: e.target.value })} /></Field>
-            <Field label="Modèle" hint="Nom exact du modèle chez votre fournisseur."><input className="input" value={ai.model || ''} onChange={(e) => set({ model: e.target.value })} placeholder="Nom du modèle" /></Field>
-            <Field label="Clé API" hint={ai.has_api_key ? 'Une clé est enregistrée (chiffrée). Laissez vide pour la conserver.' : 'Chiffrée dans la base de données.'}>
-              <input className="input" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} />
+            <Field label="URL de base de l'API" hint="URL du serveur avec son préfixe, par exemple https://api.exemple.fr/v1 ou http://ollama:11434/v1 en réseau local. Rendevo appelle /models et /chat/completions.">
+              <input className="input" type="url" spellCheck={false} value={ai.base_url || ''}
+                onChange={(e) => set({ base_url: e.target.value })}
+                placeholder="https://api.exemple.fr/v1" />
             </Field>
-            <Field label={`Créativité : ${Number(ai.temperature ?? 0.7).toFixed(1)}`}><input type="range" min="0" max="1.2" step="0.1" value={ai.temperature ?? 0.7} onChange={(e) => set({ temperature: Number(e.target.value) })} /></Field>
+            {ai.provider === 'openai' && <div className="row wrap" style={{ gap: 10, alignItems: 'center' }}>
+              <button className="btn" type="button" disabled={listing || busy || !ai.base_url?.trim()}
+                onClick={loadModels}>{listing ? 'Récupération en cours…' : 'Récupérer la liste des modèles'}</button>
+              {availableModels.length > 0 && <span className="small soft">{availableModels.length} modèles disponibles</span>}
+            </div>}
+            {ai.provider === 'openai' && availableModels.length > 0 && (
+              <Field label="Sélectionner un modèle récupéré">
+                <select className="select" value={availableModels.includes(ai.model) ? ai.model : ''}
+                  onChange={(e) => set({ model: e.target.value })}>
+                  <option value="">— Choisir un modèle —</option>
+                  {availableModels.map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+              </Field>
+            )}
+            <Field label="Modèle" hint="Modèle sélectionné ou nom exact à saisir si le serveur ne propose pas GET /models. Un modèle listé n'est pas nécessairement compatible avec /chat/completions : utilisez Tester la connexion.">
+              <input className="input" value={ai.model || ''}
+                onChange={(e) => set({ model: e.target.value })} maxLength={200} placeholder="Modèle du fournisseur" />
+            </Field>
+            <Field label="Clé API" hint={ai.has_api_key
+              ? 'Une clé est déjà chiffrée dans Rendevo. Laissez ce champ vide pour la conserver sur le même serveur.'
+              : 'Facultative pour un serveur local. Ne sera jamais réaffichée après enregistrement.'}>
+              <input className="input" type="password" autoComplete="new-password"
+                spellCheck={false} value={key} maxLength={2048} onChange={(e) => setKey(e.target.value)} />
+            </Field>
+            <Field label={`Créativité : ${Number(ai.temperature ?? 0.7).toFixed(1)}`}>
+              <input type="range" min="0" max="1.2" step="0.1" value={ai.temperature ?? 0.7}
+                onChange={(e) => set({ temperature: Number(e.target.value) })} />
+            </Field>
           </>
         )}
-        <div className="row" style={{ justifyContent: 'flex-end' }}>
-          {ai.provider !== 'none' && <button className="btn" disabled={busy} onClick={test}>Tester la connexion</button>}
-          <button className="btn primary" disabled={busy} onClick={save}>Enregistrer</button>
+        <div className="row wrap" style={{ justifyContent: 'flex-end', gap: 10 }}>
+          {ai.provider !== 'none' && <button className="btn" type="button" disabled={busy || listing || !ai.base_url?.trim() || !ai.model?.trim()} onClick={test}>
+            Tester la connexion (sans enregistrer)
+          </button>}
+          <button className="btn primary" type="button"
+            disabled={busy || listing || (ai.provider !== 'none' && (!ai.model?.trim() || !ai.base_url?.trim()))}
+            onClick={save}>Enregistrer</button>
         </div>
       </div>
-      {data.ai_defaults?.configured && <p className="small muted">Un modèle par défaut est aussi défini dans le fichier de configuration du serveur ({data.ai_defaults.provider}, {data.ai_defaults.model}).</p>}
+      {data.ai_defaults?.configured && <p className="small muted">
+        Un modèle par défaut est aussi défini dans le fichier de configuration du serveur ({data.ai_defaults.provider}, {data.ai_defaults.model}).
+      </p>}
     </div>
   );
 }
