@@ -46,7 +46,7 @@ export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
     try {
       await ctx.sendFile(bundle.archive, {
         cache: 'no-store',
-        download: 'Rendevo-Companion-V28.zip',
+        download: 'Rendevo-Companion-V29.zip',
       });
     } finally {
       await fs.rm(bundle.directory, { recursive: true, force: true });

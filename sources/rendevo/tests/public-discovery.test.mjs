@@ -12,7 +12,7 @@ test('critères : requête index public, limite stricte et garde-fous', () => {
   const a = normalizeDiscoveryCriteria({ limit: 90 }, {
     titles: ['Directeur marketing'], industries: ['SaaS'], locations: ['Paris'], keywords: [],
   });
-  assert.equal(a.limit, 20);
+  assert.equal(a.limit, 50);
   assert.match(a.searchQuery, /^site:linkedin\.com\/in\//);
   assert.match(a.searchQuery, /Directeur marketing/);
   assert.match(a.searchQuery, /Paris/);
@@ -143,8 +143,8 @@ test('import explicitement validé : isolation et nombre maximum de profils', as
   );
   assert.equal(h.saved.length, 0);
   await assert.rejects(
-    () => h.invoke('POST', '/api/discovery/import', { items: new Array(21).fill(items[0]) }),
-    /1 et 20/,
+    () => h.invoke('POST', '/api/discovery/import', { items: new Array(201).fill(items[0]) }),
+    /1 et 200/,
   );
   await assert.rejects(
     () => h.invoke('POST', '/api/discovery/import', { items: [{ linkedin_url: 'https://evil.example.com/in/test/' }] }),
@@ -169,4 +169,19 @@ test('interface : résultats affichés pour approbation avant appel d’import e
   assert.match(ui, /Import(er|er les).*profils sélectionnés/);
   assert.match(core, /delete out\.ai\.api_key_enc/);
   assert.match(core, /out\.discovery = \{/);
+});
+
+test('import en une seule opération de 150 profils distincts, sans écrasement de données', async () => {
+  const h = harness();
+  const items = Array.from({ length: 150 }, (_, index) => ({
+    linkedin_url: `https://fr.linkedin.com/in/validated-bulk-${index}/?trk=public`,
+    full_name: `Profil vérifié ${index}`,
+  }));
+  const result = await h.invoke('POST', '/api/discovery/import', { items });
+  assert.equal(result.created, 150);
+  assert.equal(h.saved.length, 1, 'un seul appel d’import, pas 150 opérations côté navigateur');
+  assert.equal(h.saved[0].items.length, 150);
+  assert.ok(h.saved[0].items.every((p) => p.linkedin_url.startsWith('https://www.linkedin.com/in/')));
+  assert.equal(h.saved[0].options.source, 'public_web_search');
+  assert.equal(h.saved[0].options.campaignId, null);
 });

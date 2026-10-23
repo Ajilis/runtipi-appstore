@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LuUpload, LuDownload, LuSearch, LuPlus, LuExternalLink, LuSparkles, LuList, LuColumns3, LuRefreshCw } from 'react-icons/lu';
 import { api, useApi, useRouter, Loading, ErrorBox, Empty, Modal, Drawer, Field, Seg, useAction, useToast, HeatBadge, StatusBadge, STATUS, KIND, initials, ago, fmtDateTime, Link } from '../lib.jsx';
 import { normalizedLinkedinProfileUrl } from '../lib/companion.js';
@@ -252,16 +252,28 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
   const config = useApi('/api/discovery/config');
   const [mode, setMode] = useState(companionCampaigns.length ? 'linkedin' : 'web');
   const [campaign, setCampaign] = useState(assisted[0]?.id || '');
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(20);
   const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
   const [results, setResults] = useState(null);
   const [searchInfo, setSearchInfo] = useState(null);
+  const [searchedInput, setSearchedInput] = useState(null);
+  const [pagingMode, setPagingMode] = useState('pages');
+  const [loadingNext, setLoadingNext] = useState(false);
+  const loadingNextRef = useRef(false);
+  const endOfResults = useRef(null);
+  const toast = useToast();
   const [chosen, setChosen] = useState({});
   const [names, setNames] = useState({});
   const [run, busy] = useAction();
   const currentCampaign = campaigns.find((c) => c.id === campaign);
   const fromCampaign = (property) => Array.isArray(currentCampaign?.icp?.[property]) ? currentCampaign.icp[property][0] || '' : '';
   const chosenItems = (results || []).filter((r) => !!chosen[r.linkedin_url]);
+  const canLoadMore = searchInfo?.provider === 'degoog'
+    && !!searchInfo.has_more && !!searchedInput && (results || []).length < 200;
+  const clearSearch = () => {
+    setResults(null); setSearchInfo(null); setSearchedInput(null);
+    setChosen({}); setNames({});
+  };
   const suggestion = (title) => {
     const lead = String(title || '').split(/\s+[-–—|]\s+/)[0].trim();
     return lead.split(/\s+/).length <= 5 ? lead : '';
@@ -277,12 +289,57 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     const response = await api('/api/discovery/search', { method: 'POST', body: input });
     setResults(response.items);
     setSearchInfo(response);
+    setSearchedInput(input);
     setChosen({});
     setNames(Object.fromEntries(response.items.map((item) => [item.linkedin_url, suggestion(item.title)])));
     return response;
   }, (response) => response?.found
     ? `${response.found} profils trouvés : vérifiez-les avant import`
     : 'Aucun profil trouvé ; consultez le détail des dorks et élargissez les critères');
+  const loadMore = useCallback(async () => {
+    if (loadingNextRef.current || busy || !searchedInput || !searchInfo?.has_more
+      || (results || []).length >= 200) return;
+    loadingNextRef.current = true;
+    setLoadingNext(true);
+    try {
+      const response = await api('/api/discovery/search', {
+        method: 'POST',
+        body: { ...searchedInput, page: searchInfo.page + 1, dork_index: searchInfo.dork_index },
+      });
+      const seen = new Set((results || []).map((item) => item.linkedin_url));
+      const added = response.items.filter((item) => !seen.has(item.linkedin_url));
+      const merged = [...(results || []), ...added].slice(0, 200);
+      setResults(merged);
+      setNames((prev) => ({
+        ...Object.fromEntries(added.map((item) => [item.linkedin_url, suggestion(item.title)])),
+        ...prev,
+      }));
+      setSearchInfo({
+        ...response, has_more: response.has_more && merged.length < 200,
+        attempts: [...(searchInfo.attempts || []), ...(response.attempts || [])],
+      });
+    } catch (err) {
+      toast(err.message || 'Impossible de charger les autres pages', 'err');
+    } finally {
+      loadingNextRef.current = false;
+      setLoadingNext(false);
+    }
+  }, [busy, searchedInput, searchInfo, results, toast]);
+
+  useEffect(() => {
+    if (pagingMode !== 'infinite' || !canLoadMore || loadingNext || busy
+      || typeof IntersectionObserver === 'undefined' || !endOfResults.current) return undefined;
+    let timer;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        observer.disconnect();
+        timer = setTimeout(() => { void loadMore(); }, 1200);
+      }
+    }, { rootMargin: '120px' });
+    observer.observe(endOfResults.current);
+    return () => { observer.disconnect(); clearTimeout(timer); };
+  }, [pagingMode, canLoadMore, loadingNext, busy, loadMore]);
+
   const importSelected = () => run(async () => {
     const response = await api('/api/discovery/import', {
       method: 'POST',
@@ -313,6 +370,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
       <div className="stack" style={{ '--gap': '14px' }}>
         {(automatic.length > 0 || companionCampaigns.length > 0) && <Seg value={mode} onChange={(next) => {
           setMode(next);
+          clearSearch();
           setCampaign(next === 'provider' ? automatic[0]?.id || '' : next === 'linkedin' ? companionCampaigns[0]?.id || '' : assisted[0]?.id || '');
         }} options={[
           ...(companionCampaigns.length ? [{ value: 'linkedin', label: 'Dans mon LinkedIn (Companion)' }] : []),
@@ -353,7 +411,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               certains postes ou entreprises peuvent être anciens.
             </div>
             <Field label="Campagne de destination">
-              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); setResults(null); setSearchInfo(null); }} />
+              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); clearSearch(); }} />
             </Field>
             <div className="grid-2">
               {[
@@ -364,14 +422,23 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               ].map(([field, label, source, example]) => (
                 <Field key={field} label={label} hint={fromCampaign(source) ? `Cible campagne : ${fromCampaign(source)}` : undefined}>
                   <input className="input" value={criteria[field]} maxLength={90} placeholder={example}
-                    onChange={(e) => setCriteria((prev) => ({ ...prev, [field]: e.target.value }))} />
+                    onChange={(e) => { setCriteria((prev) => ({ ...prev, [field]: e.target.value })); clearSearch(); }} />
                 </Field>
               ))}
             </div>
-            <Field label="Nombre maximum de résultats (1–20)">
-              <input className="input num" type="number" min="1" max="20" value={limit}
-                onChange={(e) => setLimit(Math.max(1, Math.min(20, Number(e.target.value) || 10)))} />
-            </Field>
+            <div className="grid-2">
+              <Field label="Profils retenus par page (1–50)">
+                <input className="input num" type="number" min="1" max="50" value={limit}
+                  onChange={(e) => { setLimit(Math.max(1, Math.min(50, Number(e.target.value) || 20))); clearSearch(); }} />
+              </Field>
+              <Field label="Affichage des résultats DeGoog">
+                <select className="select" value={pagingMode} onChange={(e) => setPagingMode(e.target.value)}>
+                  <option value="pages">Bouton Charger plus</option>
+                  <option value="infinite">Défilement infini</option>
+                </select>
+              </Field>
+            </div>
+            <p className="small soft">DeGoog définit le nombre de résultats disponibles par page. Rendevo parcourt au maximum 20 pages et peut importer jusqu’à 200 profils sélectionnés ensemble.</p>
             {!config.loading && !config.data?.configured && (
               <p className="small soft">Aucun moteur de recherche configuré. <a href="/reglages?tab=recherche">Configurer dans Réglages → Recherche</a>.</p>
             )}
@@ -379,12 +446,12 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               <button className="btn primary" disabled={busy || !config.data?.configured} onClick={search}>
                 {busy ? <span className="spinner" /> : <LuSearch />}Rechercher des profils
               </button>
-              <span className="small soft">Une recherche sur clic ; aucun ajout sans sélection.</span>
+              <span className="small soft">Aucun import sans sélection et confirmation (200 profils maximum).</span>
             </div>
             {results && (
               <div className="stack" style={{ '--gap': '10px' }}>
                 <div className="row spread wrap">
-                  <strong>{results.length} profils publics suggérés</strong>
+                  <strong>{results.length} profils publics suggérés — {chosenItems.length} sélectionnés</strong>
                   <button className="btn sm" onClick={() => setChosen(Object.fromEntries(results.map((item) => [item.linkedin_url, true])))}>
                     Tout sélectionner
                   </button>
@@ -394,7 +461,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                   {(searchInfo.attempts || []).map((attempt, index) =>
                     <div key={index} className="small">
                       <code style={{ overflowWrap: 'anywhere' }}>{attempt.query}</code>
-                      <span className="soft"> — {attempt.results} résultats du moteur, {attempt.profiles} profil(s) LinkedIn retenus</span>
+                      <span className="soft"> — page {attempt.page || 1}, {attempt.results} résultats du moteur, {attempt.profiles} profil(s) LinkedIn retenus</span>
                     </div>)}
                 </div>}
                 {!results.length && <p className="small soft">
@@ -420,6 +487,14 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                     </Field>
                   </div>
                 ))}
+                {searchInfo?.provider === 'degoog' && <div className="row wrap" style={{ justifyContent: 'center', gap: 10 }}>
+                  <span className="small soft">Page {searchInfo.page}{searchInfo.total_pages ? ` / ${Math.min(searchInfo.total_pages, 20)}` : ''}</span>
+                  {canLoadMore && pagingMode === 'pages' && <button className="btn" disabled={busy || loadingNext}
+                    onClick={() => { void loadMore(); }}>{loadingNext ? 'Chargement…' : 'Charger la page suivante'}</button>}
+                  {loadingNext && <span className="small soft">Chargement des profils suivants…</span>}
+                  {!canLoadMore && <span className="small soft">Fin des résultats disponibles</span>}
+                </div>}
+                {pagingMode === 'infinite' && canLoadMore && <div ref={endOfResults} style={{ minHeight: 2 }} aria-hidden="true" />}
               </div>
             )}
           </>
