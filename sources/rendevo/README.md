@@ -1,5 +1,16 @@
 # Rendevo — sources
 
+## V29 (0.2.18) : pagination DeGoog, défilement infini et import de 200 contacts
+
+DeGoog expose **`GET /api/search?q=...&page=N`** (pagination à partir de 1). Sa réponse JSON peut inclure `totalPages`, mais cette information est facultative selon les moteurs de recherche activés. DeGoog ne dispose pas d'un paramètre API « infinite scroll » : Rendevo implémente ce mode en demandant les pages suivantes à l'API.
+
+Dans **Prospects → Trouver des prospects → Recherche web publique**, l'utilisateur peut choisir **« Bouton Charger plus »** ou **« Défilement infini »**. Le serveur utilise le dork LinkedIn choisi sur la première page pour toutes les pages suivantes, transmet la clé DeGoog uniquement dans l'en-tête Bearer côté serveur, et remonte `page`, `total_pages` (ou `null`), `has_more`, `dork_index` et les diagnostics. Les résultats de pages successives s'ajoutent sans doublons ; les choix et les noms saisis restent mémorisés. Les pages suivantes respectent une courte limite de cadence. Le chargement s'arrête à la fin indiquée par DeGoog, lorsqu'une page n'a plus de résultats, ou à **20 pages**.
+
+L'**import en une opération** accepte désormais **1 à 200 profils LinkedIn revus et cochés**, au lieu de 20. L'import reste une action explicite ; aucun compte LinkedIn n'est consulté directement, et aucun prospect n'est créé lors de la recherche seule. Le serveur vérifie toujours les URL, l'appartenance de la campagne à l'espace et applique la déduplication existante de l'agent. Les anciennes configurations Brave restent prises en charge sans modification de leurs requêtes API.
+
+La mise à jour ne contient aucune migration de base de données, ne supprime aucune table ni aucun contact, et conserve les protections de migrations de V27.
+
+
 ## V28 (0.2.17) : pictogrammes campagnes et recherche web publique LinkedIn
 
 **Campagnes :** chaque ligne propose uniquement de petits pictogrammes accessibles (crayon pour ouvrir l’éditeur et poubelle pour supprimer). La suppression requiert le rôle propriétaire/administrateur et une saisie exacte du nom dans une fenêtre de confirmation. Elle est **logique, non destructrice** : `campaigns.deleted_at` (migration additive `004_campaign_soft_delete.sql`) masque la campagne des listes, la met en archive et annule ses messages programmés encore en attente. Les prospects, messages, réunions et événements historiques restent intacts en base. L’accès à une campagne masquée par API renvoie « introuvable ». Aucune table ou donnée historique n'est détruite.
