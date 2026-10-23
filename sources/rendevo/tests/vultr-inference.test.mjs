@@ -186,5 +186,5 @@ test('Vultr endpoint in stored workspace config triggers long-enough classificat
 test('Vultr model preset is exposed in the AI settings UI', () => {
   const src = fs.readFileSync(new URL('../web/src/pages/Settings.jsx', import.meta.url), 'utf8');
   assert.match(src, /Vultr Serverless Inference/);
-  assert.match(src, /api\\.vultrinference\\.com\\/v1/);
+  assert.ok(src.includes('https://api.vultrinference.com/v1'));
 });
