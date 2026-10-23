@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rendevo Companion",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Import sur confirmation des résultats de recherche LinkedIn visibles, sans cookies ni pagination automatisée.",
   "permissions": [
     "activeTab",
@@ -12,9 +12,5 @@
   "action": {
     "default_title": "Rendevo Companion",
     "default_popup": "popup.html"
-  },
-  "optional_host_permissions": [
-    "https://*/*",
-    "http://*/*"
-  ]
+  }
 }
