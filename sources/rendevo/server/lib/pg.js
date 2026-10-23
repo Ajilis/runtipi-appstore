@@ -406,12 +406,12 @@ export class Pool {
     try { return await c.simple(text); } finally { this.release(c); }
   }
 
-  /** Runs fn inside a transaction; fn receives { query(text, params) }. */
+  /** Runs fn inside one transaction and connection; exposes query() and simple(). */
   async tx(fn) {
     const c = await this.acquire();
     try {
       await c.simple('BEGIN');
-      const res = await fn({ query: (t, p) => c.query(t, p) });
+      const res = await fn({ query: (t, p) => c.query(t, p), simple: (sql) => c.simple(sql) });
       await c.simple('COMMIT');
       return res;
     } catch (e) {
