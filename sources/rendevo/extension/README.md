@@ -1,11 +1,13 @@
-# Rendevo Companion — extension Chrome V20
+# Rendevo Companion — extension Chrome V21
+
+Depuis V21 / 0.2.10, Companion envoie sa version réelle issue du manifeste Chrome au serveur Rendevo lors de l'association et lors des appels authentifiés. Dans **Réglages → Intégrations → Extensions associées**, chaque périphérique affiche la dernière version déclarée (ou « non communiquée » pour une extension ancienne). La version de l'extension la plus récemment utilisée par l'utilisateur est également visible dans **Réglages → Comptes LinkedIn** pour les comptes Companion. Aucun cookie LinkedIn n'est transmis et une réassociation n'est pas nécessaire après mise à jour.
 
 L'extension **communique directement avec l'API de ton Rendevo**, sans faire passer les données par un onglet intermédiaire. Elle permet de choisir une campagne Companion, puis d'y importer sur confirmation un profil ou les profils proposés par la page de recherche LinkedIn ouverte dans Chrome.
 
 ## Installation
 
-1. Mettre Rendevo à jour vers **0.2.9 / catalogue Runtipi V20**.
-2. Depuis **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Télécharger l’extension Chrome (.zip)** pour récupérer `Rendevo-Companion-V20.zip` directement depuis Rendevo (sans GitHub). Décompresser, puis ouvrir `chrome://extensions` → **Mode développeur** → **Charger l'extension non empaquetée**, sélectionner le dossier contenant `manifest.json`.
+1. Mettre Rendevo à jour vers **0.2.10 / catalogue Runtipi V21**.
+2. Depuis **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Télécharger l’extension Chrome (.zip)** pour récupérer `Rendevo-Companion-V21.zip` directement depuis Rendevo (sans GitHub). Décompresser, puis ouvrir `chrome://extensions` → **Mode développeur** → **Charger l'extension non empaquetée**, sélectionner le dossier contenant `manifest.json`.
 3. Dans Rendevo : **Réglages → Comptes LinkedIn → Ajouter** → **LinkedIn Companion (Chrome)**. Associer ce compte à une campagne assistée.
 4. Dans **Réglages → Intégrations → Rendevo Companion**, copier l'URL de l'instance et cliquer sur **Générer un code d'association**. Le code dure **5 minutes** et ne peut servir qu'une fois.
 5. Dans Chrome : ouvrir l'extension, coller l'URL de Rendevo, cliquer sur **Autoriser cette instance Rendevo** et accepter la permission Chrome pour ce site précis. Coller le code et cliquer sur **Associer directement l'extension**.
