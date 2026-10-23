@@ -2,7 +2,7 @@
 
 ## V35 (0.2.24) : tags de postes et OU logique dans les dorks LinkedIn
 
-Dans **Prospects → Trouver des prospects → Recherche web publique → Poste recherché**, la première sélection d'un poste dans les résultats de la baguette magique **remplace le mot-clé initial**. Les postes sélectionnés s'affichent ensuite côte à côte sous forme de **tags colorés** ; chacun possède une petite croix pour le retirer indépendamment. Le menu IA reste disponible pour sélectionner un deuxième, troisième, etc. intitulé (ou une variante masculine, féminine, française ou anglaise). Il est également possible d'ajouter un poste manuellement avec **Entrée** ou le bouton **+**. Maximum **8 intitulés distincts** et 70 caractères par intitulé pour maîtriser la longueur de la requête.
+Dans **Prospects → Trouver des prospects → Recherche web publique → Poste recherché**, le clic sur la baguette magique **remplace automatiquement le mot-clé initial** par les principaux postes suggérés (jusqu'à 8). Les postes générés s'affichent ensuite côte à côte sous forme de **tags colorés** ; chacun possède une petite croix pour le retirer indépendamment. Le menu IA reste disponible pour sélectionner un deuxième, troisième, etc. intitulé (ou une variante masculine, féminine, française ou anglaise). Il est également possible d'ajouter un poste manuellement avec **Entrée** ou le bouton **+**. Maximum **8 intitulés distincts** et 70 caractères par intitulé pour maîtriser la longueur de la requête.
 
 Les postes sélectionnés forment un groupe **OU** explicite sur le serveur, par exemple :
 `site:linkedin.com/in/ ("Directeur commercial" OR "Directrice commerciale" OR "Head of Sales") "Paris"`.
