@@ -93,7 +93,7 @@ test('route : utilise uniquement le connecteur IA actif et retourne un tableau s
   assert.equal(result.rows[0].title, 'Directeur commercial');
   assert.equal(h.mutated.length, 0);
   assert.equal(h.prompts.length, 1);
-  assert.equal(h.prompts[0].maxTokens, 3400);
+  assert.equal(h.prompts[0].maxTokens, 1200);
   assert.match(h.prompts[0].user, /Commercial/);
   assert.deepEqual(h.headers, [['Cache-Control', 'no-store']]);
   await assert.rejects(() => h.invoke({ keyword: 'Autre métier' }), /12 secondes/);
@@ -105,7 +105,7 @@ test('route : aucun modèle actif, requête invalide ou erreur fournisseur ne r�
   await assert.rejects(() => harness().invoke({ keyword: '' }), /mot-clé/);
   const h = harness({ failure: true });
   await assert.rejects(() => h.invoke({ keyword: 'Chef de projet' }), (error) => {
-    assert.match(error.message, /fournisseur IA a interrompu la génération/);
+    assert.match(error.message, /sans diagnostic réseau identifiable.*code AI_UNKNOWN/);
     assert.doesNotMatch(error.message, /private-provider-token/);
     return true;
   });
@@ -193,8 +193,8 @@ test('route : réponse mal formatée -> seconde génération courte sans écritu
   const h = harness({ output: 'Réponse libre sans structure.' });
   await assert.rejects(() => h.invoke({ keyword: 'juriste' }), /seconde tentative/);
   assert.equal(h.prompts.length, 2);
-  assert.match(h.prompts[0].user, /24 lignes/);
-  assert.match(h.prompts[1].user, /12 lignes/);
+  assert.match(h.prompts[0].user, /12 lignes/);
+  assert.match(h.prompts[1].user, /6 fonctions/);
   assert.ok(h.prompts[1].maxTokens < h.prompts[0].maxTokens);
   assert.equal(h.mutated.length, 0);
 });
