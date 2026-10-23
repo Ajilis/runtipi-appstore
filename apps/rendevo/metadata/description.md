@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 25** · **Version Rendevo : 0.2.14**
+**Version du catalogue Runtipi : 26** · **Version Rendevo : 0.2.15**
+
+**Nouveau V26 — Tester le moteur DeGoog avant sauvegarde.** Dans Réglages → Recherche, le bouton **Tester la connexion** vérifie réellement l’accès réseau, la clé API (si fournie) et le format des résultats. L’enregistrement est désactivé tant que le test échoue, puis autorisé seulement pour les mêmes paramètres et pendant 3 minutes. Le test ne stocke aucune clé et n’affecte pas la configuration précédente. L’application contrôle également cette validation côté serveur pour empêcher les enregistrements non testés.
 
 **Nouveau V25 — Recherche DeGoog et versions Companion.** Le popup Chrome affiche maintenant la version de Rendevo connectée et sa version Companion. La configuration du moteur est retirée de « Trouver des prospects » et déplacée dans le nouveau sous-menu **Réglages → Recherche**. Renseignez l’URL de votre moteur DeGoog compatible `GET /api/search`, puis éventuellement sa clé API Bearer, chiffrée dans Rendevo. Les clés existantes Brave sont conservées tant que vous n’enregistrez pas un moteur DeGoog. Les résultats publics sont toujours vérifiés manuellement avant import.
 
