@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V34 (0.2.23)** : connecteur Vultr Serverless Inference vérifié avec sa documentation : découverte des modèles texte, `max_completion_tokens`, limitation du raisonnement et détection du changement silencieux de modèle. [Documentation](sources/rendevo/README.md).
+
 **Rendevo V33 (0.2.22)** : amélioration de la baguette magique IA sur les API OpenAI compatibles : demandes plus courtes, secours automatique en cas de coupure/timeout et diagnostics réseau/HTTP sûrs. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V32 (0.2.21)** : correctif de compatibilité de la baguette magique avec les réponses JSON, tableaux Markdown et sorties tronquées des modèles OpenAI compatibles ; nouvelle tentative courte et diagnostics clairs sans fuite de clé. [Documentation](sources/rendevo/README.md).
