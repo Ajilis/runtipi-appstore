@@ -291,20 +291,25 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     setSelectedSuggestedTitle('');
     // Replace the seed keyword immediately with the AI's main titles,
     // then allow the user to remove unwanted tags or add any variant.
-    const recommended = [...new Map(response.rows.filter((row) => row.title?.trim())
-      .map((row) => [row.title.trim().toLocaleLowerCase('fr'), row.title.trim()])).values()].slice(0, 8);
+    const recommended = [...new Map(response.rows.filter((row) =>
+      row.title?.trim() && row.title.trim().length <= 70,
+    ).map((row) => [
+      row.title.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr'),
+      row.title.trim(),
+    ])).values()].slice(0, 8);
     setTitleTags(recommended);
     setTitleTagsEdited(true);
     setCriteria((previous) => ({ ...previous, title: '' }));
     clearSearch();
-    return response;
-  }, (response) => `${Math.min(response.rows.length, 8)} postes en tags — retire ceux à exclure ou ajoute des variantes`);
+    return { ...response, selectedCount: recommended.length };
+  }, (response) => `${response.selectedCount} postes en tags — retire ceux à exclure ou ajoute des variantes`);
   const addTitleTag = (value) => {
     const title = String(value || '').replace(/\s+/g, ' ').trim();
     if (!title) return;
     if (title.length > 70) { toast('Un intitulé ne peut pas dépasser 70 caractères', 'err'); return; }
     if (titleTags.length >= 8) { toast('8 intitulés maximum pour un même dork', 'err'); return; }
-    if (titleTags.some((item) => item.toLocaleLowerCase('fr') === title.toLocaleLowerCase('fr'))) {
+    const normalized = (v) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr');
+    if (titleTags.some((item) => normalized(item) === normalized(title))) {
       toast('Cet intitulé est déjà sélectionné', 'err');
       return;
     }
