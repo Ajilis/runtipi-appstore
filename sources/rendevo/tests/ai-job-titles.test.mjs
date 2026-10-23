@@ -144,6 +144,10 @@ test('interface : baguette magique alimente uniquement les tags, sans panneau d�
   assert.match(src, /LuWandSparkles/);
   assert.match(src, /Générer les intitulés de poste avec l’IA/);
   assert.match(src, /api\/discovery\/job-titles/);
+  assert.match(src, /fields: \{/);
+  assert.match(src, /industry: criteria\.industry \|\| fromCampaign/);
+  assert.match(src, /location: criteria\.location \|\| fromCampaign/);
+  assert.match(src, /keywords: criteria\.keywords \|\| fromCampaign/);
   assert.match(src, /setTitleTags\(recommended\)/);
   assert.match(src, /setCriteria\(\(previous\) => \(\{ \.\.\.previous, title: '' \}\)\)/);
   assert.match(src, /removeTitleTag/);
