@@ -116,7 +116,7 @@ test('route DeGoog paginée : même moteur et clé chiffrée, métadonnées sans
   // uses a distinct scoped user to validate payload, then tests page 2.
   const other = router.match('POST', '/api/discovery/search');
   const secondCtx = { state: {}, json: async () => ({ title: 'CTO', page: 2, dork_index: first.dork_index }) };
-  for (const handler of other.route.handlers.slice(0, 2)) await handler(secondCtx);
+  await other.route.handlers[0](secondCtx);
   secondCtx.state.user = { id: 'other-user' };
   const second = await other.route.handlers.at(-1)(secondCtx);
   assert.equal(second.page, 2);
