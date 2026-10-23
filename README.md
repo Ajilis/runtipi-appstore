@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V37 (0.2.26)** : nouveau prompt compact pour la baguette magique basé sur les champs de recherche et sortie JSON `value/label/keywords`, affichée directement sous forme de tags de postes. [Documentation](sources/rendevo/README.md).
+
 **Rendevo V36 (0.2.25)** : recherche publique simplifiée sans tableau de fonctions suggérées par l'IA ; affichage conservé en tags colorés et champs de recherche empilés verticalement. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V35 (0.2.24)** : recherche publique LinkedIn avec tags de postes IA colorés et supprimables individuellement ; plusieurs tags se combinent en un `OR` explicite dans le dork final et ses pages suivantes. [Documentation](sources/rendevo/README.md).
