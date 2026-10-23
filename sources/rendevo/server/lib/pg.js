@@ -273,6 +273,11 @@ class Connection {
     const p = this.expect((type, body) => {
       if (type === 'E') error = new PgError(parseFields(body));
       if (type === 'Z') {
+        // Simple-protocol BEGIN/COMMIT/ROLLBACK updates the connection's
+        // transaction state, just like the extended query protocol.
+        // Otherwise Pool.release() can leak a committed connection while
+        // waiting for an unnecessary asynchronous ROLLBACK.
+        this.inTx = body[0] !== 73; // 'I' = idle
         if (error) throw error;
         return { done: true, value: true };
       }
@@ -406,12 +411,12 @@ export class Pool {
     try { return await c.simple(text); } finally { this.release(c); }
   }
 
-  /** Runs fn inside a transaction; fn receives { query(text, params) }. */
+  /** Runs fn inside one transaction and connection; exposes query() and simple(). */
   async tx(fn) {
     const c = await this.acquire();
     try {
       await c.simple('BEGIN');
-      const res = await fn({ query: (t, p) => c.query(t, p) });
+      const res = await fn({ query: (t, p) => c.query(t, p), simple: (sql) => c.simple(sql) });
       await c.simple('COMMIT');
       return res;
     } catch (e) {

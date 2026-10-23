@@ -1,5 +1,20 @@
 # Rendevo — sources
 
+## V27 (0.2.16) : garantie technique de migrations additives et conservation des bases existantes
+
+**Les mises à jour normales ne doivent jamais exiger la suppression ou la recréation de la base Rendevo.** Le stockage persistant Runtipi reste `${APP_DATA_DIR}/data/postgres` (PostgreSQL 17), accompagné des dossiers `${APP_DATA_DIR}/data/config` (incluant le secret de chiffrement) et `${APP_DATA_DIR}/data/uploads` (médias). La configuration et les données ne sont pas supprimées lors d'un changement d'image Docker.
+
+- Les migrations SQL automatiques sont désormais **limitées aux opérations additives**. Une migration contenant une suppression de table ou de colonne, un `DELETE FROM`, `TRUNCATE`, `UPDATE` ou une opération non autorisée échoue **avant toute écriture dans PostgreSQL**.
+- Chaque migration appliquée est enregistrée avec une **empreinte SHA-256**. Sur les bases plus anciennes, la colonne d'empreinte est ajoutée et les empreintes de l'historique sont renseignées **sans modifier les enregistrements métier**. Si une migration historique a été modifiée ou manque, Rendevo refuse le démarrage plutôt que de risquer une incohérence.
+- La lecture de l'historique et toutes les nouvelles migrations sont sérialisées via un **verrou transactionnel PostgreSQL** ; en cas d'erreur, toute la transaction est annulée. Deux instances qui redémarrent simultanément n'exécutent pas la même migration deux fois.
+- **La CI bloque la publication de l'image** tant que la vérification d'immuabilité des anciennes migrations et un test réel de passage d'une base PostgreSQL avec des données préexistantes n'ont pas réussi. Le test vérifie les 16 tables historiques, l'idempotence, la concurrence et le rollback.
+- Le document [AGENTS.md](AGENTS.md) fixe ces exigences pour toute version future.
+
+### Sauvegarde recommandée avant les mises à jour
+
+Avant toute mise à jour de production, conserver une **sauvegarde PostgreSQL cohérente** (par exemple `pg_dump -Fc -U rendevo -d rendevo -f /chemin-sur-un-stockage-sur/backup-rendevo.dump` lancé depuis le conteneur PostgreSQL, dans un chemin writable et réellement sauvegardé hors du conteneur), ainsi qu'une copie du dossier de configuration/secret et des uploads. **Tester la restauration dans une base distincte** ; ne pas utiliser la base de production comme banc d'essai. Conserver le mot de passe PostgreSQL et le secret applicatif inchangés, car les clés API stockées dans la base sont chiffrées avec ce secret. Ne jamais supprimer `data/postgres`, lancer `docker compose down -v`, ou réinstaller PostgreSQL avec un nouveau volume pour régler un échec de migration : consulter les logs, préserver le volume, restaurer une sauvegarde uniquement si une intervention le requiert.
+
+
 ## V26 (0.2.15) : tester la connexion DeGoog avant l’enregistrement
 
 Dans **Réglages → Recherche**, le bouton **Tester la connexion** envoie une requête réelle à l’API `GET /api/search` de l’instance DeGoog renseignée. Le test accepte une clé API Bearer facultative (ou réutilise une clé enregistrée **uniquement si le domaine est inchangé**), contrôle l’accès HTTP, le format JSON `results[]` et la disponibilité, sans modifier la configuration de l’espace et sans transmettre la clé au navigateur dans la réponse. Il peut réussir même avec zéro profil indexé, puisque cela prouve que l’API est opérationnelle, sans garantir des résultats de prospection.

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Pool, json } from '../lib/pg.js';
+import { assertSafeMigration, migrationChecksum } from './migration-safety.js';
 
 export { json };
 
@@ -19,17 +20,50 @@ export async function connectDb(url, { retries = 40, logger = console } = {}) {
   return pool;
 }
 
-export async function migrate(pool, logger = console) {
-  await pool.simple(`CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
-  // Serialize migrations across instances with an advisory lock.
-  const dir = path.join(path.dirname(new URL(import.meta.url).pathname), 'migrations');
+// All migrations are additive, checksum-protected, and run under one transaction
+// and advisory lock. The lock *precedes* reading migration history, so a second
+// Rendevo instance never executes the same migration against a concurrent boot.
+export async function migrate(pool, logger = console, { directory } = {}) {
+  const dir = directory || path.join(path.dirname(new URL(import.meta.url).pathname), 'migrations');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
-  const { rows } = await pool.query('SELECT version FROM schema_migrations');
-  const done = new Set(rows.map((r) => r.version));
-  for (const f of files) {
-    if (done.has(f)) continue;
-    const sql = fs.readFileSync(path.join(dir, f), 'utf8');
-    logger.log(`[db] migration ${f}`);
-    await pool.simple(`BEGIN; SELECT pg_advisory_xact_lock(424242); ${sql}; INSERT INTO schema_migrations(version) VALUES ('${f}'); COMMIT;`);
-  }
+  if (!files.length) throw new Error('Aucune migration SQL : démarrage refusé');
+  // Preflight all files before making any change to the database.
+  const migrations = files.map((filename) => {
+    const sql = fs.readFileSync(path.join(dir, filename), 'utf8');
+    assertSafeMigration(filename, sql);
+    return { filename, sql, checksum: migrationChecksum(sql) };
+  });
+  const names = new Set(files);
+  await pool.tx(async ({ query, simple }) => {
+    await query('SELECT pg_advisory_xact_lock($1)', [424242]);
+    await query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+      version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now(),
+      checksum text
+    )`);
+    // Existing V1–V26 installations have no checksum column. This is additive.
+    await query('ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS checksum text');
+    const { rows } = await query('SELECT version, checksum FROM schema_migrations');
+    const done = new Map(rows.map((r) => [r.version, r.checksum]));
+    for (const [version] of done) {
+      if (!names.has(version)) {
+        throw new Error('Migration déjà appliquée absente du code : ' + version);
+      }
+    }
+    for (const { filename, sql, checksum } of migrations) {
+      if (done.has(filename)) {
+        const previous = done.get(filename);
+        if (previous && previous !== checksum) {
+          throw new Error('Migration déjà appliquée modifiée : ' + filename);
+        }
+        if (!previous) {
+          // One-time legacy backfill. No table or application row is touched.
+          await query('UPDATE schema_migrations SET checksum = $2 WHERE version = $1', [filename, checksum]);
+        }
+        continue;
+      }
+      logger.log('[db] migration additive ' + filename);
+      await simple(sql);
+      await query('INSERT INTO schema_migrations(version, checksum) VALUES ($1, $2)', [filename, checksum]);
+    }
+  });
 }

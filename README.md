@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V27 (0.2.16)** : **migrations PostgreSQL additives, immuables et transactionnelles** ; intégrité SHA-256, tests CI de non-régression sur une ancienne base remplie et conservation des volumes Runtipi. [Documentation des sauvegardes et mises à jour](sources/rendevo/README.md).
+
 **Rendevo V26 (0.2.15)** : **Tester la connexion** dans Réglages → Recherche vérifie l’instance DeGoog et sa clé API avant d’activer Enregistrer ; preuve serveur à usage unique, aucune modification pendant le test. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V25 (0.2.14)** : Chrome Companion affiche désormais la version de Rendevo connectée ; le moteur de prospection web se configure dans **Réglages → Recherche** par URL DeGoog et clé API Bearer facultative. [Documentation du serveur](sources/rendevo/README.md).
