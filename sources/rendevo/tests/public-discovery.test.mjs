@@ -12,7 +12,7 @@ test('critères : requête index public, limite stricte et garde-fous', () => {
   const a = normalizeDiscoveryCriteria({ limit: 90 }, {
     titles: ['Directeur marketing'], industries: ['SaaS'], locations: ['Paris'], keywords: [],
   });
-  assert.equal(a.limit, 20);
+  assert.equal(a.limit, 50);
   assert.match(a.searchQuery, /^site:linkedin\.com\/in\//);
   assert.match(a.searchQuery, /Directeur marketing/);
   assert.match(a.searchQuery, /Paris/);
@@ -143,8 +143,8 @@ test('import explicitement validé : isolation et nombre maximum de profils', as
   );
   assert.equal(h.saved.length, 0);
   await assert.rejects(
-    () => h.invoke('POST', '/api/discovery/import', { items: new Array(21).fill(items[0]) }),
-    /1 et 20/,
+    () => h.invoke('POST', '/api/discovery/import', { items: new Array(201).fill(items[0]) }),
+    /1 et 200/,
   );
   await assert.rejects(
     () => h.invoke('POST', '/api/discovery/import', { items: [{ linkedin_url: 'https://evil.example.com/in/test/' }] }),
