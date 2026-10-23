@@ -23,7 +23,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # This job gates both PR merges and the image-publishing job. It validates
+  # immutability of shipped SQL and upgrades a populated old PostgreSQL schema.
+  database-compatibility:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: rendevo
+          POSTGRES_PASSWORD: migration_ci_only
+          POSTGRES_DB: rendevo_migration_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rendevo -d rendevo_migration_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Block destructive or rewritten historical SQL migrations
+        working-directory: sources/rendevo
+        run: |
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            node scripts/check-migrations.mjs --baseline "origin/$GITHUB_BASE_REF"
+          else
+            node scripts/check-migrations.mjs
+          fi
+
+      - name: Verify upgrade on PostgreSQL 17 with preserved legacy data
+        working-directory: sources/rendevo
+        env:
+          RENDEVO_MIGRATION_TEST_URL: postgres://rendevo:migration_ci_only@127.0.0.1:5432/rendevo_migration_ci
+        run: node --test tests/database-upgrade-postgres.test.mjs
+
   build:
+    needs: database-compatibility
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
