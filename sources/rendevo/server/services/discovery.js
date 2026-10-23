@@ -6,7 +6,8 @@ export function normalizePublicProfileUrl(input) {
   if (typeof input !== 'string' || input.length > 1024) return null;
   try {
     const url = new URL(input);
-    if (url.protocol !== 'https:' || !['linkedin.com', 'www.linkedin.com'].includes(url.hostname.toLowerCase())
+    if (url.protocol !== 'https:' || !(['linkedin.com', 'www.linkedin.com'].includes(url.hostname.toLowerCase())
+      || /^[a-z]{2}(?:-[a-z]{2})?\.linkedin\.com$/i.test(url.hostname))
       || url.username || url.password || url.port) return null;
     const match = /^\/in\/([a-z0-9][a-z0-9_.%-]{0,199})\/?$/i.exec(url.pathname);
     return match ? 'https://www.linkedin.com/in/' + match[1] + '/' : null;
@@ -28,6 +29,24 @@ export function normalizeDiscoveryCriteria(input = {}, defaults = {}) {
   const searchQuery = ['site:linkedin.com/in/', ...[title, industry, location, keywords]
     .filter(Boolean).map((term) => '"' + term + '"')].join(' ');
   return { title, industry, location, keywords, limit, searchQuery: searchQuery.slice(0, 580) };
+}
+
+// Search only public, independently indexed LinkedIn *profile* URLs.
+// The first dork is specific to the chosen ICP; if it yields no valid profile,
+// broaden in two bounded stages to compensate for limited search-engine support
+// for long quoted queries and /in/ path filters.
+export function buildLinkedInDorks(criteria) {
+  const site = 'site:linkedin.com/in/';
+  const terms = [criteria.title, criteria.industry, criteria.location, criteria.keywords].filter(Boolean);
+  if (!terms.length) return [criteria.searchQuery].filter(Boolean);
+  const phrase = (term) => '"' + term + '"';
+  const focus = [criteria.title, criteria.location].filter(Boolean);
+  const queries = [
+    site + ' ' + terms.map(phrase).join(' '),
+    site + ' ' + (focus.length ? focus : terms.slice(0, 2)).map(phrase).join(' '),
+    'site:linkedin.com/in ' + phrase(criteria.title || criteria.keywords || criteria.industry || criteria.location),
+  ];
+  return [...new Set(queries.map((x) => x.trim()))].slice(0, 3);
 }
 
 export function normalizeSearchResults(data, limit = 10) {
@@ -85,29 +104,37 @@ export function normalizeDegoogResults(data, limit = 10) {
   return items;
 }
 
-export async function discoverDegoogProfiles({ baseUrl, apiKey = '', criteria, fetcher = fetch }) {
-  const url = new URL('/api/search', normalizeDegoogUrl(baseUrl));
-  url.searchParams.set('q', criteria.searchQuery);
-  url.searchParams.set('type', 'web');
-  url.searchParams.set('lang', 'fr');
+export async function discoverDegoogProfiles({ baseUrl, apiKey = '', criteria, fetcher = fetch, onAttempt }) {
+  const base = normalizeDegoogUrl(baseUrl);
+  const queries = buildLinkedInDorks(criteria);
   const controller = new AbortController();
+  // One total timeout shared across all attempts, not one 12s timeout per dork.
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const response = await fetcher(url, {
-      method: 'GET',
-      redirect: 'error',
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}),
-      },
-    });
-    if ([401, 403].includes(response.status)) throw new Error('Clé API DeGoog invalide ou accès non autorisé');
-    if (response.status === 429) throw new Error('Limite de requêtes DeGoog atteinte');
-    if (!response.ok) throw new Error('Le moteur DeGoog a renvoyé HTTP ' + response.status);
-    const data = await response.json();
-    if (!Array.isArray(data?.results)) throw new Error('Format de réponse DeGoog invalide');
-    return normalizeDegoogResults(data, criteria.limit);
+    for (const query of queries) {
+      const url = new URL('/api/search', base);
+      url.searchParams.set('q', query);
+      url.searchParams.set('type', 'web');
+      url.searchParams.set('lang', 'fr');
+      const response = await fetcher(url, {
+        method: 'GET',
+        redirect: 'error',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}),
+        },
+      });
+      if ([401, 403].includes(response.status)) throw new Error('Clé API DeGoog invalide ou accès non autorisé');
+      if (response.status === 429) throw new Error('Limite de requêtes DeGoog atteinte');
+      if (!response.ok) throw new Error('Le moteur DeGoog a renvoyé HTTP ' + response.status);
+      const data = await response.json();
+      if (!Array.isArray(data?.results)) throw new Error('Format de réponse DeGoog invalide');
+      const items = normalizeDegoogResults(data, criteria.limit);
+      if (onAttempt) onAttempt({ query, results: data.results.length, profiles: items.length });
+      if (items.length) return items;
+    }
+    return [];
   } catch (err) {
     if (err?.name === 'AbortError') throw new Error('La recherche a dépassé 12 secondes');
     if (/^(Clé API DeGoog|Limite de requêtes DeGoog|Le moteur DeGoog|Format de réponse DeGoog|La recherche a dépassé)/.test(err?.message || '')) throw err;
