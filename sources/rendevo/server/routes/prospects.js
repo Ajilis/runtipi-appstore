@@ -1,4 +1,5 @@
 import { bad, notFound } from '../lib/http.js';
+import { randomToken, sha256 } from '../lib/crypto.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
 import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
@@ -18,6 +19,11 @@ export const STAGES = [
 export function registerProspects(router, deps, { requireAuth, requireAdmin }, { fetcher = fetch } = {}) {
   const { db, agent, vault } = deps;
   const recentSearches = new Map();
+  // Single-use, short-lived proof that the *exact* pending DeGoog URL and
+  // credentials have passed a real search. Never stores plaintext API keys.
+  // Proofs are instance-local and deliberately invalidated on server restart.
+  const testedConfigs = new Map();
+  const TEST_VALIDITY_MS = 3 * 60 * 1000;
 
   // Legacy Brave workspaces keep their existing encrypted key until replaced.
   // New DeGoog workspaces store a validated URL and optionally an encrypted
@@ -36,6 +42,49 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
 
   router.get('/api/discovery/config', requireAuth, async (ctx) =>
     exposed(ctx.state.ws.settings?.discovery));
+
+  // Resolve a saved token only when testing the same DeGoog origin.
+  // This avoids leaking an existing secret to a newly entered host.
+  function degoogCandidate(body, previous) {
+    const baseUrl = normalizeDegoogUrl(body.base_url ?? (providerOf(previous) === 'degoog' ? previous.base_url : ''));
+    const sameOrigin = providerOf(previous) === 'degoog' && previous.base_url === baseUrl;
+    const typedKey = String(body.api_key ?? '').trim();
+    if (typedKey && !/^\\S{8,512}$/.test(typedKey)) throw bad('Clé API invalide (8 à 512 caractères)');
+    const key = body.clear_key === true ? '' : typedKey
+      || (sameOrigin ? vault.decrypt(previous.api_key_enc || '') : '');
+    return { baseUrl, key, sameOrigin, typedKey };
+  }
+
+  // Tests before saving, without changing the workspace settings.
+  router.post('/api/discovery/test', requireAuth, requireAdmin, async (ctx) => {
+    ctx.header('Cache-Control', 'no-store');
+    const body = await ctx.json(4096);
+    const previous = ctx.state.ws.settings?.discovery || {};
+    let candidate;
+    try { candidate = degoogCandidate(body, previous); }
+    catch (err) { throw bad(err.message); }
+    // Uses the same real DeGoog GET /api/search code and response validation
+    // as prospect searches. Zero matching profiles is still a valid API response.
+    let items;
+    try {
+      items = await discoverDegoogProfiles({
+        baseUrl: candidate.baseUrl,
+        apiKey: candidate.key,
+        criteria: { searchQuery: 'site:linkedin.com/in/ "directeur"', limit: 3 },
+        fetcher,
+      });
+    } catch (err) { throw bad(err.message); }
+    if (testedConfigs.size > 1000) testedConfigs.clear();
+    const proof = randomToken(24);
+    testedConfigs.set(proof, {
+      workspace: ctx.state.ws.id,
+      user: ctx.state.user.id,
+      baseUrl: candidate.baseUrl,
+      keyHash: sha256(candidate.key),
+      expires: Date.now() + TEST_VALIDITY_MS,
+    });
+    return { ok: true, test_token: proof, sample_profiles: items.length };
+  });
 
   router.post('/api/discovery/config', requireAuth, requireAdmin, async (ctx) => {
     const body = await ctx.json(4096);
@@ -56,10 +105,21 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     if (provider === 'brave') {
       settings = { provider, brave_api_key_enc: encrypted };
     } else {
-      let baseUrl;
-      try { baseUrl = normalizeDegoogUrl(body.base_url ?? (oldProvider === 'degoog' ? previous.base_url : '')); }
+      let candidate;
+      try { candidate = degoogCandidate(body, previous); }
       catch (err) { throw bad(err.message); }
-      settings = { provider, base_url: baseUrl, api_key_enc: encrypted };
+      const proof = testedConfigs.get(String(body.test_token || ''));
+      if (!proof || proof.expires < Date.now()
+        || proof.workspace !== ctx.state.ws.id || proof.user !== ctx.state.user.id
+        || proof.baseUrl !== candidate.baseUrl || proof.keyHash !== sha256(candidate.key)) {
+        throw bad('Teste d’abord la connexion avec cette URL et cette clé avant d’enregistrer.');
+      }
+      testedConfigs.delete(String(body.test_token));
+      // Only preserve a prior encrypted token for exactly the same origin.
+      encrypted = body.clear_key === true ? ''
+        : candidate.typedKey ? vault.encrypt(candidate.typedKey)
+        : candidate.sameOrigin ? previous.api_key_enc || '' : '';
+      settings = { provider, base_url: candidate.baseUrl, api_key_enc: encrypted };
     }
     await db.query(
       "UPDATE workspaces SET settings = jsonb_set(settings, '{discovery}', $2::jsonb, true) WHERE id = $1",
