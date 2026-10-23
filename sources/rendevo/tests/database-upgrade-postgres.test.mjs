@@ -21,7 +21,9 @@ const silent = { log() {} };
 
 async function snapshot(pool) {
   const result = {};
-  // Ignore only intentionally-added nullable schema columns; compare every\n  // business field/record byte-for-byte across migrations.\n  for (const table of tables) {
+  // Ignore only intentionally-added nullable schema columns; compare every
+  // business field/record byte-for-byte across migrations.
+  for (const table of tables) {
     const { rows } = await pool.query(`SELECT to_jsonb(t) - 'extension_version' - 'probe' AS document FROM "${table}" t`);
     result[table] = rows.map((r) => JSON.stringify(r.document)).sort();
   }
