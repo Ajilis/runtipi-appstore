@@ -2,7 +2,8 @@ import { bad, notFound } from '../lib/http.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { parseCsv, mapProspectColumns } from '../lib/csv.js';
 import { normalizeSignal } from '../services/scoring.js';
-import { normalizeJobKeyword, professionalTitlePrompt, normalizeProfessionalTitles } from '../services/job-titles.js';
+import { normalizeJobKeyword, professionalTitlePrompt } from '../services/job-titles.js';
+import { parseProfessionalTitleResponse } from '../services/job-title-parser.js';
 import { normalizeDiscoveryCriteria, discoverPublicProfiles, discoverDegoogProfiles, discoverDegoogPage, DEGOOG_MAX_PAGES, DISCOVERY_IMPORT_MAX, normalizeDegoogUrl, normalizePublicProfileUrl } from '../services/discovery.js';
 
 const LIST_FIELDS = `p.id, p.full_name, p.first_name, p.title, p.headline, p.company, p.location, p.linkedin_url, p.heat, p.fit_score,
@@ -150,18 +151,48 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     if (Date.now() - last < 12000) throw bad('Une génération IA toutes les 12 secondes au maximum');
     if (recentTitleRequests.size > 2000) recentTitleRequests.clear();
     recentTitleRequests.set(identity, Date.now());
-    try {
-      const result = await ai.completeJson(ctx.state.ws, {
-        system: 'Tu classes les intitulés professionnels en lien avec un mot-clé. Respecte toutes les instructions de l’utilisateur et produis exclusivement un objet JSON avec rows. Tu ne fournis ni conseil LinkedIn officiel ni texte hors JSON.',
-        user: professionalTitlePrompt(keyword),
-        maxTokens: 3800, temperature: 0.25,
-      });
-      return { keyword, rows: normalizeProfessionalTitles(result) };
-    } catch (error) {
-      // Prevent raw provider response, token or remote header from being exposed.
-      if (/^(Réponse IA incompatible|Le modèle IA n’a proposé)/.test(error.message)) throw bad(error.message);
-      throw bad('La génération des intitulés a échoué avec le modèle IA actif. Vérifiez sa compatibilité JSON dans Réglages → Intelligence artificielle.');
+    // A model can pass the short connection test yet return JSON inside
+    // Markdown, a table rather than JSON, or a truncated lengthy response.
+    // Parse common formats first; retry only a formatting error with fewer rows.
+    let formatError;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const prompt = professionalTitlePrompt(keyword);
+      const userPrompt = attempt === 0 ? prompt
+        : prompt.replace('au maximum 24 lignes', 'au maximum 12 lignes')
+          + '\nIMPORTANT : fais une réponse COURTE (maximum 12 lignes), complète et fermée, sans explications, dans un JSON valide. Si le modèle ne peut produire du JSON, utilise un tableau Markdown à quatre colonnes.';
+      let responseText;
+      try {
+        responseText = await ai.complete(ctx.state.ws, {
+          system: 'Tu classes les intitulés professionnels et réponds par un tableau structuré, en JSON valide si possible. Respecte le format des quatre colonnes demandé. Aucun autre texte.',
+          user: userPrompt,
+          maxTokens: attempt === 0 ? 3400 : 2000,
+          temperature: 0.2,
+        });
+      } catch (error) {
+        // Provider details may include the saved token, request IDs or internal
+        // infrastructure information; never relay the raw error to the client.
+        const message = String(error?.message || '');
+        const status = /(?:LLM|Anthropic) HTTP (\d{3})/.exec(message)?.[1];
+        if (status === '401' || status === '403') throw bad('Le fournisseur IA refuse la clé API (HTTP ' + status + '). Vérifiez les identifiants dans Réglages → Intelligence artificielle.');
+        if (status === '404') throw bad('Le modèle ou la route /chat/completions est introuvable (HTTP 404). Vérifiez le modèle sélectionné.');
+        if (status === '429') throw bad('Le fournisseur IA limite les requêtes (HTTP 429). Réessayez après son délai de régulation.');
+        if (status === '400' || status === '422') throw bad('Le fournisseur IA refuse les paramètres de génération (HTTP ' + status + '). Vérifiez que le modèle accepte /chat/completions, max_tokens et temperature.');
+        if (status) throw bad('Le fournisseur IA est indisponible ou refuse la génération (HTTP ' + status + ').');
+        if (error?.name === 'AbortError' || /timed?\s*out|timeout|aborted|délai|dépassé/i.test(message)) {
+          throw bad('Le modèle IA a dépassé le délai de réponse de 60 secondes. Essayez un modèle plus rapide.');
+        }
+        throw bad('Le fournisseur IA a interrompu la génération. Vérifiez le modèle et sa disponibilité dans Réglages → Intelligence artificielle.');
+      }
+      try {
+        return { keyword, rows: parseProfessionalTitleResponse(responseText) };
+      } catch (error) {
+        formatError = error;
+      }
     }
+    const detail = /tronquée|incomplet/i.test(formatError?.message || '')
+      ? 'Le modèle IA a renvoyé une réponse tronquée ou un JSON incomplet, même après une seconde tentative plus courte.'
+      : 'Le modèle IA n’a pas renvoyé de tableau JSON ou Markdown exploitable, même après une seconde tentative.';
+    throw bad(detail + ' Choisissez un modèle adapté aux réponses structurées dans Réglages → Intelligence artificielle.');
   });
 
   router.post('/api/discovery/search', requireAuth, async (ctx) => {

@@ -1,5 +1,14 @@
 # Rendevo — sources
 
+## V32 (0.2.21) : correction du générateur d’intitulés avec l’IA déjà configurée
+
+La baguette magique **Prospects → Trouver des prospects → Recherche web publique → Poste recherché** n’impose plus un JSON strictement formaté en `{"rows":[...]}` et ne renvoie plus systématiquement le même message d’échec générique. Le serveur accepte désormais un JSON entouré de balises `json`, un tableau JSON, certaines variantes des noms des colonnes, ainsi que les **tableaux Markdown à quatre colonnes** parfois renvoyés par des modèles OpenAI compatibles. La normalisation, le nettoyage, les limites et la déduplication de V31 restent appliqués.
+
+La première tentative demande **jusqu’à 24 intitulés** pour éviter de tronquer le résultat à cause de la limite en tokens de génération. Si la réponse n’est pas exploitable, le serveur effectue **une seule seconde tentative plus courte**, jusqu’à 12 intitulés. En cas d’échec, un message indique maintenant si le fournisseur rejette la clé, limite les requêtes, ne trouve pas le modèle, refuse les paramètres de génération, dépasse le délai ou renvoie une réponse non structurée / tronquée. **Le détail brut du fournisseur, qui pourrait contenir une clé ou des informations internes, n’est jamais renvoyé au navigateur.**
+
+Le test de connexion IA de Réglages → Intelligence artificielle ne vérifie qu’une courte réponse ; il ne garantit pas que le modèle produit un JSON long valide. **La configuration IA déjà sauvegardée n’est pas modifiée par V32** ; le générateur utilise toujours ce même modèle. Aucune migration PostgreSQL, suppression de donnée, recherche LinkedIn ou import automatique pendant la génération.
+
+
 ## V31 (0.2.20) : baguette magique IA pour « Poste recherché »
 
 Dans **Prospects → Trouver des prospects → Recherche web publique**, le pictogramme **baguette magique** apparaît juste à côté du champ **Poste recherché**. Saisir un mot-clé professionnel (par exemple « directeur commercial », « juriste » ou « responsable RH »), puis cliquer sur la baguette magique. Si ce champ est vide, l'intitulé de la cible de campagne peut servir de mot-clé. Le connecteur IA déjà actif dans **Réglages → Intelligence artificielle** est utilisé sans autre configuration, via `POST /api/discovery/job-titles`.

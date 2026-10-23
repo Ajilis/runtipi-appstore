@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { Router } from '../server/lib/http.js';
 import { registerProspects } from '../server/routes/prospects.js';
 import { normalizeJobKeyword, professionalTitlePrompt, normalizeProfessionalTitles } from '../server/services/job-titles.js';
+import { parseProfessionalTitleResponse } from '../server/services/job-title-parser.js';
 
 test('mot-clé : respecte le champ Poste recherché, interdit valeurs vides et caractères de contrôle', () => {
   assert.equal(normalizeJobKeyword('  Directeur   commercial  '), 'Directeur commercial');
@@ -54,16 +55,16 @@ function harness({ aiEnabled = true, output, failure } = {}) {
   const prompts = [], mutated = [], headers = [];
   const ai = {
     enabled(ws) { assert.equal(ws, workspace); return aiEnabled; },
-    async completeJson(ws, opts) {
+    async complete(ws, opts) {
       assert.equal(ws, workspace);
       prompts.push(opts);
       if (failure) throw Error('private-provider-token-DO-NOT-EXPOSE');
-      return output || { rows: [{
+      return typeof output === 'string' ? output : JSON.stringify(output || { rows: [{
         category: 'Fonctions actuelles',
         title: 'Directeur commercial',
         variants: ['Directrice commerciale', 'Head of Sales'],
         relation: 'Fonction directement associée',
-      }] };
+      }] });
     },
   };
   const db = { async query(...a) { mutated.push(a); throw Error('No database access expected'); } };
@@ -92,7 +93,7 @@ test('route : utilise uniquement le connecteur IA actif et retourne un tableau s
   assert.equal(result.rows[0].title, 'Directeur commercial');
   assert.equal(h.mutated.length, 0);
   assert.equal(h.prompts.length, 1);
-  assert.equal(h.prompts[0].maxTokens, 3800);
+  assert.equal(h.prompts[0].maxTokens, 3400);
   assert.match(h.prompts[0].user, /Commercial/);
   assert.deepEqual(h.headers, [['Cache-Control', 'no-store']]);
   await assert.rejects(() => h.invoke({ keyword: 'Autre métier' }), /12 secondes/);
@@ -104,7 +105,7 @@ test('route : aucun modèle actif, requête invalide ou erreur fournisseur ne r�
   await assert.rejects(() => harness().invoke({ keyword: '' }), /mot-clé/);
   const h = harness({ failure: true });
   await assert.rejects(() => h.invoke({ keyword: 'Chef de projet' }), (error) => {
-    assert.match(error.message, /La génération des intitulés a échoué/);
+    assert.match(error.message, /fournisseur IA a interrompu la génération/);
     assert.doesNotMatch(error.message, /private-provider-token/);
     return true;
   });
@@ -124,4 +125,93 @@ test('interface : baguette magique attenante au poste, table en quatre colonnes 
   assert.match(src, /Lien avec le mot-clé/);
   assert.match(src, /setCriteria\(\(previous\) => \(\{ \.\.\.previous, title: selectedSuggestedTitle \}\)\)/);
   assert.match(src, /<LuSearch \/>}Rechercher des profils/);
+});
+
+
+test('parseur IA : JSON sous balises Markdown et texte de présentation', () => {
+  const fence = String.fromCharCode(96).repeat(3);
+  const response = 'Voici votre réponse :\n' + fence + 'json\n' +
+    JSON.stringify({ rows: [
+      { category: 'Direction', title: 'Directeur technique',
+        variants: ['Directrice technique', 'CTO'], relation: 'Fonction actuelle' },
+      { category: 'Direction', title: 'Directeur technique', variants: [], relation: '' },
+    ] }) + '\n' + fence;
+  const rows = parseProfessionalTitleResponse(response);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].variants, ['Directrice technique', 'CTO']);
+  assert.equal(rows[0].relation, 'Fonction actuelle');
+});
+
+test('parseur IA : tableau JSON brut, clés alternatives et tableau Markdown', () => {
+  const alternate = parseProfessionalTitleResponse(JSON.stringify({
+    suggestions: [{ 'Catégorie': 'Direction',
+      'Intitulé principal': 'DRH', 'Variantes et synonymes LinkedIn': 'Directrice RH; HR Director',
+      'Lien avec le mot-clé': 'Fonction actuelle' }],
+  }));
+  assert.equal(alternate[0].title, 'DRH');
+  assert.deepEqual(alternate[0].variants, ['Directrice RH', 'HR Director']);
+  const direct = parseProfessionalTitleResponse(JSON.stringify([
+    { category: 'Métier', title: 'Directeur marketing', variants: [], relation: 'Direct' },
+  ]));
+  assert.equal(direct[0].title, 'Directeur marketing');
+  const markdown = [
+    'Voici un tableau :',
+    '| Catégorie | Intitulé principal | Variantes et synonymes LinkedIn | Lien avec le mot-clé |',
+    '| --- | --- | --- | --- |',
+    '| Direction | Directeur commercial | Directrice commerciale, Head of Sales | Fonction actuelle |',
+    '| Postes voisins | Responsable grands comptes | Key Account Manager | Fonction voisine |',
+  ].join('\n');
+  const parsed = parseProfessionalTitleResponse(markdown);
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].title, 'Directeur commercial');
+  assert.deepEqual(parsed[0].variants, ['Directrice commerciale', 'Head of Sales']);
+  assert.equal(parsed[1].category, 'Postes voisins');
+});
+
+test('parseur IA : tronquage identifié et texte libre refusé', () => {
+  assert.throws(() => parseProfessionalTitleResponse('{"rows":[{"title":"DRH"'),
+    /tronquée|incomplet/);
+  assert.throws(() => parseProfessionalTitleResponse('Voici des métiers possibles : responsable RH.'),
+    /sans tableau JSON ou Markdown exploitable/);
+  assert.throws(() => parseProfessionalTitleResponse(''), /Réponse vide/);
+});
+
+test('route : modèle qui renvoie du Markdown accepté sans second appel', async () => {
+  const h = harness({ output: [
+    '| Catégorie | Intitulé principal | Variantes et synonymes LinkedIn | Lien avec le mot-clé |',
+    '| --- | --- | --- | --- |',
+    '| Direction | Directeur commercial | Directrice commerciale, Head of Sales | Fonction actuelle |',
+  ].join('\n') });
+  const result = await h.invoke({ keyword: 'commercial' });
+  assert.equal(result.rows.length, 1);
+  assert.deepEqual(result.rows[0].variants, ['Directrice commerciale', 'Head of Sales']);
+  assert.equal(h.prompts.length, 1);
+  assert.equal(h.mutated.length, 0);
+});
+
+test('route : réponse mal formatée -> seconde génération courte sans écriture SQL', async () => {
+  const h = harness({ output: 'Réponse libre sans structure.' });
+  await assert.rejects(() => h.invoke({ keyword: 'juriste' }), /seconde tentative/);
+  assert.equal(h.prompts.length, 2);
+  assert.match(h.prompts[0].user, /24 lignes/);
+  assert.match(h.prompts[1].user, /12 lignes/);
+  assert.ok(h.prompts[1].maxTokens < h.prompts[0].maxTokens);
+  assert.equal(h.mutated.length, 0);
+});
+
+test('route : erreurs HTTP fournisseur précises sans fuite de secrets', async () => {
+  for (const [detail, expected] of [
+    ['LLM HTTP 401 : secret-api-key', /refuse la clé API \(HTTP 401\)/],
+    ['LLM HTTP 400 : secret-api-key', /refuse les paramètres de génération/],
+    ['LLM HTTP 404 : secret-api-key', /modèle ou la route/],
+    ['LLM HTTP 429 : secret-api-key', /limite les requêtes/],
+  ]) {
+    const h = harness({ failure: true });
+    h.ai.complete = async () => { throw Error(detail); };
+    await assert.rejects(() => h.invoke({ keyword: 'architecte' }), (error) => {
+      assert.match(error.message, expected);
+      assert.doesNotMatch(error.message, /secret-api-key/);
+      return true;
+    });
+  }
 });
