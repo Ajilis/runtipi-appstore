@@ -289,8 +289,16 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     setJobTitles(response.rows);
     setTitleSource(response.keyword);
     setSelectedSuggestedTitle('');
+    // Replace the seed keyword immediately with the AI's main titles,
+    // then allow the user to remove unwanted tags or add any variant.
+    const recommended = [...new Map(response.rows.filter((row) => row.title?.trim())
+      .map((row) => [row.title.trim().toLocaleLowerCase('fr'), row.title.trim()])).values()].slice(0, 8);
+    setTitleTags(recommended);
+    setTitleTagsEdited(true);
+    setCriteria((previous) => ({ ...previous, title: '' }));
+    clearSearch();
     return response;
-  }, (response) => `${response.rows.length} intitulés proposés par le modèle IA actif`);
+  }, (response) => `${Math.min(response.rows.length, 8)} postes en tags — retire ceux à exclure ou ajoute des variantes`);
   const addTitleTag = (value) => {
     const title = String(value || '').replace(/\s+/g, ' ').trim();
     if (!title) return;
@@ -512,7 +520,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                   Fermer les suggestions
                 </button>
               </div>
-              <p className="small soft">Choisis plusieurs intitulés : chacun s’ajoute comme tag et sera relié aux autres par OU dans le dork. Le mot-clé initial est remplacé à la première sélection. Aucun import automatique.</p>
+              <p className="small soft">La baguette magique a remplacé ton mot-clé par les intitulés principaux sous forme de tags (8 maximum). Retire ceux à exclure avec × ; tu peux ensuite ajouter une variante depuis ce menu. Les tags restants sont reliés par OU dans le dork. Aucun import automatique.</p>
               <Field label="Ajouter un intitulé ou une variante aux tags du poste recherché">
                 <div className="row wrap" style={{ gap: 8 }}>
                   <select className="select" style={{ flex: 1, minWidth: 220 }}
