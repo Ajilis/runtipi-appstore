@@ -4,6 +4,7 @@
 // short-lived pairing code. LinkedIn DOM is read only on explicit user request;
 // no LinkedIn cookies, external search API calls or background crawling.
 const byId = (id) => document.getElementById(id);
+const companionVersion = chrome.runtime.getManifest().version;
 const base = byId('base'), code = byId('paircode'), campaign = byId('campaign');
 const profile = byId('profile'), statusEl = byId('status');
 const save = byId('save'), connect = byId('connect');
@@ -84,6 +85,7 @@ async function api(path, { method = 'GET', body, token = deviceToken } = {}) {
     credentials: 'omit',
     redirect: 'error',
     headers: {
+      'X-Companion-Version': companionVersion,
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: 'Bearer ' + token } : {}),
     },
@@ -289,7 +291,7 @@ connect.addEventListener('click', async () => {
   setBusy(true);
   try {
     const result = await api('/api/companion/exchange', {
-      method: 'POST', body: { code: code.value.trim(), device_name: 'Chrome Companion' }, token: '',
+      method: 'POST', body: { code: code.value.trim(), device_name: 'Chrome Companion', version: companionVersion }, token: '',
     });
     deviceToken = result.token;
     await chrome.storage.local.set({ companionToken: deviceToken });

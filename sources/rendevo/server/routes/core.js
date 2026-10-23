@@ -35,6 +35,16 @@ function cleanList(v) {
   return (Array.isArray(v) ? v : String(v || '').split(/[,\n]/)).map((x) => String(x).trim()).filter(Boolean).slice(0, 40);
 }
 
+// The same validation applies to quick-rename, campaign creation and full editing.
+export function validateCampaignName(value) {
+  if (typeof value !== 'string') throw bad('Le nom de la campagne doit être un texte');
+  const name = value.trim();
+  if (!name || name.length > 120 || /[\x00-\x1f\x7f]/.test(name)) {
+    throw bad('Le nom de la campagne doit contenir entre 1 et 120 caractères valides');
+  }
+  return name;
+}
+
 export function registerCore(router, deps, { requireAuth, requireAdmin }) {
   const { db, ai, agent, vault, calendar } = deps;
 
@@ -341,7 +351,7 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const provider = await campaignAccountProvider(accountId, ws.id);
     const { rows } = await db.query(
       `INSERT INTO campaigns (workspace_id, account_id, name, goal, offer, icp, sequence, settings) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [ws.id, accountId, String(body.name || 'Nouvelle campagne').slice(0, 120), String(body.goal || 'meeting'), String(body.offer || ws.settings.offer?.summary || ''),
+      [ws.id, accountId, validateCampaignName(body.name ?? 'Nouvelle campagne'), String(body.goal || 'meeting'), String(body.offer || ws.settings.offer?.summary || ''),
         JSON.stringify(icp), JSON.stringify(sanitizeSequence(body.sequence)), JSON.stringify(assistedCampaignSettings(sanitizeSettings(body.settings), provider))],
     );
     return rows[0];
@@ -352,6 +362,19 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     if (!rows[0]) throw notFound('Campagne introuvable');
     return rows[0];
   }
+
+  // Rename independently from campaign settings to avoid overwriting unsaved or
+  // concurrent edits to the target, sequence or account.
+  router.patch('/api/campaigns/:id/name', requireAuth, requireAdmin, async (ctx) => {
+    const campaign = await ownedCampaign(ctx);
+    const body = await ctx.json(2048);
+    const name = validateCampaignName(body.name);
+    const { rows } = await db.query(
+      'UPDATE campaigns SET name = $2, updated_at = now() WHERE id = $1 AND workspace_id = $3 RETURNING id, name',
+      [campaign.id, name, ctx.state.ws.id],
+    );
+    return rows[0];
+  });
 
   router.get('/api/campaigns/:id', requireAuth, async (ctx) => {
     await ownedCampaign(ctx);
@@ -371,7 +394,7 @@ export function registerCore(router, deps, { requireAuth, requireAdmin }) {
     const provider = await campaignAccountProvider(accountId, ctx.state.ws.id);
     const { rows } = await db.query(
       `UPDATE campaigns SET name = $2, goal = $3, offer = $4, icp = $5, sequence = $6, settings = $7, account_id = $8, updated_at = now() WHERE id = $1 RETURNING *`,
-      [c.id, String(body.name ?? c.name).slice(0, 120), String(body.goal ?? c.goal), String(body.offer ?? c.offer),
+      [c.id, validateCampaignName(body.name ?? c.name), String(body.goal ?? c.goal), String(body.offer ?? c.offer),
         JSON.stringify(icp), JSON.stringify(body.sequence ? sanitizeSequence(body.sequence) : c.sequence),
         JSON.stringify(assistedCampaignSettings(sanitizeSettings(body.settings || {}, c.settings), provider)), accountId],
     );

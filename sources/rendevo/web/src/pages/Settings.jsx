@@ -126,6 +126,7 @@ function General({ data, draft, setDraft, onSave, busy }) {
 
 function Accounts({ limits }) {
   const { data, error, loading, reload } = useApi('/api/accounts');
+  const companionDevices = useApi('/api/companion/devices');
   const [draft, setDraft] = useState(null);
   const [edit, setEdit] = useState(null);
   const [run, busy] = useAction();
@@ -137,6 +138,8 @@ function Accounts({ limits }) {
   }, []);
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} />;
+  const latestCompanion = [...(companionDevices.data?.items || [])]
+    .sort((a, b) => new Date(b.last_used_at || b.created_at) - new Date(a.last_used_at || a.created_at))[0];
   const test = (a) => run(async () => { const r = await api(`/api/accounts/${a.id}/test`, { method: 'POST' }); toast(r.detail, r.ok ? 'ok' : r.cooldown ? 'info' : 'err'); reload(); });
   const toggle = (a) => run(async () => { await api(`/api/accounts/${a.id}`, { method: 'PATCH', body: { status: a.status === 'paused' ? 'active' : 'paused' } }); reload(); }, a.status === 'paused' ? 'Compte réactivé' : 'Compte en pause');
   return (
@@ -153,6 +156,9 @@ function Accounts({ limits }) {
               <div>
                 <div className="row" style={{ gap: 8 }}><strong>{a.name}</strong><span className={`badge ${a.status === 'active' ? 'ok' : a.status === 'error' ? 'err' : 'warn'}`}>{(a.provider === 'linkedin_cookie' ? { active: 'Dernier test OK', paused: 'En pause', error: 'À vérifier' } : { active: 'Actif', paused: 'En pause', error: 'À reconnecter' })[a.status] || a.status}</span></div>
                 <div className="small soft">{{ simulation: 'Bac à sable', unipile: 'LinkedIn via Unipile', linkedin_cookie: 'LinkedIn par cookie (manuel)', linkedin_companion: 'LinkedIn Companion (extension Chrome)', manual: 'Manuel' }[a.provider]}, {{ free: 'Gratuit', premium: 'Premium', sales_navigator: 'Sales Navigator' }[a.account_type]}{a.last_sync_at ? `, synchronisé ${ago(a.last_sync_at)}` : ''}</div>
+                {a.provider === 'linkedin_companion' && <div className="small muted">
+                  Version du dernier Companion associé à votre utilisateur : {latestCompanion?.extension_version ? `v${latestCompanion.extension_version}` : latestCompanion ? 'non communiquée (ouvrir Companion V21)' : 'aucune extension associée'}
+                </div>}
               </div>
               <div className="row">
                 {a.provider !== "linkedin_companion" && <button className="btn sm" disabled={busy || cooldownSeconds > 0} onClick={() => test(a)}><LuPlugZap />{cooldownSeconds ? `Tester (${cooldownSeconds}s)` : "Tester"}</button>}

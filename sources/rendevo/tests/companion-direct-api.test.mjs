@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { Router } from '../server/lib/http.js';
 import { sha256 } from '../server/lib/crypto.js';
-import { registerCompanion, normalizeCompanionProfile, companionSearchTerms } from '../server/routes/companion.js';
+import { registerCompanion, normalizeCompanionProfile, normalizeCompanionVersion, companionSearchTerms } from '../server/routes/companion.js';
 
 function harness() {
   let pairing = null, device = null;
@@ -25,12 +25,13 @@ function harness() {
     }
     if (q.startsWith('INSERT INTO companion_devices')) {
       device = { id: 'device-1', workspace_id: params[0], user_id: params[1],
-        name: params[2], token_hash: params[3], revoked: false,
+        name: params[2], token_hash: params[3], revoked: false, extension_version: params[5] || null,
         expires_at: '2030-01-01T00:00:00Z' };
       return { rows: [{ id: device.id, expires_at: device.expires_at }] };
     }
     if (q.startsWith('UPDATE companion_devices d SET last_used_at')) {
       if (!device || device.revoked || device.token_hash !== params[0]) return { rows: [] };
+      if (params[1]) device.extension_version = params[1];
       return { rows: [{ id: device.id, workspace_id: device.workspace_id,
         user_id: device.user_id, expires_at: device.expires_at }] };
     }
@@ -40,7 +41,7 @@ function harness() {
     if (q.startsWith('SELECT 1 FROM campaigns c JOIN accounts')) {
       return { rows: params[0] === 'campaign-1' && params[1] === scope.wsId ? [{ '?column?': 1 }] : [] };
     }
-    if (q.startsWith('SELECT id, name, prefix, created_at')) return { rows: [] };
+    if (q.startsWith('SELECT id, name, prefix, created_at')) return { rows: device && !device.revoked ? [{ id: device.id, name: device.name, extension_version: device.extension_version }] : [] };
     if (q.startsWith('UPDATE companion_devices SET revoked_at')) {
       if (device && params[0] === device.id && params[1] === scope.wsId
         && params[2] === scope.userId && !device.revoked) {
@@ -61,11 +62,11 @@ function harness() {
   registerCompanion(router, { db, agent }, {
     requireAuth: async () => {}, requireAdmin: async () => {},
   });
-  async function request(method, path, { body = {}, token = '' } = {}) {
+  async function request(method, path, { body = {}, token = '', version = '' } = {}) {
     const matched = router.match(method, path);
     assert.ok(matched, 'route exists: ' + path);
     const ctx = {
-      req: { headers: { authorization: token ? 'Bearer ' + token : '' } },
+      req: { headers: { authorization: token ? 'Bearer ' + token : '', 'x-companion-version': version } },
       state: { ws: { id: scope.wsId }, user: { id: scope.userId } },
       params: matched.params,
       json: async () => body,
@@ -157,10 +158,10 @@ test('le bouton télécharge un vrai ZIP depuis Rendevo, sous contrôle d’acc�
   assert.equal(checked, true);
   assert.ok(called.some((x) => x.key === 'Cache-Control' && x.value === 'no-store'));
   assert.ok(called.some((x) => x.file === '/app/web/dist/Rendevo-Companion.zip'
-    && x.options.download === 'Rendevo-Companion-V20.zip'));
+    && x.options.download === 'Rendevo-Companion-V21.zip'));
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V20\.zip"/);
+  assert.match(ui, /download="Rendevo-Companion-V21\.zip"/);
   assert.doesNotMatch(ui, /Télécharger Companion \(GitHub Actions\)/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /COPY extension \/extension/);
@@ -222,4 +223,32 @@ test('import groupé : refus de profils malformés, faux domaines et campagnes n
     }), /Cette campagne/,
   );
   assert.equal(h.saved.length, 0);
+});
+
+
+test('Companion conserve la version annoncée sur association et mise à jour sans réassociation', async () => {
+  const h = harness();
+  const { code } = await h.request('POST', '/api/companion/pairings');
+  const { token } = await h.request('POST', '/api/companion/exchange', { body: {
+    code, version: '0.2.9',
+  } });
+  assert.equal(h.getDevice().extension_version, '0.2.9');
+  await h.request('GET', '/api/companion/status', { token, version: '0.2.10' });
+  assert.equal(h.getDevice().extension_version, '0.2.10');
+  const devices = await h.request('GET', '/api/companion/devices');
+  assert.equal(devices.items[0].extension_version, '0.2.10');
+  await h.request('GET', '/api/companion/status', { token, version: '<script>alert(1)</script>' });
+  assert.equal(h.getDevice().extension_version, '0.2.10');
+});
+
+test('Companion ancien : version inconnue sans perturber la session', async () => {
+  const h = harness();
+  const { code } = await h.request('POST', '/api/companion/pairings');
+  const { token } = await h.request('POST', '/api/companion/exchange', { body: { code } });
+  assert.equal(h.getDevice().extension_version, null);
+  assert.equal((await h.request('GET', '/api/companion/status', { token })).connected, true);
+  assert.equal(normalizeCompanionVersion(' 0.2.10 '), '0.2.10');
+  for (const invalid of ['unknown', '0.2', 'a.b.c', '<svg>', '1.2.3\ninjection']) {
+    assert.equal(normalizeCompanionVersion(invalid), null);
+  }
 });

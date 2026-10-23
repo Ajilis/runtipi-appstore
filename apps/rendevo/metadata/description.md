@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 20** · **Version Rendevo : 0.2.9**
+**Version du catalogue Runtipi : 21** · **Version Rendevo : 0.2.10**
+
+**Nouveau V21 — versions visibles et renommage de campagnes.** La version Rendevo s'affiche discrètement sur la connexion et près du profil dans la barre latérale. Le bouton **Renommer** figure maintenant sur chaque campagne ; il modifie uniquement le nom de la campagne. La version réelle du Chrome Companion associé est visible dans **Réglages → Extensions associées**, ainsi que la dernière version déclarée de l'utilisateur dans **Réglages → Comptes LinkedIn** pour les comptes Companion. Si un ancien Companion ne transmet pas encore sa version, la mention « non communiquée » apparaît. Aucun nouveau cookie ni secret n'est demandé.
 
 **Nouveau V20 — lire la page de résultats LinkedIn avec Chrome Companion.** Depuis une recherche `https://www.linkedin.com/search/results/people/` déjà ouverte dans Chrome, cliquer **« Lire les profils de cette page LinkedIn »**. Le compagnon détecte les URLs des profils présents dans les résultats chargés, les dédoublonne et propose leur vérification avant un import groupé confirmé dans une campagne Companion (100 maximum). Aucun prospect n'est transmis lors de la lecture. Pas de copie de cookies, pagination ou défilement automatique. Cette lecture locale du DOM sur demande dépend de la structure de LinkedIn et peut être soumise aux conditions du service.
 

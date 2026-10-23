@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { LuPlus, LuPlay, LuPause, LuTrash2, LuSparkles, LuArchive } from 'react-icons/lu';
-import { api, useApi, useRouter, Loading, ErrorBox, Empty, Field, Switch, useAction, Link, Seg } from '../lib.jsx';
+import { LuPlus, LuPlay, LuPause, LuTrash2, LuSparkles, LuArchive, LuPencil } from 'react-icons/lu';
+import { api, useApi, useRouter, Loading, ErrorBox, Empty, Field, Switch, useAction, Link, Seg, Modal } from '../lib.jsx';
 import { IcpEditor, CampaignToggles } from '../components/Editors.jsx';
+import { useSession } from '../session.js';
 
 const STATUS_LABEL = { draft: 'Brouillon', active: 'Active', paused: 'En pause', archived: 'Archivée' };
 const STATUS_TONE = { active: 'ok', paused: 'warn', draft: '', archived: 'cold' };
@@ -10,11 +11,19 @@ function pct(a, b) { return b ? `${Math.round((a / b) * 100)} %` : '–'; }
 
 export function Campaigns() {
   const { navigate } = useRouter();
+  const { session } = useSession();
+  const canEdit = ['owner', 'admin'].includes(session.role);
+  const [rename, setRename] = useState(null);
   const [archived, setArchived] = useState(false);
   const { data, error, loading, reload } = useApi(`/api/campaigns${archived ? '?archived=1' : ''}`);
   const [run, busy] = useAction();
   const create = () => run(async () => { const c = await api('/api/campaigns', { method: 'POST', body: { name: 'Nouvelle campagne' } }); navigate(`/campagnes/${c.id}`); });
   const setStatus = (c, status) => run(async () => { await api(`/api/campaigns/${c.id}/status`, { method: 'POST', body: { status } }); reload(); }, status === 'active' ? 'Campagne activée' : 'Campagne mise en pause');
+  const saveName = () => run(async () => {
+    await api(`/api/campaigns/${rename.id}/name`, { method: 'PATCH', body: { name: rename.name.trim() } });
+    setRename(null);
+    reload();
+  }, 'Campagne renommée');
 
   return (
     <>
@@ -48,6 +57,7 @@ export function Campaigns() {
                   <td className="num">{pct(c.replied, c.connected)} <span className="small muted">({c.replied})</span></td>
                   <td className="num" style={{ fontWeight: 650 }}>{c.meetings}</td>
                   <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                    {canEdit && <button className="btn sm" disabled={busy} onClick={() => setRename({ id: c.id, name: c.name })} aria-label={`Renommer la campagne ${c.name}`} title="Renommer la campagne"><LuPencil />Renommer</button>}
                     {c.status === 'active'
                       ? <button className="btn sm" disabled={busy} onClick={() => setStatus(c, 'paused')}><LuPause />Pause</button>
                       : c.status !== 'archived' && <button className="btn sm" disabled={busy} onClick={() => setStatus(c, 'active')}><LuPlay />Activer</button>}
@@ -58,6 +68,16 @@ export function Campaigns() {
           </table>
         </div>
       )}
+      {rename && <Modal title="Renommer la campagne" onClose={() => setRename(null)} footer={<>
+        <button className="btn ghost" onClick={() => setRename(null)}>Annuler</button>
+        <button className="btn primary" disabled={busy || !rename.name.trim() || rename.name.trim().length > 120} onClick={saveName}>Enregistrer le nom</button>
+      </>}>
+        <Field label="Nom de la campagne" htmlFor="campaign-new-name">
+          <input id="campaign-new-name" className="input" autoFocus maxLength={120} value={rename.name}
+            onChange={(e) => setRename({ ...rename, name: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !busy && rename.name.trim()) { e.preventDefault(); saveName(); } }} />
+        </Field>
+      </Modal>}
     </>
   );
 }
@@ -93,7 +113,8 @@ export function CampaignEditor({ id }) {
       <div className="page-head">
         <div className="grow" style={{ minWidth: 260 }}>
           <Link to="/campagnes" className="small">Campagnes</Link>
-          <input className="input" style={{ fontSize: 'var(--step-2)', fontWeight: 650, border: 0, padding: '4px 0', background: 'transparent', boxShadow: 'none' }} value={c.name} onChange={(e) => upd({ name: e.target.value })} aria-label="Nom de la campagne" />
+          <label className="small muted" htmlFor="campaign-editor-name">Nom de la campagne (modifiable)</label>
+          <input id="campaign-editor-name" className="input" maxLength={120} style={{ fontSize: 'var(--step-2)', fontWeight: 650 }} value={c.name} onChange={(e) => upd({ name: e.target.value })} aria-label="Nom de la campagne" />
           <div className="row small soft" style={{ gap: 14 }}>
             <span className={`badge ${STATUS_TONE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
             <span className="num">{c.prospects} prospects</span><span className="num">{c.invited} invités</span><span className="num">{c.replied} réponses</span><span className="num">{c.meetings} RDV</span>
@@ -101,7 +122,7 @@ export function CampaignEditor({ id }) {
         </div>
         <div className="row wrap">
           <Link className="btn" to={`/prospects?campaign=${c.id}`}>Voir les prospects</Link>
-          {dirty && <button className="btn" onClick={save} disabled={busy}>Enregistrer</button>}
+          {dirty && <button className="btn" onClick={save} disabled={busy || !c.name.trim()}>Enregistrer</button>}
           {c.status === 'active'
             ? <button className="btn" onClick={() => setStatus('paused')} disabled={busy}><LuPause />Mettre en pause</button>
             : <button className="btn primary" onClick={() => setStatus('active')} disabled={busy || !c.account_id}><LuPlay />Activer</button>}

@@ -9,7 +9,7 @@ RUN cd /extension && zip -q -j /Rendevo-Companion.zip manifest.json popup.html p
 # Aucune dépendance npm à l'exécution : serveur Node.js natif + interface déjà compilée (web/dist).
 FROM node:22-alpine
 
-ARG APP_VERSION=0.2.9
+ARG APP_VERSION=0.2.10
 LABEL org.opencontainers.image.title="Rendevo" \
       org.opencontainers.image.description="Agent IA de prospection LinkedIn auto-hébergé" \
       org.opencontainers.image.source="https://github.com/Ajilis/runtipi-appstore" \
