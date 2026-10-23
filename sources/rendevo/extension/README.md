@@ -6,7 +6,7 @@ L'extension **communique directement avec l'API de ton Rendevo**, sans faire pas
 
 ## V35 (0.2.24) — tags de postes en recherche publique
 
-Dans Rendevo, les intitulés suggérés par la baguette magique s'ajoutent sous forme de tags colorés, supprimables individuellement ; plusieurs intitulés sont reliés par `OR` dans la recherche web publique. Aucune nouvelle permission, modification d'association ou collecte supplémentaire dans Chrome Companion.
+Dans Rendevo, les intitulés principaux proposés par la baguette magique remplacent automatiquement le mot-clé initial et deviennent des tags colorés, supprimables individuellement ; plusieurs intitulés sont reliés par `OR` dans la recherche web publique. Aucune nouvelle permission, modification d'association ou collecte supplémentaire dans Chrome Companion.
 
 ## V34 (0.2.23) — prise en charge Vultr Serverless Inference
 
