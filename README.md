@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V32 (0.2.21)** : correctif de compatibilité de la baguette magique avec les réponses JSON, tableaux Markdown et sorties tronquées des modèles OpenAI compatibles ; nouvelle tentative courte et diagnostics clairs sans fuite de clé. [Documentation](sources/rendevo/README.md).
+
 **Rendevo V31 (0.2.20)** : baguette magique IA près de « Poste recherché », tableau structuré des fonctions, variantes et liens avec le mot-clé ; sélection en menu déroulant avant recherche, sans import automatique. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V30 (0.2.19)** : connecteur IA OpenAI compatible générique avec liste des modèles `GET /models`, sélection, test non destructif `/chat/completions` et enregistrement sécurisé des identifiants. [Documentation](sources/rendevo/README.md).
