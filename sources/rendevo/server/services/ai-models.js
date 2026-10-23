@@ -27,7 +27,7 @@ export function isVultrInferenceBaseUrl(baseUrl) {
   try {
     const url = new URL(normalizeOpenAIBaseUrl(baseUrl));
     return url.protocol === 'https:' && url.hostname === 'api.vultrinference.com'
-      && url.pathname.replace(/\\/+$/, '') === '/v1';
+      && url.pathname.replace(/\/+$/, '') === '/v1';
   } catch { return false; }
 }
 
