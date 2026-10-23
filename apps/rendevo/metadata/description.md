@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 30** · **Version Rendevo : 0.2.19**
+**Version du catalogue Runtipi : 31** · **Version Rendevo : 0.2.20**
+
+**Nouveau V31 — baguette magique dans « Poste recherché ».** Dans Trouver des prospects → Recherche web publique, l'icône demande au connecteur IA actif une classification structurée des métiers associés au mot-clé saisi. Le tableau expose la catégorie, l'intitulé principal, les variantes féminines/masculines, synonymes et anglais pertinents et le lien avec le mot-clé. Un menu déroulant permet de choisir un intitulé ou une variante avant de lancer la recherche DeGoog manuellement. Les résultats IA sont des suggestions et non des catégories officielles LinkedIn. Aucun enregistrement n'est modifié, aucune migration de base n'est nécessaire.
 
 **Nouveau V30 — connecteur IA générique OpenAI compatible.** Configurez n’importe quel serveur proposant les routes `/models` et `/chat/completions`, avec une URL de base personnalisée et une clé API facultative si le serveur n'en exige pas. Dans Réglages → Intelligence artificielle, **Récupérer la liste des modèles** permet d'afficher les identifiants et d'en sélectionner un avant enregistrement. **Tester la connexion** lance une génération sur les paramètres provisoires sans effacer une configuration existante. Les clés restent chiffrées et ne sont réutilisées que sur le même serveur. Aucun changement destructif de PostgreSQL.
 
