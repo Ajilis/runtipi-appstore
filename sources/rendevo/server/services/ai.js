@@ -2,9 +2,11 @@
 // agent. Each task has a deterministic fallback so the product keeps working
 // without an API key (useful for tests and for the "manual" mode).
 import { formatSlotFr, formatSlotEn, pick } from '../lib/util.js';
+import { listOpenAIModels, normalizeOpenAIBaseUrl } from './ai-models.js';
 
 export class AiService {
-  constructor({ config, vault, logger = console }) {
+  constructor({ config, vault, logger = console, fetcher = fetch }) {
+    this.fetcher = fetcher;
     this.config = config;
     this.vault = vault;
     this.logger = logger;
@@ -14,11 +16,15 @@ export class AiService {
     const s = (ws && ws.settings && ws.settings.ai) || {};
     const base = this.config.ai || {};
     const provider = s.provider || base.provider || 'none';
+    const baseUrl = (s.base_url || base.base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
+    // Never send an API key configured for one host to a different host.
+    const sameDefault = provider === base.provider
+      && baseUrl === String(base.base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
     return {
-      provider,
-      base_url: (s.base_url || base.base_url || 'https://api.openai.com/v1').replace(/\/+$/, ''),
+      provider, base_url: baseUrl,
       model: s.model || base.model || '',
-      api_key: s.api_key_enc ? this.vault.decrypt(s.api_key_enc) : base.api_key || '',
+      api_key: s.api_key_enc ? this.vault.decrypt(s.api_key_enc)
+        : sameDefault ? base.api_key || '' : '',
       temperature: s.temperature ?? base.temperature ?? 0.7,
     };
   }
@@ -30,16 +36,16 @@ export class AiService {
     return true; // OpenAI-compatible endpoints like Ollama may not need a key
   }
 
-  async complete(ws, { system, user, maxTokens = 700, temperature }) {
-    const s = this.settingsFor(ws);
-    if (!this.enabled(ws)) throw new Error('IA non configurée');
+  async complete(ws, { system, user, maxTokens = 700, temperature, settingsOverride }) {
+    const s = settingsOverride || this.settingsFor(ws);
+    if (s.provider === 'none' || !s.model || (s.provider === 'anthropic' && !s.api_key)) throw new Error('IA non configurée');
     const t = temperature ?? s.temperature;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 60000);
     try {
       if (s.provider === 'anthropic') {
         const base = s.base_url.includes('anthropic.com') ? s.base_url : 'https://api.anthropic.com/v1';
-        const res = await fetch(`${base}/messages`, {
+        const res = await this.fetcher(`${base}/messages`, {
           method: 'POST',
           signal: ctrl.signal,
           headers: { 'content-type': 'application/json', 'x-api-key': s.api_key, 'anthropic-version': '2023-06-01' },
@@ -51,7 +57,8 @@ export class AiService {
       }
       const headers = { 'content-type': 'application/json' };
       if (s.api_key) headers.authorization = `Bearer ${s.api_key}`;
-      const res = await fetch(`${s.base_url}/chat/completions`, {
+      const res = await this.fetcher(`${normalizeOpenAIBaseUrl(s.base_url)}/chat/completions`, {
+        redirect: 'error',
         method: 'POST',
         signal: ctrl.signal,
         headers,
@@ -63,8 +70,13 @@ export class AiService {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error?.message || `LLM HTTP ${res.status}`);
-      return String(data.choices?.[0]?.message?.content || '').trim();
+      if (!res.ok) {
+        const detail = String(data.error?.message || '').slice(0, 220).replaceAll(s.api_key || '\\0', '[secret]');
+        throw new Error('LLM HTTP ' + res.status + (detail ? ' : ' + detail : ''));
+      }
+      const message = data.choices?.[0]?.message?.content;
+      if (typeof message !== 'string' || !message.trim()) throw new Error('Réponse IA vide ou format incompatible');
+      return message.trim();
     } finally {
       clearTimeout(timer);
     }
@@ -77,9 +89,16 @@ export class AiService {
     return JSON.parse(m[0]);
   }
 
-  async test(ws) {
+  async listModels({ baseUrl, apiKey = '' }) {
+    return listOpenAIModels({ baseUrl, apiKey, fetcher: this.fetcher });
+  }
+
+  async test(ws, { settingsOverride } = {}) {
     const t0 = Date.now();
-    const out = await this.complete(ws, { system: 'Tu réponds en un mot.', user: 'Réponds simplement: OK', maxTokens: 10, temperature: 0 });
+    const out = await this.complete(ws, {
+      system: 'Tu réponds en un mot.', user: 'Réponds simplement: OK',
+      maxTokens: 16, temperature: 0, settingsOverride,
+    });
     return { ok: true, sample: out.slice(0, 50), ms: Date.now() - t0 };
   }
 
