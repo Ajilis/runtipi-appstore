@@ -41,7 +41,7 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     const body = await ctx.json(4096);
     const previous = ctx.state.ws.settings?.discovery || {};
     // Accept old clients posting only api_key (Brave), without changing them.
-    const provider = body.provider || (body.base_url !== undefined ? 'degoog' : providerOf(previous));
+    const provider = body.provider || (body.base_url !== undefined ? 'degoog' : body.api_key && !previous.base_url ? 'brave' : providerOf(previous));
     if (!['brave', 'degoog'].includes(provider)) throw bad('Moteur de recherche inconnu');
     const oldProvider = providerOf(previous);
     const keyName = provider === 'brave' ? 'brave_api_key_enc' : 'api_key_enc';
