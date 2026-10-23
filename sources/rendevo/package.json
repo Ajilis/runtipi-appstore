@@ -1,6 +1,6 @@
 {
   "name": "rendevo",
-  "version": "0.2.25",
+  "version": "0.2.26",
   "description": "Agent IA de prospection LinkedIn auto-hébergé : signaux d'achat, messages personnalisés, setter IA et prise de rendez-vous.",
   "private": true,
   "type": "module",
