@@ -1,6 +1,8 @@
 # Rendevo
 
-**Version du catalogue Runtipi : 35** · **Version Rendevo : 0.2.24**
+**Version du catalogue Runtipi : 36** · **Version Rendevo : 0.2.25**
+
+**Nouveau V36 — interface épurée pour la recherche publique.** Les intitulés générés par la baguette magique restent directement présentés comme des tags colorés avec croix de suppression ; l'ancien panneau « Fonctions proposées pour… » et son tableau ne sont plus affichés. Tous les champs de recherche et de pagination sont désormais disposés verticalement, sur une seule colonne. Le OU logique dans les dorks DeGoog, le connecteur IA et la conservation des données PostgreSQL demeurent inchangés.
 
 **Nouveau V35 — intitulés multiples sous forme de tags colorés.** Après génération par la baguette magique du champ « Poste recherché », la baguette magique remplace automatiquement le mot-clé initial par les principaux intitulés suggérés en tags colorés ; chaque ajout manuel ou variante crée un tag supplémentaire, avec une croix pour le retirer. Les postes sélectionnés produisent automatiquement un groupe `("Poste A" OR "Poste B" OR "Poste C")` dans les dorks LinkedIn envoyés au moteur configuré, sans perdre le groupe pendant les essais élargis ou la pagination. Ajout manuel possible, maximum huit tags. Aucun changement destructif de la base PostgreSQL, du connecteur IA ou de l'extension.
 

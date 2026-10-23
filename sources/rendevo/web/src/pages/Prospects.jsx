@@ -256,9 +256,6 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
   const [criteria, setCriteria] = useState({ title: '', industry: '', location: '', keywords: '' });
   const [titleTags, setTitleTags] = useState([]);
   const [titleTagsEdited, setTitleTagsEdited] = useState(false);
-  const [jobTitles, setJobTitles] = useState(null);
-  const [titleSource, setTitleSource] = useState('');
-  const [selectedSuggestedTitle, setSelectedSuggestedTitle] = useState('');
   const [runWizard, wizardBusy] = useAction();
   const [results, setResults] = useState(null);
   const [searchInfo, setSearchInfo] = useState(null);
@@ -286,11 +283,8 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     const response = await api('/api/discovery/job-titles', {
       method: 'POST', body: { keyword },
     });
-    setJobTitles(response.rows);
-    setTitleSource(response.keyword);
-    setSelectedSuggestedTitle('');
-    // Replace the seed keyword immediately with the AI's main titles,
-    // then allow the user to remove unwanted tags or add any variant.
+    // Replace the seed keyword with AI main titles as removable tags only;
+    // the detailed proposal table and secondary dropdown are intentionally hidden.
     const recommended = [...new Map(response.rows.filter((row) =>
       row.title?.trim() && row.title.trim().length <= 70,
     ).map((row) => [
@@ -302,7 +296,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     setCriteria((previous) => ({ ...previous, title: '' }));
     clearSearch();
     return { ...response, selectedCount: recommended.length };
-  }, (response) => `${response.selectedCount} postes en tags — retire ceux à exclure ou ajoute des variantes`);
+  }, (response) => `${response.selectedCount} postes en tags — retire ceux à exclure ou ajoute un poste manuellement`);
   const addTitleTag = (value) => {
     const title = String(value || '').replace(/\s+/g, ' ').trim();
     if (!title) return;
@@ -317,7 +311,6 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     setTitleTags((prev) => [...prev, title]);
     setTitleTagsEdited(true);
     setCriteria((previous) => ({ ...previous, title: '' }));
-    setSelectedSuggestedTitle('');
     clearSearch();
   };
   const removeTitleTag = (title) => {
@@ -325,7 +318,6 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     setTitleTagsEdited(true);
     clearSearch();
   };
-  const applySuggestedTitle = () => addTitleTag(selectedSuggestedTitle);
   const suggestion = (title) => {
     const lead = String(title || '').split(/\s+[-–—|]\s+/)[0].trim();
     return lead.split(/\s+/).length <= 5 ? lead : '';
@@ -425,7 +417,6 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
         {(automatic.length > 0 || companionCampaigns.length > 0) && <Seg value={mode} onChange={(next) => {
           setMode(next);
           clearSearch();
-          setJobTitles(null);
           setTitleTags([]);
           setTitleTagsEdited(false);
           setCampaign(next === 'provider' ? automatic[0]?.id || '' : next === 'linkedin' ? companionCampaigns[0]?.id || '' : assisted[0]?.id || '');
@@ -468,9 +459,9 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
               certains postes ou entreprises peuvent être anciens.
             </div>
             <Field label="Campagne de destination">
-              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); clearSearch(); setJobTitles(null); setTitleTags([]); setTitleTagsEdited(false); }} />
+              <CampaignSelect campaigns={assisted} value={campaign} onChange={(id) => { setCampaign(id); clearSearch(); setTitleTags([]); setTitleTagsEdited(false); }} />
             </Field>
-            <div className="grid-2">
+            <div className="stack" style={{ '--gap': '12px' }}>
               {[
                 ['title', 'Poste recherché', 'titles', 'Ex. Directeur marketing'],
                 ['industry', 'Secteur', 'industries', 'Ex. Logiciel B2B'],
@@ -492,7 +483,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                         <input className="job-title-input" value={criteria.title} maxLength={70}
                           aria-label="Ajouter un intitulé de poste"
                           placeholder={titleTags.length ? 'Ajouter un poste…' : example}
-                          onChange={(e) => { setCriteria((prev) => ({ ...prev, title: e.target.value })); setJobTitles(null); clearSearch(); }}
+                          onChange={(e) => { setCriteria((prev) => ({ ...prev, title: e.target.value })); clearSearch(); }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && criteria.title.trim()) {
                               e.preventDefault(); addTitleTag(criteria.title);
@@ -517,49 +508,7 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
                 </Field>
               ))}
             </div>
-            {jobTitles && <div className="panel panel-pad stack" style={{ '--gap': '12px' }} role="region"
-              aria-label="Intitulés de postes suggérés par l’IA">
-              <div className="row spread wrap">
-                <strong>Fonctions proposées pour « {titleSource} »</strong>
-                <button className="btn sm ghost" type="button" onClick={() => setJobTitles(null)}>
-                  Fermer les suggestions
-                </button>
-              </div>
-              <p className="small soft">La baguette magique a remplacé ton mot-clé par les intitulés principaux sous forme de tags (8 maximum). Retire ceux à exclure avec × ; tu peux ensuite ajouter une variante depuis ce menu. Les tags restants sont reliés par OU dans le dork. Aucun import automatique.</p>
-              <Field label="Ajouter un intitulé ou une variante aux tags du poste recherché">
-                <div className="row wrap" style={{ gap: 8 }}>
-                  <select className="select" style={{ flex: 1, minWidth: 220 }}
-                    value={selectedSuggestedTitle} onChange={(e) => setSelectedSuggestedTitle(e.target.value)}>
-                    <option value="">— Choisir un intitulé —</option>
-                    {[...new Set(jobTitles.map((row) => row.category))].map((category) => (
-                      <optgroup key={category} label={category}>
-                        {jobTitles.filter((row) => row.category === category).flatMap((row) => [
-                          <option key={row.title + ':main'} value={row.title}>{row.title}</option>,
-                          ...row.variants.map((variant) => <option key={row.title + ':' + variant}
-                            value={variant}>{variant} (variante de {row.title})</option>),
-                        ])}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <button className="btn primary" type="button" disabled={!selectedSuggestedTitle || titleTags.length >= 8}
-                    onClick={applySuggestedTitle}>Ajouter ce poste</button>
-                </div>
-              </Field>
-              <div className="table-wrap">
-                <table className="table">
-                  <thead><tr><th>Catégorie</th><th>Intitulé principal</th><th>Variantes et synonymes LinkedIn</th><th>Lien avec le mot-clé</th></tr></thead>
-                  <tbody>
-                    {jobTitles.map((row, index) => <tr key={row.title + ':' + index}>
-                      <td>{row.category}</td>
-                      <td><strong>{row.title}</strong></td>
-                      <td>{row.variants.join(', ') || '—'}</td>
-                      <td>{row.relation || '—'}</td>
-                    </tr>)}
-                  </tbody>
-                </table>
-              </div>
-            </div>}
-            <div className="grid-2">
+            <div className="stack" style={{ '--gap': '12px' }}>
               <Field label="Profils retenus par page (1–50)">
                 <input className="input num" type="number" min="1" max="50" value={limit}
                   onChange={(e) => { setLimit(Math.max(1, Math.min(50, Number(e.target.value) || 20))); clearSearch(); }} />

@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Rendevo V36 (0.2.25)** : recherche publique simplifiée sans tableau de fonctions suggérées par l'IA ; affichage conservé en tags colorés et champs de recherche empilés verticalement. [Documentation](sources/rendevo/README.md).
+
 **Rendevo V35 (0.2.24)** : recherche publique LinkedIn avec tags de postes IA colorés et supprimables individuellement ; plusieurs tags se combinent en un `OR` explicite dans le dork final et ses pages suivantes. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V34 (0.2.23)** : connecteur Vultr Serverless Inference vérifié avec sa documentation : découverte des modèles texte, `max_completion_tokens`, limitation du raisonnement et détection du changement silencieux de modèle. [Documentation](sources/rendevo/README.md).

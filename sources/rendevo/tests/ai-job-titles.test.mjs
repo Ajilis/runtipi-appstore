@@ -112,21 +112,33 @@ test('route : aucun modèle actif, requête invalide ou erreur fournisseur ne r�
   assert.equal(h.mutated.length, 0);
 });
 
-test('interface : baguette magique attenante au poste, table en quatre colonnes et sélection explicite', () => {
+test('interface : baguette magique alimente uniquement les tags, sans panneau détaillé de propositions', () => {
   const src = fs.readFileSync(new URL('../web/src/pages/Prospects.jsx', import.meta.url), 'utf8');
   assert.match(src, /LuWandSparkles/);
   assert.match(src, /Générer les intitulés de poste avec l’IA/);
   assert.match(src, /api\/discovery\/job-titles/);
-  assert.match(src, /jobTitles\.map/);
-  assert.match(src, /optgroup/);
-  assert.match(src, /Ajouter ce poste/);
-  assert.match(src, /Intitulé principal/);
-  assert.match(src, /Variantes et synonymes LinkedIn/);
-  assert.match(src, /Lien avec le mot-clé/);
   assert.match(src, /setTitleTags\(recommended\)/);
   assert.match(src, /setCriteria\(\(previous\) => \(\{ \.\.\.previous, title: '' \}\)\)/);
   assert.match(src, /removeTitleTag/);
   assert.match(src, /<LuSearch \/>}Rechercher des profils/);
+  assert.doesNotMatch(src, /Fonctions proposées pour/);
+  assert.doesNotMatch(src, /jobTitles\.map/);
+  assert.doesNotMatch(src, /titleSource|selectedSuggestedTitle|<optgroup/);
+  assert.doesNotMatch(src, /Variantes et synonymes LinkedIn|Lien avec le mot-clé/);
+  assert.doesNotMatch(src, /aria-label="Intitulés de postes suggérés par l’IA"/);
+});
+
+test('interface : les quatre champs et les options de recherche sont empilés verticalement', () => {
+  const src = fs.readFileSync(new URL('../web/src/pages/Prospects.jsx', import.meta.url), 'utf8');
+  const searchArea = src.slice(src.indexOf('<Field label="Campagne de destination">'),
+    src.indexOf('<p className="small soft">DeGoog définit le nombre'));
+  assert.match(searchArea, /className="stack" style=\{\{ '--gap': '12px' \}\}>\s*\{\[/);
+  assert.match(searchArea, /className="stack" style=\{\{ '--gap': '12px' \}\}>\s*<Field label="Profils retenus/);
+  for (const field of ['Poste recherché', 'Secteur', 'Localisation', 'Mots-clés',
+    'Profils retenus par page', 'Affichage des résultats DeGoog']) {
+    assert.ok(searchArea.includes(field), field);
+  }
+  assert.doesNotMatch(searchArea, /className="grid-2"/);
 });
 
 
