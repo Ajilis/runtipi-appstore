@@ -8,21 +8,19 @@
   <script src="popup.js" defer></script>
 </head>
 <body>
-  <header><strong>Rendevo Companion</strong><span>V21 • version visible</span></header>
+  <header><strong>Rendevo Companion</strong><span>V22 • association simplifiée</span></header>
   <main>
-    <label for="base">Adresse de ton Rendevo</label>
-    <input id="base" type="url" spellcheck="false" autocomplete="off"
-      placeholder="https://rendevo.exemple.fr">
-    <button id="save" type="button" class="secondary">Autoriser cette instance Rendevo</button>
-    <hr>
     <section id="pairing">
-      <label for="paircode">Code d’association (depuis Rendevo → Réglages → Intégrations)</label>
+      <label for="paircode">Code d’association Rendevo</label>
       <input id="paircode" type="text" spellcheck="false" autocomplete="off"
-        placeholder="Colle le code à usage unique" maxlength="64">
-      <button id="connect" type="button" disabled>Associer directement l’extension</button>
+        placeholder="Colle le code depuis Réglages → Intégrations" maxlength="512">
+      <p id="pairOrigin" class="notice" aria-live="polite">Ce code contient l'adresse de ton instance Rendevo. Il est valable 5 minutes.</p>
+      <button id="connect" type="button" disabled>Associer le Companion</button>
+      <p class="notice">Chrome demandera l'autorisation d'accéder uniquement à ton instance Rendevo.</p>
     </section>
     <section id="connected" hidden>
       <p class="connected">Connectée à <strong id="workspace"></strong></p>
+      <p class="notice">Instance : <span id="connectedOrigin"></span></p>
       <button id="disconnect" type="button" class="secondary">Dissocier cette extension</button>
       <hr>
       <label for="campaign">Campagne Rendevo</label>
