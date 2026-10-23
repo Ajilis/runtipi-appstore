@@ -281,7 +281,16 @@ function DiscoverModal({ campaigns, onClose, onDone }) {
     const keyword = (criteria.title || titleTags[0] || fromCampaign('titles')).trim();
     if (!keyword) throw new Error('Saisissez d’abord un mot-clé dans « Poste recherché »');
     const response = await api('/api/discovery/job-titles', {
-      method: 'POST', body: { keyword },
+      method: 'POST',
+      body: {
+        keyword,
+        fields: {
+          title: keyword,
+          industry: criteria.industry || fromCampaign('industries'),
+          location: criteria.location || fromCampaign('locations'),
+          keywords: criteria.keywords || fromCampaign('keywords'),
+        },
+      },
     });
     // Replace the seed keyword with AI main titles as removable tags only;
     // the detailed proposal table and secondary dropdown are intentionally hidden.
