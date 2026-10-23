@@ -2,6 +2,7 @@
 // No database writes, no LinkedIn request, and no automatic imports.
 export function normalizeJobKeyword(value) {
   if (typeof value !== 'string') throw new Error('Saisissez un mot-clé dans « Poste recherché »');
+  if (/[\x00-\x1f\x7f<>]/.test(value)) throw new Error('Saisissez un mot-clé valide de 2 à 90 caractères');
   const keyword = value.trim().replace(/\s+/g, ' ');
   if (keyword.length < 2 || keyword.length > 90 || /[\x00-\x1f\x7f<>]/.test(keyword)) {
     throw new Error('Saisissez un mot-clé valide de 2 à 90 caractères');
