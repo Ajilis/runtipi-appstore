@@ -30,6 +30,18 @@ test('multi-postes : le dork crée un OU logique entre chaque titre, les autres 
   assert.ok(dorks.every((query) => query.includes(group)));
 });
 
+test('recherche publique sans secteur : un champ industry vide neutralise la cible cachée de campagne', () => {
+  const criteria = normalizeDiscoveryCriteria({
+    titles: ['Directeur commercial', 'Head of Sales'],
+    industry: '',
+    location: 'Lyon', keywords: 'B2B',
+  }, { industries: ['Secteur secret de campagne'] });
+  assert.equal(criteria.industry, '');
+  assert.equal(criteria.searchQuery,
+    'site:linkedin.com/in/ ("Directeur commercial" OR "Head of Sales") "Lyon" "B2B"');
+  assert.ok(buildLinkedInDorks(criteria).every((q) => !q.includes('Secteur secret de campagne')));
+});
+
 test('multi-postes : suppression de tag ne modifie pas les autres termes du OU', () => {
   const input = { titles: ['CTO', 'Chief Technology Officer', 'Directeur technique'] };
   const first = normalizeDiscoveryCriteria(input);
