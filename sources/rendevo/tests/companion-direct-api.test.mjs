@@ -162,14 +162,14 @@ test('le serveur livre un ZIP Chrome personnalisé, protégé et sans permission
       downloadedZip = file;
       assert.equal(fs.existsSync(file), true);
       assert.equal(options.cache, 'no-store');
-      assert.equal(options.download, 'Rendevo-Companion-V32.zip');
+      assert.equal(options.download, 'Rendevo-Companion-V33.zip');
       const entries = execFileSync('unzip', ['-Z', '-1', file], { encoding: 'utf8' }).trim().split('\n').sort();
       assert.deepEqual(entries, ['README.md', 'manifest.json', 'popup.css', 'popup.html', 'popup.js']);
       const manifest = JSON.parse(execFileSync('unzip', ['-p', file, 'manifest.json'], { encoding: 'utf8' }));
       assert.deepEqual(manifest.host_permissions, ['https://rdv.exemple.fr/*']);
       assert.equal(manifest.optional_host_permissions, undefined);
       assert.deepEqual(manifest.permissions, ['activeTab', 'scripting', 'storage', 'permissions']);
-      assert.equal(manifest.version, '0.2.21');
+      assert.equal(manifest.version, '0.2.22');
       const script = execFileSync('unzip', ['-p', file, 'popup.js'], { encoding: 'utf8' });
       assert.match(script, /const installedRendevoOrigin = 'https:\/\/rdv\.exemple\.fr'|const installedRendevoOrigin = "https:\/\/rdv\.exemple\.fr"/);
       assert.doesNotMatch(script, /chrome\.permissions\.request/);
@@ -182,7 +182,7 @@ test('le serveur livre un ZIP Chrome personnalisé, protégé et sans permission
   assert.equal(downloadedZip.startsWith('/app/web/dist'), false, 'ZIP absent du répertoire public');
   const ui = fs.readFileSync(new URL('../web/src/components/CompanionSettings.jsx', import.meta.url), 'utf8');
   assert.match(ui, /href="\/api\/companion\/download"/);
-  assert.match(ui, /download="Rendevo-Companion-V32\.zip"/);
+  assert.match(ui, /download="Rendevo-Companion-V33\.zip"/);
   const docker = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /COPY extension \.\/extension/);
   assert.match(docker, /tzdata zip/);
