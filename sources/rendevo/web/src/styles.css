@@ -371,3 +371,36 @@ button.list-item { width: 100%; border-left: 0; border-right: 0; border-top: 0; 
 .steps { display: flex; gap: 6px; margin-bottom: 26px; }
 .steps div { flex: 1; height: 4px; border-radius: 4px; background: var(--line); }
 .steps div.on { background: var(--encre); }
+
+/* Public search — multiple selected job titles as compact, removable pills. */
+.job-title-selector {
+  display: flex; flex: 1 1 220px; min-width: 0; min-height: 42px;
+  flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 5px 8px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m); background: var(--surface);
+}
+.job-title-selector:focus-within { outline: 2px solid var(--encre-line); outline-offset: 1px; }
+.job-title-input {
+  flex: 1 1 140px; min-width: 125px; padding: 4px 2px;
+  border: 0; outline: 0; background: transparent; color: var(--ink);
+  font: inherit;
+}
+.job-title-tag {
+  display: inline-flex; align-items: center; max-width: 100%; gap: 6px;
+  padding: 4px 5px 4px 9px; border-radius: 999px;
+  font-size: 0.82rem; font-weight: 600; line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.job-title-tag-0 { background: var(--encre-weak); color: var(--encre); }
+.job-title-tag-1 { background: var(--vert-weak); color: var(--vert); }
+.job-title-tag-2 { background: var(--ambre-weak); color: var(--ambre); }
+.job-title-tag-3 { background: var(--rouge-weak); color: var(--rouge); }
+.job-title-tag-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px; border: 0; border-radius: 50%;
+  background: transparent; color: inherit; cursor: pointer;
+}
+.job-title-tag-remove:hover, .job-title-tag-remove:focus-visible {
+  background: rgba(0,0,0,.08); outline: 1px solid currentColor;
+}
+.job-title-tag-remove svg { width: 13px; height: 13px; }
