@@ -5,6 +5,8 @@
 // no LinkedIn cookies, external search API calls or background crawling.
 const byId = (id) => document.getElementById(id);
 const companionVersion = chrome.runtime.getManifest().version;
+// Replaced only when the authenticated Rendevo server packages its personalized ZIP.
+const installedRendevoOrigin = '';
 const code = byId('paircode'), campaign = byId('campaign');
 const pairOrigin = byId('pairOrigin'), connectedOrigin = byId('connectedOrigin');
 const profile = byId('profile'), statusEl = byId('status');
@@ -39,8 +41,8 @@ function localOrigin(input) {
   } catch { return null; }
 }
 
-// Portable V22 code: RDV1.<percent-encoded exact Rendevo origin>.<32-char one-time secret>.
-// This encoding is transport only: Chrome still prompts for this origin's permission.
+// Portable code: RDV1.<percent-encoded exact Rendevo origin>.<32-char one-time secret>.
+// Only codes for the host pre-authorized when this particular ZIP was installed are accepted.
 function parsePairingCode(input) {
   const match = /^RDV1\.(.{1,350})\.([A-Za-z0-9_-]{32})$/.exec(String(input || '').trim());
   if (!match) return null;
@@ -79,11 +81,16 @@ function update() {
   pairing.hidden = !!deviceToken;
   connected.hidden = !deviceToken;
   const pairingDetails = parsePairingCode(code.value);
-  pairOrigin.textContent = pairingDetails
-    ? 'Instance contenue dans le code : ' + pairingDetails.origin
-    : code.value.trim() ? 'Code non reconnu : copie le nouveau code complet depuis Rendevo (V22).'
-      : "Le code inclut l’adresse de Rendevo et expire après 5 minutes.";
-  connect.disabled = busy || !!deviceToken || !pairingDetails;
+  pairOrigin.textContent = !installedRendevoOrigin
+    ? 'Cette extension n’est pas personnalisée. Télécharge le ZIP depuis Réglages → Intégrations.'
+    : pairingDetails && pairingDetails.origin !== installedRendevoOrigin
+      ? 'Code pour un autre serveur (' + pairingDetails.origin + '). Télécharge son Companion.'
+      : pairingDetails
+        ? 'Serveur autorisé à l’installation : ' + installedRendevoOrigin
+        : code.value.trim() ? 'Code non reconnu : copie le code complet depuis Rendevo.'
+          : 'Serveur intégré : ' + installedRendevoOrigin + '. Colle ton code (5 minutes).';
+  connect.disabled = busy || !!deviceToken || !pairingDetails
+    || pairingDetails.origin !== installedRendevoOrigin;
   importBtn.disabled = busy || !deviceToken || !profileUrl;
   refresh.disabled = busy || !deviceToken;
   searchLinkedin.disabled = busy || !deviceToken || !searchTerms.value.trim();
@@ -151,7 +158,7 @@ async function init() {
   const stored = await chrome.storage.local.get(['rendevoOrigin', 'companionToken']);
   rendevoOrigin = localOrigin(stored.rendevoOrigin) || '';
   deviceToken = String(stored.companionToken || '');
-  connectedOrigin.textContent = rendevoOrigin || '';
+  connectedOrigin.textContent = rendevoOrigin || installedRendevoOrigin || '';
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   profileUrl = normalizedLinkedinProfileUrl(tabs[0]?.url);
   searchPageUrl = isLinkedinPeopleSearchPage(tabs[0]?.url) ? tabs[0].url : null;
@@ -290,14 +297,19 @@ searchLinkedin.addEventListener('click', async () => {
 
 connect.addEventListener('click', async () => {
   const details = parsePairingCode(code.value);
-  if (!details || deviceToken || busy) return;
+  if (!details || !installedRendevoOrigin || details.origin !== installedRendevoOrigin
+    || deviceToken || busy) return;
   const priorOrigin = rendevoOrigin;
   setBusy(true);
   try {
-    // Permission request must occur directly in this user click.
-    const granted = await chrome.permissions.request({ origins: [details.origin + '/*'] });
-    if (!granted) throw new Error('Autorisation Chrome refusée : aucun code envoyé.');
-    rendevoOrigin = details.origin;
+    // Host access was declared in manifest.json for this single site at installation.
+    // We never request additional hosts at pairing time. Users can revoke site access
+    // later in Chrome settings; explain how to restore it without silently expanding it.
+    const hostPermission = new URL(installedRendevoOrigin);
+    const permission = hostPermission.protocol + '//' + hostPermission.hostname + '/*';
+    const granted = await chrome.permissions.contains({ origins: [permission] });
+    if (!granted) throw new Error('Accès au serveur désactivé : ouvre Chrome → Extensions → Companion → Accès aux sites pour autoriser ce serveur.');
+    rendevoOrigin = installedRendevoOrigin;
     // The URL-bearing code is never submitted to the server; only the secret is.
     const result = await api('/api/companion/exchange', {
       method: 'POST', body: { code: details.secret, device_name: 'Chrome Companion', version: companionVersion }, token: '',
