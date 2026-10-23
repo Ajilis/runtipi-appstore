@@ -160,6 +160,7 @@ async function loadCampaigns() {
 }
 
 async function init() {
+  say('');
   const stored = await chrome.storage.local.get(['rendevoOrigin', 'companionToken']);
   rendevoOrigin = localOrigin(stored.rendevoOrigin) || '';
   deviceToken = String(stored.companionToken || '');
