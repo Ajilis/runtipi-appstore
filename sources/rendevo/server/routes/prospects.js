@@ -169,7 +169,7 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
           'Réponds UNIQUEMENT en JSON valide et court :',
           '{"rows":[{"category":"Métier","title":"Poste","variants":["Synonyme"],"relation":"Lien au mot-clé"}]}',
           'Pas de texte supplémentaire. Termine impérativement toutes les accolades.',
-        ].join('\\n');
+        ].join('\n');
       let responseText;
       try {
         responseText = await ai.complete(ctx.state.ws, {
