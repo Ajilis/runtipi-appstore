@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { Router } from '../server/lib/http.js';
 import { registerProspects } from '../server/routes/prospects.js';
-import { normalizeJobKeyword, professionalTitlePrompt, normalizeProfessionalTitles } from '../server/services/job-titles.js';
+import { normalizeJobKeyword, normalizeJobFormFields, professionalTitlePrompt, normalizeProfessionalTitles } from '../server/services/job-titles.js';
 import { parseProfessionalTitleResponse } from '../server/services/job-title-parser.js';
 
 test('mot-clé : respecte le champ Poste recherché, interdit valeurs vides et caractères de contrôle', () => {
@@ -13,18 +13,39 @@ test('mot-clé : respecte le champ Poste recherché, interdit valeurs vides et c
   }
 });
 
-test('prompt : reprend les huit instructions demandées, sans catégories officielles LinkedIn', () => {
-  const p = professionalTitlePrompt('Directeur technique');
+test('prompt IA : nouveau JSON compact value-label-keywords, avec tous les champs du formulaire', () => {
+  const form = normalizeJobFormFields({
+    title: 'Directeur technique', industry: 'Industrie', location: 'Lyon', keywords: 'B2B',
+  });
+  const p = professionalTitlePrompt(form);
   for (const fragment of [
-    'Tu es un expert en classification des fonctions professionnelles',
-    '**Mot-clé fourni :** "Directeur technique"',
-    "variantes d'intitulés utilisées en France", 'formes masculines, féminines',
-    'hiérarchiquement ou institutionnellement', 'anciennes fonctions et les titres honorifiques',
-    'traductions anglaises pertinentes', 'sans doublons', 'fonctions voisines pertinentes',
-    'catégories officielles de LinkedIn', 'Catégorie', 'Intitulé principal',
-    'Variantes et synonymes LinkedIn', 'Lien avec le mot-clé',
+    'À partir de « ', 'génère les intitulés de postes LinkedIn associés',
+    '(variantes, fonctions proches, anciens titres)', 'sans doublons',
+    'Réponds uniquement en JSON compact',
+    '[{"value":"identifiant","label":"Intitulé","keywords":["synonymes"]}]',
+    '"Poste recherché":"Directeur technique"', '"Secteur":"Industrie"',
+    '"Localisation":"Lyon"', '"Mots-clés":"B2B"',
   ]) assert.ok(p.includes(fragment), fragment);
-  assert.match(p, /\{"rows":/);
+  assert.doesNotMatch(p, /"rows"|Catégorie|Intitulé principal|Markdown/);
+  assert.equal(professionalTitlePrompt('Directeur technique').includes('Directeur technique'), true);
+  assert.throws(() => normalizeJobFormFields('texte'), /invalides/);
+  assert.throws(() => normalizeJobFormFields({ industry: ['bad'] }), /invalides/);
+  assert.throws(() => normalizeJobFormFields({ keywords: 'x'.repeat(121) }), /invalides/);
+});
+
+test('nouveau format IA : label devient le tag, value reste un identifiant et keywords des synonymes', () => {
+  const entries = [
+    { value: 'directeur-technique', label: 'Directeur technique', keywords: ['CTO', 'Technical Director', 'CTO'] },
+    { value: 'doublon', label: 'directeur technique', keywords: [] },
+    { value: 'responsable-it', label: 'Responsable informatique', keywords: ['IT Manager'] },
+  ];
+  const rows = parseProfessionalTitleResponse(JSON.stringify(entries));
+  assert.deepEqual(rows.map((row) => row.title), ['Directeur technique', 'Responsable informatique']);
+  assert.deepEqual(rows[0].variants, ['CTO', 'Technical Director']);
+  assert.ok(!rows.some((row) => row.title === 'directeur-technique'));
+  const fenced = parseProfessionalTitleResponse('Voici les postes :\n' + '```json\n'
+    + JSON.stringify(entries) + '\n```');
+  assert.deepEqual(fenced, rows);
 });
 
 test('tableau IA : retire doublons accents, variantes répétées, HTML et champs dangereux', () => {
@@ -87,7 +108,10 @@ function harness({ aiEnabled = true, output, failure } = {}) {
 
 test('route : utilise uniquement le connecteur IA actif et retourne un tableau sans écriture de données', async () => {
   const h = harness();
-  const result = await h.invoke({ keyword: 'Commercial' });
+  const result = await h.invoke({
+    keyword: 'Commercial',
+    fields: { title: 'Commercial', industry: 'Logiciel', location: 'Paris', keywords: 'SaaS' },
+  });
   assert.equal(result.keyword, 'Commercial');
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].title, 'Directeur commercial');
@@ -95,6 +119,9 @@ test('route : utilise uniquement le connecteur IA actif et retourne un tableau s
   assert.equal(h.prompts.length, 1);
   assert.equal(h.prompts[0].maxTokens, 1200);
   assert.match(h.prompts[0].user, /Commercial/);
+  assert.match(h.prompts[0].user, /"Secteur":"Logiciel"/);
+  assert.match(h.prompts[0].user, /"Localisation":"Paris"/);
+  assert.match(h.prompts[0].user, /"Mots-clés":"SaaS"/);
   assert.deepEqual(h.headers, [['Cache-Control', 'no-store']]);
   await assert.rejects(() => h.invoke({ keyword: 'Autre métier' }), /12 secondes/);
 });
@@ -207,8 +234,8 @@ test('route : réponse mal formatée -> seconde génération courte sans écritu
   const h = harness({ output: 'Réponse libre sans structure.' });
   await assert.rejects(() => h.invoke({ keyword: 'juriste' }), /seconde tentative/);
   assert.equal(h.prompts.length, 2);
-  assert.match(h.prompts[0].user, /12 lignes/);
-  assert.match(h.prompts[1].user, /6 fonctions/);
+  assert.match(h.prompts[0].user, /JSON compact/);
+  assert.match(h.prompts[1].user, /6 intitulés/);
   assert.ok(h.prompts[1].maxTokens < h.prompts[0].maxTokens);
   assert.equal(h.mutated.length, 0);
 });
