@@ -7,6 +7,7 @@ import { AccountForm, emptyAccount } from '../components/AccountForm.jsx';
 import { LinkedInAccountProfile } from '../components/LinkedInAccountProfile.jsx';
 import { LinkedInAccountDiagnostics } from '../components/LinkedInAccountDiagnostics.jsx';
 import { CompanionSettings } from '../components/CompanionSettings.jsx';
+import { SearchSettings } from '../components/SearchSettings.jsx';
 
 const SECTIONS = [
   ['general', 'Général'],
@@ -16,6 +17,7 @@ const SECTIONS = [
   ['agenda', 'Disponibilités'],
   ['horaires', 'Horaires et limites'],
   ['ia', 'Intelligence artificielle'],
+  ['recherche', 'Recherche'],
   ['integrations', 'Intégrations'],
   ['equipe', 'Équipe'],
   ['moncompte', 'Mon compte'],
@@ -90,6 +92,7 @@ export function Settings() {
             </>
           )}
           {tab === 'ia' && <AiSettings data={data} draft={draft} setDraft={setDraft} reload={reload} />}
+          {tab === 'recherche' && <SearchSettings />}
           {tab === 'integrations' && <Integrations />}
           {tab === 'equipe' && <Team />}
           {tab === 'moncompte' && <MyAccount />}
