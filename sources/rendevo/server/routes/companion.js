@@ -1,4 +1,5 @@
-import path from 'node:path';
+import fs from 'node:fs/promises';
+import { createPersonalizedCompanionArchive } from '../lib/companion-bundle.js';
 import { bad, forbidden, unauthorized } from '../lib/http.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 
@@ -37,14 +38,19 @@ export function companionSearchTerms(icp = {}) {
 export function registerCompanion(router, deps, { requireAuth, requireAdmin }) {
   const { db, agent } = deps;
 
-  // The exact extension build that ships with this Rendevo release is
-  // available to signed-in users without requiring GitHub access.
+  // Generate a per-instance extension only for authenticated users.
+  // The ZIP is temporary, never exposed from the static web directory.
   router.get('/api/companion/download', requireAuth, async (ctx) => {
     ctx.header('Cache-Control', 'no-store');
-    await ctx.sendFile(path.join(deps.config.staticDir, 'Rendevo-Companion.zip'), {
-      cache: 'no-store',
-      download: 'Rendevo-Companion-V22.zip',
-    });
+    const bundle = await createPersonalizedCompanionArchive(deps.config.publicUrl);
+    try {
+      await ctx.sendFile(bundle.archive, {
+        cache: 'no-store',
+        download: 'Rendevo-Companion-V23.zip',
+      });
+    } finally {
+      await fs.rm(bundle.directory, { recursive: true, force: true });
+    }
   });
 
   router.post('/api/companion/pairings', requireAuth, requireAdmin, async (ctx) => {
