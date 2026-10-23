@@ -49,7 +49,7 @@ export function registerProspects(router, deps, { requireAuth, requireAdmin }, {
     const baseUrl = normalizeDegoogUrl(body.base_url ?? (providerOf(previous) === 'degoog' ? previous.base_url : ''));
     const sameOrigin = providerOf(previous) === 'degoog' && previous.base_url === baseUrl;
     const typedKey = String(body.api_key ?? '').trim();
-    if (typedKey && !/^\\S{8,512}$/.test(typedKey)) throw bad('Clé API invalide (8 à 512 caractères)');
+    if (typedKey && !/^\S{8,512}$/.test(typedKey)) throw bad('Clé API invalide (8 à 512 caractères)');
     const key = body.clear_key === true ? '' : typedKey
       || (sameOrigin ? vault.decrypt(previous.api_key_enc || '') : '');
     return { baseUrl, key, sameOrigin, typedKey };
