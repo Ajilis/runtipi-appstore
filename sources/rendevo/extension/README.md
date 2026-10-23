@@ -1,8 +1,12 @@
-# Rendevo Companion — extension Chrome V34
+# Rendevo Companion — extension Chrome V35
 
 Depuis V21 / 0.2.10, Companion envoie sa version réelle issue du manifeste Chrome au serveur Rendevo lors de l'association et lors des appels authentifiés. Dans **Réglages → Intégrations → Extensions associées**, chaque périphérique affiche la dernière version déclarée (ou « non communiquée » pour une extension ancienne). La version de l'extension la plus récemment utilisée par l'utilisateur est également visible dans **Réglages → Comptes LinkedIn** pour les comptes Companion. Aucun cookie LinkedIn n'est transmis et une réassociation n'est pas nécessaire après mise à jour.
 
 L'extension **communique directement avec l'API de ton Rendevo**, sans faire passer les données par un onglet intermédiaire. Elle permet de choisir une campagne Companion, puis d'y importer sur confirmation un profil ou les profils proposés par la page de recherche LinkedIn ouverte dans Chrome.
+
+## V35 (0.2.24) — tags de postes en recherche publique
+
+Dans Rendevo, les intitulés suggérés par la baguette magique s'ajoutent sous forme de tags colorés, supprimables individuellement ; plusieurs intitulés sont reliés par `OR` dans la recherche web publique. Aucune nouvelle permission, modification d'association ou collecte supplémentaire dans Chrome Companion.
 
 ## V34 (0.2.23) — prise en charge Vultr Serverless Inference
 
@@ -66,11 +70,11 @@ L'extension vérifie que l'origine est une URL HTTPS (ou HTTP sur réseau local 
 
 ## Installation
 
-1. Mettre Rendevo à jour vers **0.2.23 / catalogue Runtipi V34**.
-2. Depuis **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Télécharger Companion pour mon serveur (.zip)** pour récupérer `Rendevo-Companion-V34.zip`, propre à ton instance. Décompresser, puis ouvrir `chrome://extensions` → **Mode développeur** → **Charger l'extension non empaquetée**, sélectionner le dossier contenant `manifest.json`. Pour mettre à jour une extension V22 installée localement : écraser les fichiers dans le même dossier et cliquer sur **Actualiser**. Contrôler le site autorisé dans les détails Chrome.
+1. Mettre Rendevo à jour vers **0.2.24 / catalogue Runtipi V35**.
+2. Depuis **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Télécharger Companion pour mon serveur (.zip)** pour récupérer `Rendevo-Companion-V35.zip`, propre à ton instance. Décompresser, puis ouvrir `chrome://extensions` → **Mode développeur** → **Charger l'extension non empaquetée**, sélectionner le dossier contenant `manifest.json`. Pour mettre à jour une extension V22 installée localement : écraser les fichiers dans le même dossier et cliquer sur **Actualiser**. Contrôler le site autorisé dans les détails Chrome.
 3. Dans Rendevo : **Réglages → Comptes LinkedIn → Ajouter** → **LinkedIn Companion (Chrome)**. Associer ce compte à une campagne assistée.
 4. Dans **Réglages → Intégrations → Rendevo Companion**, cliquer sur **Générer un code d'association**, puis **Copier le code unique**. Ce code contient **l’adresse du site Rendevo et le secret temporaire** : aucune URL à copier séparément. Il dure **5 minutes** et ne peut servir qu'une fois.
-5. Dans Chrome : ouvrir **Companion V34**, **coller uniquement le code unique** et cliquer sur **Associer le Companion**. La permission de ton serveur est déjà déclarée lors de l’installation : aucune seconde demande n'est lancée. Le code doit correspondre au serveur intégré dans le ZIP.
+5. Dans Chrome : ouvrir **Companion V35**, **coller uniquement le code unique** et cliquer sur **Associer le Companion**. La permission de ton serveur est déjà déclarée lors de l’installation : aucune seconde demande n'est lancée. Le code doit correspondre au serveur intégré dans le ZIP.
 6. Pour lancer une recherche depuis ton LinkedIn : choisir une campagne Companion, vérifier les mots-clés proposés depuis la cible de la campagne (poste, secteur, zone, mots-clés), les adapter si besoin, puis cliquer sur **Rechercher dans mon LinkedIn**. Un nouvel onglet de recherche « Personnes » s'ouvre dans la session Chrome connectée. LinkedIn applique ses propres filtres et restrictions. Le bouton séparé « Lire les profils de cette page LinkedIn » lit ponctuellement les liens de résultats chargés, après clic.
 7. Parcourir la recherche de personnes, puis rouvrir Companion sur cette page et cliquer **Lire les profils de cette page LinkedIn**. Vérifier les liens préremplis, éventuellement supprimer ceux qui ne conviennent pas, cliquer **Prévisualiser les liens** si la liste a été modifiée et enfin **Confirmer et importer les profils dans Rendevo**. Pour un seul profil, ouvrir sa page et utiliser **Ajouter ce profil directement à Rendevo**.
 8. Pour les messages, cliquer sur **Ouvrir les messages dans Rendevo**, valider et copier les brouillons, puis effectuer les envois toi-même dans LinkedIn.
