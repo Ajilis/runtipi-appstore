@@ -1,0 +1,75 @@
+# CloakBrowser 0.6.3 | Runtipi 4.9.1 | LAN + Cloudflare Tunnel
+# IMPORTANT : CDP n'a pas d'authentification native. Limiter le port au LAN
+# par pare-feu et imposer Cloudflare Access sur le hostname du tunnel.
+# Pas de x-runtipi.is_main, pas de reseau Traefik, aucun proxy ajoute.
+services:
+  cloakbrowser:
+    image: cloakhq/cloakbrowser:0.6.3
+    restart: unless-stopped
+    init: true
+    shm_size: "1gb"
+    environment:
+      TZ: "${TZ:-Europe/Paris}"
+      CLOAKBROWSER_LICENSE_KEY: "${CLOAKBROWSER_LICENSE_KEY:-}"
+    ports:
+      - "${CLOAK_LISTEN_ADDRESS:-0.0.0.0}:${APP_PORT:-8291}:9222/tcp"
+    volumes:
+      - "${APP_DATA_DIR}/config:/config"
+      - "${APP_DATA_DIR}/profiles:/profiles"
+      - "${APP_DATA_DIR}/cache:/root/.cloakbrowser"
+    # L'upstream cloakserve supprime les profils a l'arret/expiration ;
+    # ici, on neutralise uniquement cette suppression pour garder les
+    # fichiers Chromium et bases SQLite dans APP_DATA_DIR/profiles.
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        exec python - <<'PY'
+        import importlib.machinery
+        import importlib.util
+        import json
+        import math
+        import sys
+        from pathlib import Path
+
+        config_path = Path('/config/cloakserve.json')
+        if not config_path.exists():
+            config_path.write_text(
+                json.dumps({'idle_timeout_seconds': 300, 'headless': True}, indent=2) + '\n',
+                encoding='utf-8',
+            )
+        settings = json.loads(config_path.read_text(encoding='utf-8'))
+        idle = float(settings.get('idle_timeout_seconds', 300))
+        if not math.isfinite(idle) or idle < 0:
+            raise ValueError('idle_timeout_seconds doit etre fini et positif ou nul')
+        headless = settings.get('headless', True)
+        if not isinstance(headless, bool):
+            raise ValueError('headless doit etre un booleen')
+
+        # Charger le cloakserve inclus dans l'image officielle, sans fork.
+        loader = importlib.machinery.SourceFileLoader(
+            'cloakserve_persistent', '/usr/local/bin/cloakserve'
+        )
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        loader.exec_module(module)
+        module.ChromePool._safe_rmtree = lambda self, path: None
+
+        sys.argv = ['cloakserve', '--port=9222', '--data-dir=/profiles',
+                    f'--idle-timeout={idle}']
+        if not headless:
+            sys.argv.append('--headless=false')
+        module.main()
+        PY
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9222/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      traefik.enable: "false"
+
+x-runtipi:
+  schema_version: 2
