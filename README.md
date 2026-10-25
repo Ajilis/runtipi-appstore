@@ -1,5 +1,7 @@
 # Ajilis Runtipi App Store
 
+**Postiz complet (Temporal + Elasticsearch)** — nouvelle entrée `postiz` sur le port LAN **8287**, sans Traefik ; Cloudflare Tunnel via HTTP local. [Installation](apps/postiz/metadata/description.md).
+
 **Rendevo V38 (0.2.27)** : suppression du secteur et du bloc informatif de la recherche web publique ; prompt IA sur les trois champs restants, sans secteur caché issu de la campagne. [Documentation](sources/rendevo/README.md).
 
 **Rendevo V37 (0.2.26)** : nouveau prompt compact pour la baguette magique basé sur les champs de recherche et sortie JSON `value/label/keywords`, affichée directement sous forme de tags de postes. [Documentation](sources/rendevo/README.md).

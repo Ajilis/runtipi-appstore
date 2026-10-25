@@ -1,0 +1,76 @@
+{
+  "name": "Postiz (complet)",
+  "id": "postiz",
+  "available": true,
+  "short_desc": "Planification de publications sociales avec PostgreSQL, Redis, Temporal et Elasticsearch.",
+  "author": "Gitroom",
+  "port": 8287,
+  "categories": [
+    "social"
+  ],
+  "description": "Postiz auto-hébergé avec la pile Temporal/Elasticsearch officielle. Données persistantes et accès HTTP local 8287 ou HTTPS via Cloudflare Tunnel, sans Traefik.",
+  "tipi_version": 1,
+  "version": "latest",
+  "source": "https://github.com/gitroomhq/postiz-app",
+  "website": "https://postiz.com",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64"
+  ],
+  "form_fields": [
+    {
+      "type": "text",
+      "label": "URL publique Postiz (Cloudflare HTTPS)",
+      "hint": "URL canonique, sans barre finale, par exemple https://postiz.exemple.fr. Cloudflare Tunnel pointera vers HTTP sur le port 8287.",
+      "placeholder": "https://postiz.exemple.fr",
+      "required": true,
+      "env_variable": "POSTIZ_PUBLIC_URL",
+      "regex": "^https://[^/ ]+[^/ ]$"
+    },
+    {
+      "type": "ip",
+      "label": "Adresse IP d'écoute sur le serveur",
+      "hint": "0.0.0.0 ouvre le port sur les interfaces du serveur (LAN + localhost). Vous pouvez aussi choisir seulement l'IP LAN du serveur.",
+      "required": false,
+      "default": "0.0.0.0",
+      "env_variable": "POSTIZ_BIND_IP"
+    },
+    {
+      "type": "random",
+      "label": "Secret JWT Postiz",
+      "hint": "Ne jamais changer après installation sans invalider les sessions.",
+      "required": true,
+      "min": 64,
+      "encoding": "hex",
+      "env_variable": "POSTIZ_JWT_SECRET"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe PostgreSQL Postiz",
+      "required": true,
+      "min": 48,
+      "encoding": "hex",
+      "env_variable": "POSTIZ_DB_PASSWORD"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe PostgreSQL Temporal",
+      "required": true,
+      "min": 48,
+      "encoding": "hex",
+      "env_variable": "POSTIZ_TEMPORAL_DB_PASSWORD"
+    },
+    {
+      "type": "boolean",
+      "label": "Désactiver les nouvelles inscriptions",
+      "hint": "Laisser décoché pour créer le premier compte ; activer ensuite si nécessaire. Désactive également certains modes de connexion OAuth/OIDC.",
+      "required": false,
+      "default": false,
+      "env_variable": "POSTIZ_DISABLE_REGISTRATION"
+    }
+  ]
+}
