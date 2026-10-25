@@ -1,0 +1,44 @@
+{
+  "name": "CloakBrowser",
+  "id": "cloakbrowser",
+  "available": true,
+  "short_desc": "Serveur Chromium furtif pilotable par CDP, avec profils persistants.",
+  "author": "CloakHQ",
+  "port": 8291,
+  "categories": [
+    "automation",
+    "utilities"
+  ],
+  "description": "CloakBrowser 0.6.3 : serveur CDP accessible sur le LAN ou par Cloudflare Tunnel, sans routage Traefik. Profils Chromium et configuration persistants. ATTENTION : aucune authentification CDP native, accès réseau à restreindre et Cloudflare Access obligatoire pour un accès distant.",
+  "tipi_version": 1,
+  "version": "0.6.3",
+  "source": "https://github.com/CloakHQ/CloakBrowser",
+  "website": "https://cloakbrowser.dev",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "text",
+      "label": "Adresse IP locale d’écoute (port 8291)",
+      "hint": "0.0.0.0 : accessible depuis le LAN. Mieux : indiquer l’IP LAN du serveur (ex. 192.168.1.10). Ne pas ouvrir le port sur la box.",
+      "required": false,
+      "default": "0.0.0.0",
+      "placeholder": "192.168.1.10",
+      "env_variable": "CLOAK_LISTEN_ADDRESS"
+    },
+    {
+      "type": "password",
+      "label": "Clé de licence CloakBrowser (facultative)",
+      "hint": "Nécessaire pour utiliser un binaire récent avec licence ; laisser vide pour le binaire gratuit livré dans l’image. Ne pas publier cette clé.",
+      "required": false,
+      "env_variable": "CLOAKBROWSER_LICENSE_KEY"
+    }
+  ]
+}
