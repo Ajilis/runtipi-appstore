@@ -1,0 +1,48 @@
+{
+  "name": "Camofox Browser",
+  "id": "camofox-browser",
+  "available": true,
+  "short_desc": "Navigateur Camoufox headless anti-détection, pilotable par API HTTP pour agents IA.",
+  "author": "Jo Inc",
+  "port": 8290,
+  "categories": [
+    "automation",
+    "utilities"
+  ],
+  "description": "Camofox Browser 1.18.1, accès LAN et Cloudflare Tunnel en HTTP direct sur le port 8290, sans routage Traefik. Configuration et profils persistants, API sécurisée par jeton Bearer.",
+  "tipi_version": 1,
+  "version": "1.18.1",
+  "source": "https://github.com/jo-inc/camofox-browser",
+  "website": "https://github.com/jo-inc/camofox-browser",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "random",
+      "label": "Jeton de sécurité Camofox (API, accès et administration)",
+      "hint": "Conserver ce jeton : il est exigé en Authorization: Bearer <jeton> pour les appels à l'API. Ne jamais le publier.",
+      "required": true,
+      "min": 64,
+      "encoding": "hex",
+      "env_variable": "CAMOFOX_SHARED_KEY"
+    },
+    {
+      "type": "text",
+      "label": "Adresse IP d'écoute sur le serveur",
+      "hint": "0.0.0.0 permet l'accès par l'IP du serveur sur le LAN et par le tunnel Cloudflare. Pour limiter à une interface, indiquer l'adresse IP LAN du serveur.",
+      "required": true,
+      "default": "0.0.0.0",
+      "placeholder": "0.0.0.0",
+      "env_variable": "CAMOFOX_LISTEN_ADDRESS"
+    }
+  ],
+  "created_at": 1792947600000,
+  "updated_at": 1792947600000
+}

@@ -1,0 +1,48 @@
+# Camofox Browser 1.18.1 | Runtipi 4.9.1 | LAN + Cloudflare Tunnel
+# Aucun is_main ni réseau Traefik : le port hôte est publié directement.
+# Port par défaut : http://IP_DU_SERVEUR:8290, ou cloudflared -> http://IP_DU_SERVEUR:8290.
+services:
+  camofox-browser:
+    image: ghcr.io/jo-inc/camofox-browser:1.18.1
+    restart: unless-stopped
+    init: true
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        # Initialiser la configuration UNE fois, sans écraser les modifications utilisateur.
+        if [ ! -s /persistent-config/camofox.config.json ]; then
+          cp /app/camofox.config.json /persistent-config/camofox.config.json
+        fi
+        cp /persistent-config/camofox.config.json /app/camofox.config.json
+        exec node --max-old-space-size="$${MAX_OLD_SPACE_SIZE:-128}" server.js
+    environment:
+      NODE_ENV: production
+      CAMOFOX_PORT: "9377"
+      CAMOFOX_BIND_HOST: "0.0.0.0"
+      CAMOFOX_ACCESS_KEY: "${CAMOFOX_SHARED_KEY}"
+      CAMOFOX_API_KEY: "${CAMOFOX_SHARED_KEY}"
+      CAMOFOX_ADMIN_KEY: "${CAMOFOX_SHARED_KEY}"
+      CAMOFOX_PROFILE_DIR: /data/profiles
+      CAMOFOX_COOKIES_DIR: /data/cookies
+      CAMOFOX_UPLOADS_DIR: /data/uploads
+      CAMOFOX_TRACES_DIR: /data/traces
+      CAMOFOX_CRASH_REPORT_ENABLED: "false"
+      TZ: "${TZ:-Europe/Paris}"
+    volumes:
+      - "${APP_DATA_DIR}/config:/persistent-config"
+      - "${APP_DATA_DIR}/data:/data"
+    ports:
+      - "${CAMOFOX_LISTEN_ADDRESS:-0.0.0.0}:${APP_PORT:-8290}:9377/tcp"
+    labels:
+      traefik.enable: "false"
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:9377/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+x-runtipi:
+  schema_version: 2
