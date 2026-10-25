@@ -9,8 +9,8 @@
     "automation",
     "utilities"
   ],
-  "description": "Camofox Browser 1.18.1, accès LAN et Cloudflare Tunnel en HTTP direct sur le port 8290, sans routage Traefik. Configuration et profils persistants, API sécurisée par jeton Bearer.",
-  "tipi_version": 1,
+  "description": "Camofox Browser 1.18.1. Catalogue V2 : vignette 192 px corrigée, chargement d'icône Runtipi rafraîchi. Accès LAN + Cloudflare Tunnel sur 8290, sans routage Traefik. Configuration et profils persistants, jeton Bearer.",
+  "tipi_version": 2,
   "version": "1.18.1",
   "source": "https://github.com/jo-inc/camofox-browser",
   "website": "https://github.com/jo-inc/camofox-browser",
@@ -43,6 +43,6 @@
       "env_variable": "CAMOFOX_LISTEN_ADDRESS"
     }
   ],
-  "created_at": 1792947600000,
-  "updated_at": 1792947600000
+  "created_at": 1792936800000,
+  "updated_at": 1792944000000
 }
