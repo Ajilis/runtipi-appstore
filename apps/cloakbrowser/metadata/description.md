@@ -4,6 +4,16 @@ Instance de [CloakBrowser](https://github.com/CloakHQ/CloakBrowser), Chromium fu
 
 **Ce projet ne fournit pas d'interface web de navigation, ni de serveur SQL indépendant.** `GET /` retourne un état JSON et `GET /json/version?fingerprint=monprofil` initialise un navigateur. Le serveur peut être consommé par Playwright et autres clients CDP. Pour une interface web de gestion de profils, il faut un autre produit, CloakBrowser Manager, qui n'est pas le dépôt demandé ici.
 
+## Versions du navigateur et du conteneur
+
+| Élément | Version |
+| --- | --- |
+| Navigateur Chromium observé sur le serveur Runtipi | `146.0.7680.177` |
+| Image Docker / conteneur | `cloakhq/cloakbrowser:0.6.3` |
+| Bibliothèque CloakBrowser dans l'image | `0.6.3` |
+| Révision du catalogue Runtipi | `3` |
+
+Le numéro Chromium a été vérifié par un lancement direct de `cloakbrowser.launch(headless=True)` sur l'instance ; il peut différer d'une version téléchargée ultérieurement. Le tag `0.6.3` désigne l'image et la bibliothèque CloakBrowser, **pas** la version de Chromium.
 ## Installer
 
 1. Dans Runtipi 4.9.1 : **Settings → App Stores**, enregistrer `https://github.com/Ajilis/runtipi-appstore` puis actualiser le catalogue ; choisir **CloakBrowser**.
