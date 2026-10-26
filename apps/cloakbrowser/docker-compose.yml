@@ -1,4 +1,4 @@
-# CloakBrowser 0.6.3 | Runtipi 4.9.1 | LAN + Cloudflare Tunnel
+# CloakBrowser 0.6.3 | Runtipi 4.9.1 | LAN + Cloudflare Tunnel | rev 3
 # IMPORTANT : CDP n'a pas d'authentification native. Limiter le port au LAN
 # par pare-feu et imposer Cloudflare Access sur le hostname du tunnel.
 # Pas de x-runtipi.is_main, pas de reseau Traefik, aucun proxy ajoute.
@@ -58,9 +58,20 @@ services:
         loader.exec_module(module)
         module.ChromePool._safe_rmtree = lambda self, path: None
 
+        # cloakserve lance Chromium directement (subprocess.Popen) : son option
+        # headless=True ne transmet pas le vrai flag --headless a Chromium.
+        # A l'inverse, Playwright l'ajoute automatiquement avec launch().
+        # Sans ce flag, le serveur CDP peut echouer avec un HTTP 502.
+        original_wait = module.ChromePool._wait_for_cdp
+        async def wait_for_cdp(port, timeout=45.0):
+            return await original_wait(port, timeout=timeout)
+        module.ChromePool._wait_for_cdp = staticmethod(wait_for_cdp)
+
         sys.argv = ['cloakserve', '--port=9222', '--data-dir=/profiles',
                     f'--idle-timeout={idle}']
-        if not headless:
+        if headless:
+            sys.argv.append('--headless=new')
+        else:
             sys.argv.append('--headless=false')
         module.main()
         PY
