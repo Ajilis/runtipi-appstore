@@ -12,7 +12,9 @@ services:
       TZ: "${TZ:-Europe/Paris}"
       CLOAKBROWSER_LICENSE_KEY: "${CLOAKBROWSER_LICENSE_KEY:-}"
     ports:
-      - "${CLOAK_LISTEN_ADDRESS:-0.0.0.0}:${APP_PORT:-8291}:9222/tcp"
+      # Port fixe : evite l'echec du parseur de ports Runtipi 4.9.1
+      # 8291 accessible sur le LAN ; bloquer les sources non-LAN au pare-feu.
+      - "8291:9222/tcp"
     volumes:
       - "${APP_DATA_DIR}/config:/config"
       - "${APP_DATA_DIR}/profiles:/profiles"
