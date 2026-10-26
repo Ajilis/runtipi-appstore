@@ -32,6 +32,12 @@ with sync_playwright() as p:
 
 Utiliser un `fingerprint` stable et distinct par profil. Une requête sans seed réutilise un navigateur par défaut dont l'empreinte peut changer entre redémarrages. Les clients distants derrière Cloudflare Access doivent s'authentifier de façon compatible avec **HTTP et WebSocket** : le tunnel seul ne garantit ni l'authentification ni la compatibilité CDP du client.
 
+## Correctif 502 (revision Runtipi 3)
+
+Si `GET /` renvoie `"status": "ok"` mais `GET /json/version?fingerprint=test01` renvoie `502`, le serveur CDP fonctionne mais Chromium ne rend pas son port de debogage disponible. Le lanceur `cloakserve` demarre directement Chromium : contrairement a `launch(headless=True)` via Playwright, l'option Python `headless=True` n'injecte pas le commutateur Chrome `--headless`. Ce catalogue ajoute explicitement `--headless=new` et augmente l'attente du port CDP de 10 a 45 secondes. Le mode sans interface graphique reste configurable par `config/cloakserve.json` (`headless`: true par defaut).
+
+**Appliquer :** actualiser l'appstore Ajilis dans Runtipi, mettre a jour CloakBrowser (revision de catalogue 3) et redemarrer l'application. Aucune suppression du dossier `profiles/` ni de la configuration. Verifier ensuite `curl -i "http://IP_DU_SERVEUR:8291/json/version?fingerprint=test02"`. Si un 502 persiste, relever les nouveaux logs ; la presence d'erreurs D-Bus/Vulkan ne suffit pas, a elle seule, a etablir la cause du crash.
+
 ## Persistance
 
 Les fichiers survivent aux redémarrages dans `runtipi/app-data/<slug-du-store>/cloakbrowser/` :
