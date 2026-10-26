@@ -8,12 +8,12 @@ Instance de [CloakBrowser](https://github.com/CloakHQ/CloakBrowser), Chromium fu
 
 | Élément | Version |
 | --- | --- |
-| Navigateur Chromium observé sur le serveur Runtipi | `146.0.7680.177` |
+| Navigateur Chromium confirmé via CDP sur Runtipi | `155.0.8059.39` |
 | Image Docker / conteneur | `cloakhq/cloakbrowser:0.6.3` |
 | Bibliothèque CloakBrowser dans l'image | `0.6.3` |
 | Révision du catalogue Runtipi | `3` |
 
-Le numéro Chromium a été vérifié par un lancement direct de `cloakbrowser.launch(headless=True)` sur l'instance ; il peut différer d'une version téléchargée ultérieurement. Le tag `0.6.3` désigne l'image et la bibliothèque CloakBrowser, **pas** la version de Chromium.
+La version Chromium `155.0.8059.39` a été vérifiée via `GET /json/version?fingerprint=test01` sur le serveur CDP de l'instance Runtipi. Le lancement direct de `cloakbrowser.launch(headless=True)` donnait précédemment `146.0.7680.177`. Le binaire Chromium peut être actualisé indépendamment ; le tag `0.6.3` désigne l'image et la bibliothèque CloakBrowser, **pas** la version du navigateur.
 ## Installer
 
 1. Dans Runtipi 4.9.1 : **Settings → App Stores**, enregistrer `https://github.com/Ajilis/runtipi-appstore` puis actualiser le catalogue ; choisir **CloakBrowser**.
