@@ -7,14 +7,14 @@ Instance de [CloakBrowser](https://github.com/CloakHQ/CloakBrowser), Chromium fu
 ## Installer
 
 1. Dans Runtipi 4.9.1 : **Settings → App Stores**, enregistrer `https://github.com/Ajilis/runtipi-appstore` puis actualiser le catalogue ; choisir **CloakBrowser**.
-2. Dans le formulaire, `CLOAK_LISTEN_ADDRESS` vaut `0.0.0.0` par défaut pour le LAN. Préférer l'**IP LAN du serveur** (par exemple `192.168.1.10`) pour limiter les interfaces. Une clé CloakBrowser peut être renseignée si vous utilisez des binaires récents licenciés.
+2. Le port hôte est **fixé à `8291/tcp`** : l'éditeur Runtipi 4.9.1 interprétait mal les variables dans une déclaration `ports:`. Aucune variable d'adresse d'écoute n'est utilisée. Une clé de licence CloakBrowser peut être renseignée facultativement.
 3. Accès LAN : `http://IP_DU_SERVEUR:8291/` (JSON de santé). Tester le CDP avec `http://IP_DU_SERVEUR:8291/json/version?fingerprint=monprofil`.
 4. Dans **Cloudflare Zero Trust → Tunnels**, associer un *Public Hostname* HTTPS (par exemple `cdp.exemple.fr`) au service **HTTP** `http://IP_DU_SERVEUR:8291` (ou `http://127.0.0.1:8291` si cloudflared est exécuté sur l'hôte). **Configurer impérativement une politique Cloudflare Access** pour bloquer tout utilisateur non autorisé ; le CDP n'a aucune authentification native.
 5. Ne pas rediriger le port 8291 sur la box, et le filtrer par pare-feu pour n'autoriser que le LAN et cloudflared. Si cloudflared tourne dans un conteneur, son `127.0.0.1` ne désigne pas le serveur Runtipi.
 
 ## Réseau et usage
 
-- Publication directe `8291/tcp → 9222/tcp`. **Pas de `x-runtipi.is_main`, aucun routage Traefik**, `exposable=false`, `traefik.enable=false`.
+- Publication directe statique `8291:9222/tcp` pour éviter l'erreur de découpage de ports dans Runtipi 4.9.1. Par défaut Docker écoute sur toutes les interfaces réseau de l'hôte : **restreindre impérativement les sources par pare-feu à votre LAN et au tunnel**. **Pas de `x-runtipi.is_main`, aucun routage Traefik**, `exposable=false`, `traefik.enable=false`.
 - Test de santé : `curl -fsS http://IP_DU_SERVEUR:8291/`.
 - Exemple Playwright Python :
 
