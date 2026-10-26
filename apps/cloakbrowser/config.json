@@ -9,8 +9,8 @@
     "automation",
     "utilities"
   ],
-  "description": "CloakBrowser 0.6.3 : correction du port LAN fixe 8291 (éditeur Runtipi 4.9.1). Accès Cloudflare Tunnel sans Traefik, configuration et profils Chromium persistants. ATTENTION : CDP sans authentification native ; filtrer le port au pare-feu et imposer Cloudflare Access.",
-  "tipi_version": 2,
+  "description": "CloakBrowser 0.6.3 : serveur CDP sur port LAN 8291 avec Chromium en mode headless explicite et delai de demarrage de 45 s (correctif 502). Acces Cloudflare Tunnel sans Traefik. Profils SQLite et configuration persistants. CDP non authentifie : pare-feu LAN et Cloudflare Access requis.",
+  "tipi_version": 3,
   "version": "0.6.3",
   "source": "https://github.com/CloakHQ/CloakBrowser",
   "website": "https://cloakbrowser.dev",
