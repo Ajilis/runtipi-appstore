@@ -7,10 +7,12 @@
 | Navigateur Chromium (version vérifiée via le serveur CDP) | `155.0.8059.39` |
 | Image du conteneur Docker | `cloakhq/cloakbrowser:0.6.3` |
 | Version du logiciel CloakBrowser (dans l'image) | `0.6.3` |
-| Révision du catalogue Runtipi | `3` |
+| Révision du catalogue Runtipi | `4` |
 | Version minimale de Runtipi | `4.9.1` |
 
 La version **Chromium 155.0.8059.39** a été confirmée sur l'instance Runtipi par `GET /json/version?fingerprint=test01` via le serveur CDP. Une vérification précédente, effectuée par lancement direct du navigateur, indiquait `146.0.7680.177`. Ces valeurs sont observées à des moments différents et ne constituent pas des versions figées par le Compose. La version Chromium peut évoluer indépendamment du tag de l'image Docker.
+
+**Révision 4 (sauvegardes Runtipi) :** le lanceur nettoie les liens symboliques temporaires `SingletonLock`, `SingletonSocket` et `SingletonCookie` aux moments sûrs (démarrage, fin de session, arrêt gracieux), sans effacer les profils ni les bases SQLite. Délai d'arrêt Docker porté à `120s` pour faciliter une sauvegarde après l'arrêt du navigateur. [Procédure de mise à jour et de vérification](apps/cloakbrowser/metadata/description.md#correctif-sauvegarde-revision-runtipi-4).
 
 Accès direct LAN : `http://IP_DU_SERVEUR:8291` ; Cloudflare Tunnel vers ce port HTTP, sans Traefik. **L'API CDP n'étant pas authentifiée**, restreindre le port au LAN et protéger impérativement l'hôte public avec Cloudflare Access. Configuration et profils persistants.
 
