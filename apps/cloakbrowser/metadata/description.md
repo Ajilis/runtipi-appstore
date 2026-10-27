@@ -11,7 +11,7 @@ Instance de [CloakBrowser](https://github.com/CloakHQ/CloakBrowser), Chromium fu
 | Navigateur Chromium confirmé via CDP sur Runtipi | `155.0.8059.39` |
 | Image Docker / conteneur | `cloakhq/cloakbrowser:0.6.3` |
 | Bibliothèque CloakBrowser dans l'image | `0.6.3` |
-| Révision du catalogue Runtipi | `3` |
+| Révision du catalogue Runtipi | `4` |
 
 La version Chromium `155.0.8059.39` a été vérifiée via `GET /json/version?fingerprint=test01` sur le serveur CDP de l'instance Runtipi. Le lancement direct de `cloakbrowser.launch(headless=True)` donnait précédemment `146.0.7680.177`. Le binaire Chromium peut être actualisé indépendamment ; le tag `0.6.3` désigne l'image et la bibliothèque CloakBrowser, **pas** la version du navigateur.
 ## Installer
@@ -48,6 +48,25 @@ Si `GET /` renvoie `"status": "ok"` mais `GET /json/version?fingerprint=test01` 
 
 **Appliquer :** actualiser l'appstore Ajilis dans Runtipi, mettre a jour CloakBrowser (revision de catalogue 3) et redemarrer l'application. Aucune suppression du dossier `profiles/` ni de la configuration. Verifier ensuite `curl -i "http://IP_DU_SERVEUR:8291/json/version?fingerprint=test02"`. Si un 502 persiste, relever les nouveaux logs ; la presence d'erreurs D-Bus/Vulkan ne suffit pas, a elle seule, a etablir la cause du crash.
 
+## Correctif sauvegarde (revision Runtipi 4)
+
+Chromium conserve temporairement trois liens symboliques par profil : `SingletonLock`, `SingletonSocket` et `SingletonCookie`. La sauvegarde Runtipi refuse ces liens dans l'archive et peut afficher `Backup contains unsupported file types`.
+
+**Revision 4 :** le lanceur conserve toujours les profils Chromium et leurs bases SQLite, mais retire uniquement ces trois liens **lorsqu'ils sont symboliques** : apres la fermeture de chaque processus Chrome, au demarrage (residus des precedents arrets) et apres l'arret gracieux de tous les navigateurs. Aucun autre contenu de profil n'est supprime. Le service dispose de `stop_grace_period: 120s`, afin que Runtipi puisse le stopper proprement avant la copie des donnees.
+
+**Mise a jour :** actualiser le catalogue Ajilis dans Runtipi et mettre a jour CloakBrowser vers la revision **4**, puis demarrer l'application au moins une fois pour nettoyer les anciennes traces. Faire ensuite une sauvegarde Runtipi. Le processus de sauvegarde arrete l'application avant de copier ses donnees ; remettre en marche l'application si necessaire apres cette operation.
+
+**Controle facultatif apres arret :**
+
+```bash
+sudo find /root/runtipi/app-data/appstore-ajilis/cloakbrowser/profiles \\
+  -mindepth 2 -maxdepth 2 -type l \\
+  \( -name 'SingletonLock' -o -name 'SingletonSocket' -o -name 'SingletonCookie' \) \\
+  -print
+```
+
+Aucune ligne n'est attendue apres un arret gracieux. Si Docker tue brutalement le conteneur (SIGKILL, panne ou OOM), le nettoyage de sortie n'est pas garanti ; redemarrer puis arreter proprement avec la revision 4 avant de sauvegarder. Une restauration complete reste a valider sur une instance de test.
+
 ## Persistance
 
 Les fichiers survivent aux redémarrages dans `runtipi/app-data/<slug-du-store>/cloakbrowser/` :
@@ -60,7 +79,7 @@ Les fichiers survivent aux redémarrages dans `runtipi/app-data/<slug-du-store>/
 
 **Pas de base PostgreSQL/MySQL/Redis externe :** CloakBrowser n'en utilise pas. Les données persistantes résident dans les fichiers des profils Chromium (dont notamment `History` et `Cookies`, au format SQLite).
 
-En version 0.6.3, `cloakserve` efface les profils lorsqu'il nettoie les processus inactifs. Le démarrage de ce paquet charge le programme original depuis l'image Docker et neutralise uniquement sa fonction de suppression de dossier ; les profils demeurent après arrêt, expiration d'inactivité et redémarrage. Cette adaptation dépend de l'implémentation du binaire **0.6.3** ; toute mise à jour doit revérifier ce comportement. Ne jamais partager un profil entre deux instances simultanées.
+En version 0.6.3, `cloakserve` efface normalement les profils lorsqu'il nettoie les processus inactifs. Le lanceur adapte cette methode pour **conserver toutes les donnees de profil**, en ne supprimant que les liens symboliques `Singleton*` identifies lors des arrets. Il nettoie egalement les verrous residuels au demarrage et a l'arret gracieux. Cette adaptation depend des interfaces internes de **0.6.3** ; toute mise a jour de l'image doit reverifier ce comportement. Ne jamais partager un profil entre deux instances simultanees.
 
 Fichier persistant `config/cloakserve.json`, créé seulement s'il est absent :
 
@@ -73,7 +92,7 @@ Fichier persistant `config/cloakserve.json`, créé seulement s'il est absent :
 
 Modifier le fichier puis redémarrer l'application pour appliquer les changements. La valeur `idle_timeout_seconds: 0` désactive l'arrêt des processus inactifs. La conservation des profils reste active.
 
-**Sauvegardes :** arrêter l'application avant de copier `config/`, `profiles/` et `cache/`, afin d'éviter une copie incohérente des fichiers SQLite. Sauvegarder aussi la clé de licence depuis Runtipi. La désinstallation peut supprimer les volumes de données applicatives.
+**Sauvegardes :** utiliser de preference la fonction de sauvegarde Runtipi, qui arrete l'application avant de copier `config/`, `profiles/` et `cache/`. Verifier que les verrous `Singleton*` sont absents avant une sauvegarde manuelle et eviter toute copie de SQLite lorsque Chromium tourne. Sauvegarder aussi la cle de licence depuis Runtipi. La desinstallation peut supprimer les donnees applicatives.
 
 ## Sécurité et limitations
 
