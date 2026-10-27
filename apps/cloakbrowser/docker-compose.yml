@@ -1,4 +1,4 @@
-# CloakBrowser 0.6.3 | Runtipi 4.9.1 | LAN + Cloudflare Tunnel | rev 3
+# CloakBrowser 0.6.3 | Runtipi 4.9.1 | LAN + Cloudflare Tunnel | rev 4
 # IMPORTANT : CDP n'a pas d'authentification native. Limiter le port au LAN
 # par pare-feu et imposer Cloudflare Access sur le hostname du tunnel.
 # Pas de x-runtipi.is_main, pas de reseau Traefik, aucun proxy ajoute.
@@ -7,6 +7,9 @@ services:
     image: cloakhq/cloakbrowser:0.6.3
     restart: unless-stopped
     init: true
+    # Runtipi arrete le service avant sauvegarde : laisser le temps a Chromium
+    # de fermer les profils et au lanceur de retirer les liens Singleton*.
+    stop_grace_period: 120s
     shm_size: "1gb"
     environment:
       TZ: "${TZ:-Europe/Paris}"
@@ -19,9 +22,9 @@ services:
       - "${APP_DATA_DIR}/config:/config"
       - "${APP_DATA_DIR}/profiles:/profiles"
       - "${APP_DATA_DIR}/cache:/root/.cloakbrowser"
-    # L'upstream cloakserve supprime les profils a l'arret/expiration ;
-    # ici, on neutralise uniquement cette suppression pour garder les
-    # fichiers Chromium et bases SQLite dans APP_DATA_DIR/profiles.
+    # cloakserve efface normalement les profils a leur expiration.
+    # Le lanceur preserve les donnees et retire uniquement les symlinks
+    # Singleton* avant demarrage et apres arret des navigateurs.
     command:
       - /bin/sh
       - -ec
@@ -56,7 +59,56 @@ services:
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         loader.exec_module(module)
-        module.ChromePool._safe_rmtree = lambda self, path: None
+
+        # Conserver profils, cookies et SQLite, tout en eliminant les seuls
+        # liens symboliques temporaires de verrouillage Chromium.
+        # Runtipi refuse ces liens lors de la creation d'une sauvegarde.
+        profile_root = Path('/profiles')
+        singleton_names = ('SingletonLock', 'SingletonSocket', 'SingletonCookie')
+
+        def clean_singletons(profile):
+            profile = Path(profile)
+            # N'accepter qu'un dossier directement sous /profiles.
+            # Ne jamais suivre un symlink ni supprimer de fichier ordinaire.
+            if profile.parent != profile_root or profile.is_symlink() or not profile.is_dir():
+                return
+            for name in singleton_names:
+                link = profile / name
+                try:
+                    if link.is_symlink():
+                        link.unlink()
+                except OSError:
+                    module.logger.exception("Impossible de nettoyer %s", link)
+
+        def clean_stale_singletons():
+            for entry in profile_root.iterdir():
+                clean_singletons(entry)
+
+        def preserve_profile(self, path):
+            # Appele par cloakserve apres l'arret du processus Chrome.
+            clean_singletons(path)
+
+        module.ChromePool._safe_rmtree = preserve_profile
+
+        # Un arret brutal anterieur peut laisser des verrous dans des profils
+        # inactifs. Les retirer AVANT le premier demarrage Chromium.
+        clean_stale_singletons()
+
+        # Lors d'une sauvegarde Runtipi, Docker stoppe le conteneur AVANT de
+        # copier les donnees : nettoyer aussi les profils inactifs a l'arret.
+        upstream_shutdown = module.ChromePool.shutdown
+        async def shutdown_and_clean(self):
+            previous_processes = [p.process for p in self._processes.values()]
+            try:
+                await upstream_shutdown(self)
+            finally:
+                if all(proc.poll() is not None for proc in previous_processes):
+                    clean_stale_singletons()
+                else:
+                    module.logger.warning(
+                        "Arret Chromium incomplet : verrous conserves pour securite"
+                    )
+        module.ChromePool.shutdown = shutdown_and_clean
 
         # cloakserve lance Chromium directement (subprocess.Popen) : son option
         # headless=True ne transmet pas le vrai flag --headless a Chromium.
