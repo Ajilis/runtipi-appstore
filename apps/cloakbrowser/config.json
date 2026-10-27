@@ -9,8 +9,8 @@
     "automation",
     "utilities"
   ],
-  "description": "CloakBrowser 0.6.3 : serveur CDP sur port LAN 8291 avec Chromium en mode headless explicite et delai de demarrage de 45 s (correctif 502). Acces Cloudflare Tunnel sans Traefik. Profils SQLite et configuration persistants. CDP non authentifie : pare-feu LAN et Cloudflare Access requis.",
-  "tipi_version": 3,
+  "description": "CloakBrowser 0.6.3 (catalogue v4) : profils Chromium, cookies et SQLite persistants ; nettoyage automatique des liens Singleton* pour permettre les sauvegardes Runtipi. Correctif CDP 502 (headless, attente 45 s), arret gracieux 120 s. Port LAN 8291 / Cloudflare Tunnel, sans Traefik. CDP sans authentification : pare-feu LAN et Cloudflare Access obligatoires.",
+  "tipi_version": 4,
   "version": "0.6.3",
   "source": "https://github.com/CloakHQ/CloakBrowser",
   "website": "https://cloakbrowser.dev",
