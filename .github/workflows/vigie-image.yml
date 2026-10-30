@@ -95,14 +95,29 @@ jobs:
       - name: Smoke test (start, health, persistent files, security headers)
         run: |
           mkdir -p /tmp/vigie-data
-          docker run -d --name vigie -p 18080:8080 -e VIGIE_APP_SECRET=$(openssl rand -hex 32) -v /tmp/vigie-data:/data vigie:smoke
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/health && break; sleep 1; done
-          curl -fsS http://127.0.0.1:18080/api/auth/state | grep -q '"setup_required":true'
-          curl -fsSI http://127.0.0.1:18080/ | grep -qi "content-security-policy"
-          sudo test -s /tmp/vigie-data/config/vigie.env
-          sudo test -s /tmp/vigie-data/db/vigie.sqlite
-          docker logs vigie
-          docker rm -f vigie
+          docker run -d --name vigie -p 18080:8080 -e VIGIE_APP_SECRET="$(openssl rand -hex 32)" -v /tmp/vigie-data:/data vigie:smoke
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/api/health; then ok=1; break; fi
+            sleep 1
+          done
+          echo
+          test -n "$ok" || { echo "::error::Vigie did not answer /api/health"; exit 1; }
+          state="$(curl -fsS http://127.0.0.1:18080/api/auth/state)"
+          echo "$state"
+          grep -q '"setup_required":true' <<< "$state" || { echo "::error::Unexpected setup state"; exit 1; }
+          headers="$(curl -fsS -D - -o /dev/null http://127.0.0.1:18080/)"
+          echo "$headers"
+          grep -qi '^content-security-policy:' <<< "$headers" || { echo "::error::Missing CSP header"; exit 1; }
+          sudo ls -la /tmp/vigie-data/config /tmp/vigie-data/db
+          sudo test -s /tmp/vigie-data/config/vigie.env || { echo "::error::Missing persistent config file"; exit 1; }
+          sudo test -s /tmp/vigie-data/db/vigie.sqlite || { echo "::error::Missing persistent database"; exit 1; }
+
+      - name: Container logs
+        if: always()
+        run: |
+          docker logs vigie 2>&1 || true
+          docker rm -f vigie > /dev/null 2>&1 || true
 
       - uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
