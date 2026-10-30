@@ -1,0 +1,42 @@
+# Vigie Patrimoine pour Runtipi 4.9.1 (App Store Ajilis) : Cloudflare Tunnel, sans Traefik.
+#
+# Accès réseau : le port hôte ${APP_PORT} (8289 par défaut) est publié directement vers le port 8080
+# du conteneur. Pas de service principal Runtipi (is_main), donc ni réseau Traefik ni étiquettes de routage :
+#   - réseau local      : http://IP_DU_SERVEUR:8289
+#   - Cloudflare Tunnel : service http://IP_DU_SERVEUR:8289
+#                         (ou http://127.0.0.1:8289 si cloudflared tourne sur l'hôte en réseau hôte)
+# "exposable": false dans config.json : Runtipi ne propose ni domaine ni exposition locale.
+# Ne pas rediriger le port 8289 depuis la box : seul le tunnel doit être public.
+#
+# Persistance (dossier de l'application dans Runtipi, ${APP_DATA_DIR}/data) :
+#   config  -> vigie.env, fichier de configuration créé au premier démarrage et jamais écrasé
+#   db      -> vigie.sqlite, base de données
+#   backups -> sauvegardes quotidiennes de la base (VACUUM INTO), conservées 30 jours par défaut
+services:
+  vigie:
+    image: ghcr.io/ajilis/vigie:0.1.0
+    restart: unless-stopped
+    environment:
+      VIGIE_APP_SECRET: "${VIGIE_APP_SECRET}"
+      VIGIE_REQUIRE_2FA: "${VIGIE_REQUIRE_2FA:-false}"
+      TZ: "${TZ:-Europe/Paris}"
+      PORT: "8080"
+      DATA_DIR: "/data"
+    volumes:
+      - ${APP_DATA_DIR}/data/config:/data/config
+      - ${APP_DATA_DIR}/data/db:/data/db
+      - ${APP_DATA_DIR}/data/backups:/data/backups
+    ports:
+      - "${VIGIE_LISTEN_ADDRESS:-0.0.0.0}:${APP_PORT:-8289}:8080/tcp"
+    labels:
+      traefik.enable: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_grace_period: 15s
+
+x-runtipi:
+  schema_version: 2

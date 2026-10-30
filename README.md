@@ -19,6 +19,8 @@ Accès direct LAN : `http://IP_DU_SERVEUR:8291` ; Cloudflare Tunnel vers ce port
 Fichiers : [Docker Compose](apps/cloakbrowser/docker-compose.yml) · [Configuration Runtipi](apps/cloakbrowser/config.json) · [Documentation de CloakBrowser](apps/cloakbrowser/metadata/description.md).
 
 ---
+**Vigie Patrimoine (0.1.0)** : nouvelle application de suivi de patrimoine personnel sur le port LAN **8289**, sans Traefik ; Cloudflare Tunnel via HTTP local. Avoirs par catégorie sans gestion des mouvements, historique, passifs, contrôle d'accès avec double authentification. [Installation](#installer-vigie-patrimoine-suivi-de-patrimoine-cloudflare-tunnel-sans-traefik).
+
 **Postiz complet (Temporal + Elasticsearch)** — nouvelle entrée `postiz` sur le port LAN **8287**, sans Traefik ; Cloudflare Tunnel via HTTP local. [Installation](apps/postiz/metadata/description.md).
 
 **Rendevo V38 (0.2.27)** : suppression du secteur et du bloc informatif de la recherche web publique ; prompt IA sur les trois champs restants, sans secteur caché issu de la campagne. [Documentation](sources/rendevo/README.md).
@@ -93,7 +95,7 @@ L'application écoute en HTTP sur le port local `8284` et conserve `FORCE_SSL=fa
 
 **Différence avec l'ancienne version :** le service Elasticsearch et son volume déclaré ont été retirés du Compose, et `ELASTICSEARCH_ENABLED=false` est appliqué à Zammad. La recherche plein texte indexée peut être indisponible. Sauvegarder les données avant une mise à jour ; ne pas supprimer les volumes PostgreSQL ou le stockage utilisateur.
 
-**Ports :** Chatwoot `8284`, Zammad `8285`, Postiz `8286` et Rendevo `8288`, chacun à associer à un nom de domaine Cloudflare distinct.
+**Ports :** Chatwoot `8284`, Zammad `8285`, Postiz `8286`, Rendevo `8288` et Vigie `8289`, chacun à associer à un nom de domaine Cloudflare distinct.
 
 **Installation sécurisée (version du catalogue 9) :** Zammad préserve les données et les fichiers de configuration lors des mises à jour et conserve le précontrôle de récupération après une installation inachevée (sauvegarde PostgreSQL avant réinitialisation limitée au cas sans utilisateur ni ticket). Le port `8285:8080/tcp` est accessible sur le LAN (par exemple `http://192.168.1.16:8285/`) et avec Cloudflare Tunnel (`http://127.0.0.1:8285` si cloudflared utilise le réseau hôte). Les connexions applicatives sont prévues sur le domaine public HTTPS canonique ; une adresse IP HTTP peut être redirigée. Ne pas publier ce port sur Internet ; aucun Traefik applicatif. Le port reste fixe à 8285.
 
@@ -135,3 +137,23 @@ Le connecteur optionnel **Mon LinkedIn (cookie)** vérifie la session uniquement
 Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/description.md) · Sources et feuille de route : [`sources/rendevo`](sources/rendevo/README.md).
 
 **À valider :** l'image est construite automatiquement après le push ; le déploiement sur une instance Runtipi réelle reste à tester. L'automatisation de LinkedIn par un service tiers est restreinte par les conditions de LinkedIn : utiliser des budgets prudents et la pause en un clic.
+
+## Installer Vigie Patrimoine (suivi de patrimoine, Cloudflare Tunnel, sans Traefik)
+
+**Version du catalogue Runtipi : 1** · **Version du logiciel : Vigie 0.1.0** · **Runtipi minimum : 4.9.1**
+
+Vigie donne une vue globale de votre patrimoine sans gérer les mouvements : une valeur par avoir et par date. Patrimoine net (passifs déduits), historique et variations, répartition par catégorie, établissement, titulaire, devise et liquidité, allocation cible, mise à jour rapide, rappels, multi-devises (taux BCE), mode discret, exports et sauvegardes. Un seul conteneur (Node.js + SQLite, image `ghcr.io/ajilis/vigie`).
+
+1. **Image Docker :** construite par GitHub Actions (`.github/workflows/vigie-image.yml`) à chaque modification de `sources/vigie/`. Au premier passage, vérifier dans **GitHub → Packages → vigie → Package settings** que la visibilité est **Public**, sinon Runtipi ne pourra pas télécharger l'image.
+2. Dans **Runtipi → Settings → App Stores**, actualiser `https://github.com/Ajilis/runtipi-appstore`, puis installer **Vigie Patrimoine** (port local **8289**). Le secret est généré par Runtipi ; cocher **Double authentification obligatoire** si Vigie sera joignable par le tunnel.
+3. Ouvrir **`http://IP_LAN_DU_SERVEUR:8289` depuis le réseau local** pour créer le compte administrateur : par sécurité, le premier compte ne peut pas être créé à travers Cloudflare.
+4. Dans Cloudflare Tunnel, créer un *Public Hostname* (par exemple `patrimoine.exemple.fr`) vers `http://IP_LAN_DU_SERVEUR:8289`, ou `http://127.0.0.1:8289` si `cloudflared` tourne sur l'hôte en réseau hôte.
+5. Ne pas ouvrir le port 8289 sur le routeur. Le port est publié directement par Docker, sans service principal Runtipi ni réseau Traefik (`exposable: false`, `traefik.enable=false`).
+
+**Contrôle d'accès :** rôles administrateur, éditeur et lecture seule ; double authentification TOTP avec codes de secours ; blocage après 5 échecs ; sessions révocables ; journal d'audit.
+
+Données persistantes dans `APP_DATA_DIR/data/` : `config/vigie.env` (fichier de configuration créé au premier démarrage, jamais écrasé), `db/vigie.sqlite` (base de données) et `backups/` (sauvegardes quotidiennes). Ne jamais changer le secret de l'application après l'installation.
+
+Documentation : [`apps/vigie/metadata/description.md`](apps/vigie/metadata/description.md) · Sources : [`sources/vigie`](sources/vigie/README.md).
+
+**À valider :** Compose vérifié avec le code de Runtipi 4.9.1 et `docker compose config` ; le déploiement sur une instance Runtipi réelle reste à tester.

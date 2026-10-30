@@ -1,0 +1,2 @@
+qrcode-generator 83b7e8fe3fddd3b0368dbafd6ce56995bd25e3c8 (2025-08-07)
+public-sans e40fcf567e44b4f5f08a658247663275fa1ad741 (2026-10-01)

@@ -1,0 +1,56 @@
+{
+  "name": "Vigie Patrimoine",
+  "id": "vigie",
+  "available": true,
+  "short_desc": "Vue globale et privée de votre patrimoine : avoirs par catégorie, historique, passifs et contrôle d'accès.",
+  "author": "Ajilis",
+  "port": 8289,
+  "categories": [
+    "finance",
+    "utilities"
+  ],
+  "description": "Version du catalogue Runtipi : 1 | Version Vigie : 0.1.0. Portefeuille personnel sans gestion des mouvements : vous saisissez la valeur de chaque avoir à une date, Vigie calcule le patrimoine net, la répartition par catégorie, établissement, titulaire et devise, la liquidité et l'évolution dans le temps. Passifs (crédits) déduits, allocation cible par catégorie, mise à jour rapide de tous les avoirs, rappels des valeurs anciennes, multi-devises avec taux BCE, mode discret, exports CSV et JSON, restauration et sauvegarde quotidienne de la base. Contrôle d'accès : comptes avec rôles (administrateur, éditeur, lecture seule), double authentification TOTP et codes de secours, blocage après échecs, sessions révocables, journal d'audit ; premier compte créé uniquement depuis le réseau local. Node.js + SQLite, un seul conteneur, fichier de configuration et base persistants. Accès local http://IP:8289 et Cloudflare Tunnel, sans Traefik.",
+  "tipi_version": 1,
+  "version": "0.1.0",
+  "source": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/vigie",
+  "website": "https://github.com/Ajilis/runtipi-appstore/tree/main/sources/vigie",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "random",
+      "label": "Secret de l'application",
+      "hint": "Chiffre les clés de double authentification enregistrées. Ne jamais le modifier après l'installation.",
+      "required": true,
+      "min": 64,
+      "encoding": "hex",
+      "env_variable": "VIGIE_APP_SECRET"
+    },
+    {
+      "type": "boolean",
+      "label": "Double authentification obligatoire",
+      "hint": "Coché : chaque utilisateur doit activer un code TOTP avant d'accéder aux données. Recommandé si Vigie est accessible par Cloudflare Tunnel.",
+      "required": false,
+      "default": false,
+      "env_variable": "VIGIE_REQUIRE_2FA"
+    },
+    {
+      "type": "ip",
+      "label": "Adresse IP d'écoute sur le serveur",
+      "hint": "0.0.0.0 permet l'accès par http://IP_DU_SERVEUR:8289 sur le réseau local et par Cloudflare Tunnel. Indiquer l'adresse LAN du serveur pour limiter l'écoute à cette interface.",
+      "placeholder": "0.0.0.0",
+      "required": true,
+      "default": "0.0.0.0",
+      "env_variable": "VIGIE_LISTEN_ADDRESS"
+    }
+  ],
+  "created_at": 1793350800000,
+  "updated_at": 1793350800000
+}

@@ -1,0 +1,129 @@
+name: Vigie image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sources/vigie/**'
+      - 'apps/vigie/**'
+      - '.github/workflows/vigie-image.yml'
+  pull_request:
+    paths:
+      - 'sources/vigie/**'
+      - 'apps/vigie/**'
+      - '.github/workflows/vigie-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: vigie-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Check sources
+        working-directory: sources/vigie
+        run: for f in server/*.js web/app.js; do node --check "$f"; done
+
+      - name: Run tests (API, access control, 2FA, calculations)
+        working-directory: sources/vigie
+        env:
+          TZ: Europe/Paris
+        run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Metadata
+        id: meta
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./sources/vigie/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Runtipi catalog manifest
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const app = require("./apps/vigie/config.json");
+            const pkg = require("./sources/vigie/package.json");
+            const compose = fs.readFileSync("./apps/vigie/docker-compose.yml", "utf8");
+            for (const field of ["created_at", "updated_at"]) {
+              if (!Number.isInteger(app[field]) || app[field] >= Date.now()) throw new Error(field + " must be an earlier Unix millisecond timestamp");
+            }
+            if (app.version !== pkg.version || !compose.includes("ghcr.io/ajilis/vigie:" + app.version)) {
+              throw new Error("Catalog, package and Docker image versions must match");
+            }
+            if (app.exposable !== false || /traefik\.http/.test(compose)) throw new Error("Vigie must stay without Traefik routing");
+            if (!fs.existsSync("./apps/vigie/metadata/logo.jpg")) throw new Error("Missing logo.jpg");
+          '
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image for the smoke test (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: sources/vigie
+          load: true
+          tags: vigie:smoke
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha,scope=vigie
+          cache-to: type=gha,mode=max,scope=vigie
+
+      - name: Smoke test (start, health, persistent files, security headers)
+        run: |
+          mkdir -p /tmp/vigie-data
+          docker run -d --name vigie -p 18080:8080 -e VIGIE_APP_SECRET=$(openssl rand -hex 32) -v /tmp/vigie-data:/data vigie:smoke
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/health && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18080/api/auth/state | grep -q '"setup_required":true'
+          curl -fsSI http://127.0.0.1:18080/ | grep -qi "content-security-policy"
+          sudo test -s /tmp/vigie-data/config/vigie.env
+          sudo test -s /tmp/vigie-data/db/vigie.sqlite
+          docker logs vigie
+          docker rm -f vigie
+
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish (amd64, arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: sources/vigie
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha,scope=vigie
+          cache-to: type=gha,mode=max,scope=vigie
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.owner }}/vigie:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ steps.meta.outputs.owner }}/vigie:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
