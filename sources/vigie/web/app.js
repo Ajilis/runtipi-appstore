@@ -102,6 +102,16 @@
   const LIQ = { immediate: 'Disponible', short: 'Sous quelques semaines', locked: 'Bloqué ou illiquide' };
   const LIQ_SHORT = { immediate: 'Disponible', short: 'Court terme', locked: 'Bloqué' };
   const ROLE = { admin: 'Administrateur', editor: 'Éditeur', viewer: 'Lecture seule' };
+  const LIQ_ICON = { immediate: 'drop', short: 'clock', locked: 'lock' };
+  const ROLE_ICON = { admin: 'crown', editor: 'pencil', viewer: 'eye' };
+  const catIconKey = (c) => (c && c.icon && CAT_ICONS[c.icon] ? c.icon : (c && c.kind === 'liability' ? 'loanDoc' : 'cube'));
+  const pict = (key, cls = '') => html`<span class="pict ${cls}" aria-hidden="true">${icon(key)}</span>`;
+  const catPict = (c, cls = '') => pict(catIconKey(c), `${c && c.kind === 'liability' ? 'liability' : ''} ${cls}`.trim());
+  const nameInitials = (name) => { const w = String(name || '?').trim().split(/\s+/); return ((w[0] || '?').charAt(0) + (w.length > 1 ? w[w.length - 1].charAt(0) : '')).toUpperCase(); };
+  const avatar = (name, cls = '') => html`<span class="avatar ${cls}" aria-hidden="true">${nameInitials(name)}</span>`;
+  const h2i = (name, text) => html`<h2 class="ti">${icon(name)}<span>${text}</span></h2>`;
+  const h3i = (name, text) => html`<h3 class="ti">${icon(name)}<span>${text}</span></h3>`;
+  const il = (name, text) => html`<span class="il">${icon(name)}<span>${text}</span></span>`;
   const initials = (u) => (((u.first_name || u.display_name || u.username || '?').trim().charAt(0)) + ((u.last_name || '').trim().charAt(0))).toUpperCase();
   const nameFields = (u = {}, autofocus = false) => html`<div class="grid-2">
     <label class="field"><span>Prénom</span><input class="input" name="first_name" autocomplete="given-name" required maxlength="60" value="${u.first_name || ''}" ${autofocus ? raw('autofocus') : ''}></label>
@@ -139,6 +149,10 @@
     check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/>',
   };
+  // Pictogrammes complémentaires (web/icons.js) : interface et catégories.
+  const CAT_ICONS = (window.VIGIE_ICONS && window.VIGIE_ICONS.categories) || {};
+  Object.assign(P, (window.VIGIE_ICONS && window.VIGIE_ICONS.ui) || {});
+  for (const [k, v] of Object.entries(CAT_ICONS)) if (!P[k]) P[k] = v.d;
   const icon = (name) => raw(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`);
   const MARK = raw('<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#1e5a4e"/><g fill="none" stroke-width="5" stroke-linecap="round" transform="rotate(-90 32 32)"><circle cx="32" cy="32" r="18" stroke="#e3efeb" stroke-dasharray="55 58.1" /><circle cx="32" cy="32" r="18" stroke="#8fd1bf" stroke-dasharray="30 83.1" stroke-dashoffset="-63"/><circle cx="32" cy="32" r="18" stroke="#d8b26a" stroke-dasharray="6 107.1" stroke-dashoffset="-101"/></g><circle cx="32" cy="32" r="5" fill="#ffffff"/></svg>');
 
@@ -274,19 +288,19 @@
     return raw(`<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`);
   }
 
-  function bars(items, { total, targets = false, liability = false, empty = 'Rien à afficher.' } = {}) {
+  function bars(items, { total, targets = false, liability = false, empty = 'Rien à afficher.', lead = null } = {}) {
     const rows = items.filter((i) => i.value !== 0 || (targets && i.target_pct));
     if (!rows.length) return html`<p class="muted">${empty}</p>`;
     const maxPct = Math.max(...rows.map((i) => Math.max(total ? i.value / total : 0, i.target_pct || 0)), 0.0001);
     return html`<div class="bars ${liability ? 'liability' : ''}">${rows.map((i) => {
       const share = total ? i.value / total : 0;
       const hasTarget = targets && i.target_pct !== null && i.target_pct !== undefined;
-      const sub = hasTarget ? html`${pct(share)} pour ${pct(i.target_pct, { digits: 0 })} visés` : pct(share);
+      const sub = hasTarget ? html`${pct(share)}, cible ${pct(i.target_pct, { digits: 0 })}` : pct(share);
       const right = hasTarget && Math.abs(i.gap) >= 100
         ? html`<span>${i.gap > 0 ? 'manque' : 'excédent'} ${money(Math.abs(i.gap))}</span>`
         : html`<span>${i.count} avoir${i.count > 1 ? 's' : ''}</span>`;
       return html`<div class="bar-row">
-        <div class="label"><b>${i.label || i.name}</b><span>${sub}</span></div>
+        <div class="label">${lead ? lead(i) : ''}<div class="txt"><b>${i.label || i.name}</b><span>${sub}</span></div></div>
         <div class="track" aria-hidden="true"><div class="fill" style="width:${((share / maxPct) * 100).toFixed(2)}%"></div>${hasTarget && i.target_pct ? html`<div class="target" style="left:${((i.target_pct / maxPct) * 100).toFixed(2)}%"></div>` : ''}</div>
         <div class="value"><b>${money(i.value)}</b>${right}</div>
       </div>`;
@@ -299,7 +313,7 @@
   function toast(message, type = 'ok') {
     const el = document.createElement('div');
     el.className = 'toast' + (type === 'error' ? ' error' : '');
-    el.textContent = message;
+    el.innerHTML = part(html`${icon(type === 'error' ? 'alert' : 'check')}<span>${message}</span>`);
     $('#toasts').append(el);
     setTimeout(() => el.remove(), type === 'error' ? 6000 : 3200);
   }
@@ -333,8 +347,8 @@
   });
   modal().addEventListener('click', (e) => { if (e.target === modal()) closeDialog(); });
 
-  function dialogHead(title, sub) {
-    return html`<div class="dialog-head"><div><h2 id="modal-title">${title}</h2>${sub ? html`<p>${sub}</p>` : ''}</div>
+  function dialogHead(title, sub, lead = '') {
+    return html`<div class="dialog-head"><div class="dh">${lead}<div><h2 id="modal-title">${title}</h2>${sub ? html`<p>${sub}</p>` : ''}</div></div>
       <button class="btn icon ghost" type="button" data-action="close-dialog" aria-label="Fermer">${icon('close')}</button></div>`;
   }
 
@@ -407,7 +421,7 @@
         <label class="field"><span>Confirmation du mot de passe</span><input class="input" type="password" name="confirm" autocomplete="new-password" required minlength="10"></label>
         <label class="field"><span>Devise de référence</span><select class="select" name="base_currency">${cur}</select><small>Tous les totaux seront exprimés dans cette devise.</small></label>
         <p class="error-text" id="setup-error" hidden></p>
-        <button class="btn primary" type="submit">Créer mon compte administrateur</button>
+        <button class="btn primary" type="submit">${icon('crown')}Créer mon compte administrateur</button>
       </form>`);
     $('#setup-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -431,7 +445,7 @@
         <label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" autocomplete="username" required autofocus></label>
         <label class="field"><span>Mot de passe</span><input class="input" type="password" name="password" autocomplete="current-password" required></label>
         <p class="error-text" id="login-error" role="alert" hidden></p>
-        <button class="btn primary" type="submit">Se connecter</button>
+        <button class="btn primary" type="submit">${icon('login')}Se connecter</button>
       </form>`);
     $('#login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -451,7 +465,7 @@
       <form class="form" id="totp-form">
         <label class="field"><span>Code</span><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="12" autofocus></label>
         <p class="error-text" id="totp-error" role="alert" hidden></p>
-        <button class="btn primary" type="submit">Valider</button>
+        <button class="btn primary" type="submit">${icon('shield')}Valider</button>
         <button class="btn ghost" type="button" id="totp-back">Revenir à la connexion</button>
       </form>`);
     $('#totp-back').addEventListener('click', () => showLogin());
@@ -567,6 +581,12 @@
   // ---------------------------------------------------------------------------------------------------------
   // Tableau de bord
   // ---------------------------------------------------------------------------------------------------------
+  function groupLead(kind, g) {
+    if (kind === 'currency') return html`<span class="pict neutral code" aria-hidden="true">${g.label}</span>`;
+    if (kind === 'owner') return g.key === '—' ? pict('user', 'neutral') : avatar(g.label, 'pictsize');
+    return pict(g.key === '—' ? 'cube' : 'bank', 'neutral');
+  }
+
   async function pageDashboard(el, route, current) {
     const [d, h] = await Promise.all([api('GET', '/api/dashboard'), api('GET', `/api/history?range=${state.range}`)]);
     if (!current()) return;
@@ -576,7 +596,7 @@
     if (d.counts.total === 0) {
       el.innerHTML = part(html`<section class="hero">${engraving()}
         <p class="hero-label">Patrimoine net</p><p class="hero-value">${money(0)}</p>
-        <div class="empty" style="justify-items:start;text-align:left;padding:8px 0 18px"><h2>Commencez par vos comptes et vos biens</h2>
+        <div class="empty" style="justify-items:start;text-align:left;padding:8px 0 18px">${pict('stack', 'lg')}<h2>Commencez par vos comptes et vos biens</h2>
         <p>Ajoutez chaque avoir avec sa valeur du jour : comptes, livrets, assurance-vie, bourse, immobilier, crédits. Vigie conserve chaque mise à jour pour tracer l'évolution de votre patrimoine.</p>
         ${canEdit() ? html`<button class="btn primary" data-action="new-holding">${icon('plus')}Ajouter un avoir</button>` : html`<p>Un éditeur ou un administrateur doit d'abord saisir les avoirs.</p>`}</div></section>`);
       return;
@@ -610,32 +630,32 @@
       </section>
       <div class="cols">
         <section class="section">
-          <div class="section-head"><h2>Répartition des actifs</h2>${targets ? html`<div class="legend-inline"><span><i class="sw-bar"></i>Part actuelle</span><span><i class="sw-target"></i>Cible</span></div>` : html`<a class="small" href="#/categories">Définir des cibles</a>`}</div>
-          <div class="panel">${bars(assetsCats.map((c) => ({ ...c, label: c.name })), { total: d.totals.assets, targets: true, empty: 'Aucun actif valorisé.' })}</div>
-          ${liabCats.some((c) => c.value) ? html`<div class="section-head"><h2>Passifs</h2></div><div class="panel">${bars(liabCats.map((c) => ({ ...c, label: c.name })), { total: d.totals.liabilities, liability: true })}</div>` : ''}
+          <div class="section-head">${h2i('categories', 'Répartition des actifs')}${targets ? html`<div class="legend-inline"><span><i class="sw-bar"></i>Part actuelle</span><span><i class="sw-target"></i>Cible</span></div>` : html`<a class="small" href="#/categories">Définir des cibles</a>`}</div>
+          <div class="panel">${bars(assetsCats.map((c) => ({ ...c, label: c.name })), { total: d.totals.assets, targets: true, empty: 'Aucun actif valorisé.', lead: (c) => catPict(c) })}</div>
+          ${liabCats.some((c) => c.value) ? html`<div class="section-head">${h2i('debt', 'Passifs')}</div><div class="panel">${bars(liabCats.map((c) => ({ ...c, label: c.name })), { total: d.totals.liabilities, liability: true, lead: (c) => catPict(c) })}</div>` : ''}
         </section>
         <aside class="stack">
-          <section class="section"><h2>En bref</h2><div class="panel figures">
-            <div class="figure"><span>Total des actifs</span><b>${money(d.totals.assets)}</b></div>
-            <div class="figure"><span>Total des passifs</span><b>${money(d.totals.liabilities ? -d.totals.liabilities : 0)}</b></div>
-            <div class="figure"><span>Disponible rapidement</span><b>${money(L.immediate)}</b></div>
-            <div class="figure"><span>Avoirs suivis</span><b>${d.counts.open}</b></div>
+          <section class="section">${h2i('info', 'En bref')}<div class="panel figures">
+            <div class="figure">${il('stack', 'Total des actifs')}<b>${money(d.totals.assets)}</b></div>
+            <div class="figure">${il('debt', 'Total des passifs')}<b>${money(d.totals.liabilities ? -d.totals.liabilities : 0)}</b></div>
+            <div class="figure">${il('drop', 'Disponible rapidement')}<b>${money(L.immediate)}</b></div>
+            <div class="figure">${il('holdings', 'Avoirs suivis')}<b>${d.counts.open}</b></div>
           </div></section>
-          <section class="section"><h2>Liquidité des actifs</h2><div class="panel">
+          <section class="section">${h2i('drop', 'Liquidité des actifs')}<div class="panel">
             <div class="strip" role="img" aria-label="Disponible ${pct(L.immediate / la)}, sous quelques semaines ${pct(L.short / la)}, bloqué ${pct(L.locked / la)}">
               ${['immediate', 'short', 'locked'].map((k, i) => (L[k] > 0 ? html`<span class="l${i + 1}" style="flex:${L[k]}"></span>` : ''))}</div>
-            <div class="liq-legend">${['immediate', 'short', 'locked'].map((k, i) => html`<div><i style="background:var(--liq-${i + 1})"></i><span>${LIQ[k]}</span><b>${money(L[k])}</b><span class="pct">${pct(L[k] / la, { digits: 0 })}</span></div>`)}</div>
+            <div class="liq-legend">${['immediate', 'short', 'locked'].map((k, i) => html`<div><i style="background:var(--liq-${i + 1})"></i>${il(LIQ_ICON[k], LIQ[k])}<b>${money(L[k])}</b><span class="pct">${pct(L[k] / la, { digits: 0 })}</span></div>`)}</div>
           </div></section>
-          <section class="section"><div class="section-head"><h2>À actualiser</h2>${d.stale.length && canEdit() ? html`<a class="small" href="#/actualiser">Tout mettre à jour</a>` : ''}</div><div class="panel">
-            ${d.stale.length ? html`<div class="reminders">${d.stale.slice(0, 6).map((s) => html`<a class="reminder" href="#/avoirs/${s.id}"><span><b>${s.name}</b><br><span class="small muted">${s.category}</span></span><span class="small muted nowrap">${s.last_date ? ago(s.age_days) : 'aucune valeur'}</span></a>`)}</div>${d.stale.length > 6 ? html`<p class="small muted" style="margin-top:8px">et ${d.stale.length - 6} autre(s)</p>` : ''}`
-              : html`<p class="muted">Toutes les valeurs ont moins de ${d.stale_days} jours.</p>`}
+          <section class="section"><div class="section-head">${h2i('bell', 'À actualiser')}${d.stale.length && canEdit() ? html`<a class="small" href="#/actualiser">Tout mettre à jour</a>` : ''}</div><div class="panel">
+            ${d.stale.length ? html`<div class="reminders">${d.stale.slice(0, 6).map((s) => html`<a class="reminder" href="#/avoirs/${s.id}"><span class="rl">${catPict({ icon: s.category_icon, kind: s.kind }, 'sm')}<span><b>${s.name}</b><br><span class="small muted">${s.category}</span></span></span><span class="small muted nowrap">${il('clock', s.last_date ? ago(s.age_days) : 'aucune valeur')}</span></a>`)}</div>${d.stale.length > 6 ? html`<p class="small muted" style="margin-top:8px">et ${d.stale.length - 6} autre(s)</p>` : ''}`
+              : html`<p class="muted">${il('check', `Toutes les valeurs ont moins de ${d.stale_days} jours.`)}</p>`}
           </div></section>
         </aside>
       </div>
       <section class="section">
-        <div class="section-head"><h2>Actifs par ${groupLabels[state.breakdown].toLowerCase()}</h2>
+        <div class="section-head">${h2i({ institution: 'bank', owner: 'users', currency: 'exchange' }[state.breakdown], `Actifs par ${groupLabels[state.breakdown].toLowerCase()}`)}
           <div class="seg" role="group" aria-label="Regrouper par">${Object.entries(groupLabels).map(([k, l]) => html`<button type="button" data-action="breakdown" data-key="${k}" aria-pressed="${state.breakdown === k}">${l}</button>`)}</div></div>
-        <div class="panel">${bars(d.groups[state.breakdown], { total: d.totals.assets })}</div>
+        <div class="panel">${bars(d.groups[state.breakdown], { total: d.totals.assets, lead: (g) => groupLead(state.breakdown, g) })}</div>
       </section>`);
     lineChart($('#net-chart'), h.points.map((p) => ({ date: p.date, value: p.net })), { label: 'Évolution du patrimoine net', height: 240 });
   }
@@ -658,21 +678,21 @@
       $('#holdings-list').innerHTML = part(groups.length ? groups.map(({ c, items }) => {
         const sum = items.reduce((s, h) => s + (h.closed_at ? 0 : h.value_base || 0), 0);
         return html`<section class="panel flush group" aria-label="${c.name}">
-          <div class="group-head"><div><h3>${c.name}</h3><span class="sub">${c.kind === 'liability' ? 'Passif' : c.description || ''}</span></div><b>${money(c.kind === 'liability' ? -sum : sum)}</b></div>
+          <div class="group-head"><div class="gh">${catPict(c)}<div><h3>${c.name}</h3><span class="sub">${c.kind === 'liability' ? 'Passif' : c.description || ''}</span></div></div><b>${money(c.kind === 'liability' ? -sum : sum)}</b></div>
           ${items.map((h) => {
             const stale = !h.closed_at && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             const diff = h.previous_cents !== null && h.value_cents !== null ? h.value_cents - h.previous_cents : null;
             return html`<button type="button" class="holding ${h.closed_at ? 'closed' : ''}" data-action="open-holding" data-id="${h.id}">
-              <span class="name"><b>${h.name}</b><span>${[h.institution, h.owner].filter(Boolean).join(', ') || LIQ[h.liquidity]}</span></span>
+              <span class="name"><b>${h.name}</b><span class="meta">${h.institution ? il('bank', h.institution) : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}</span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
-              <span class="when">${h.closed_at ? html`<span class="tag">Clôturé le ${dateFr(h.closed_at)}</span>` : stale ? html`<span class="tag stale">À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`}</span>
+              <span class="when">${h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>` : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`}</span>
               <span class="amount"><b>${h.value_cents === null ? '—' : money(h.value_cents, h.currency)}</b>
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
-                ${h.missing_rate ? html`<span class="tag bad">Taux ${h.currency} manquant</span>` : ''}
+                ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
                 ${diff ? html`<span class="${(diff > 0) !== (c.kind === 'liability') ? 'pos' : 'neg'}">${money(diff, h.currency, { sign: true })}</span>` : ''}</span>
             </button>`;
           })}</section>`;
-      }) : html`<div class="panel empty"><h2>${v.holdings.length ? 'Aucun avoir ne correspond' : 'Aucun avoir pour le moment'}</h2>
+      }) : html`<div class="panel empty">${pict(v.holdings.length ? 'search' : 'holdings', 'lg')}<h2>${v.holdings.length ? 'Aucun avoir ne correspond' : 'Aucun avoir pour le moment'}</h2>
           <p>${v.holdings.length ? 'Modifiez la recherche ou affichez les avoirs clôturés.' : 'Ajoutez vos comptes, placements, biens et crédits avec leur valeur du jour.'}</p>
           ${!v.holdings.length && canEdit() ? html`<button class="btn primary" data-action="new-holding">${icon('plus')}Ajouter un avoir</button>` : ''}</div>`);
       $('#closed-toggle').hidden = closedCount === 0;
@@ -691,7 +711,7 @@
   async function holdingForm(existing = null) {
     const [cats, settings] = await Promise.all([api('GET', '/api/categories'), api('GET', '/api/settings')]);
     const h = existing || {};
-    const catOptions = (kind, label) => html`<optgroup label="${label}">${cats.categories.filter((c) => c.kind === kind).map((c) => html`<option value="${c.id}" data-liq="${c.default_liquidity}" ${h.category_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</optgroup>`;
+    const catOptions = (kind, label) => html`<optgroup label="${label}">${cats.categories.filter((c) => c.kind === kind).map((c) => html`<option value="${c.id}" data-liq="${c.default_liquidity}" data-icon="${catIconKey(c)}" data-kind="${c.kind}" ${h.category_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</optgroup>`;
     const owners = [...settings.owners];
     if (h.owner && !owners.some((o) => o.toLowerCase() === h.owner.toLowerCase())) owners.push(h.owner);
     const curList = [...new Set([settings.base_currency, ...settings.currencies])];
@@ -699,7 +719,7 @@
       ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter un avoir', existing ? '' : 'Un compte, un placement, un bien ou un crédit. Seule sa valeur compte, pas ses mouvements.')}
       <label class="field"><span>Nom</span><input class="input" name="name" required maxlength="80" value="${h.name || ''}" placeholder="Livret A, PEA, Appartement Lyon…" autofocus></label>
       <div class="grid-2">
-        <label class="field"><span>Catégorie</span><select class="select" name="category_id" required>${catOptions('asset', 'Actifs')}${catOptions('liability', 'Passifs')}</select></label>
+        <label class="field"><span>Catégorie</span><span class="with-pict"><span data-cat-pict></span><select class="select" name="category_id" required>${catOptions('asset', 'Actifs')}${catOptions('liability', 'Passifs')}</select></span></label>
         <label class="field"><span>Liquidité</span><select class="select" name="liquidity">${Object.entries(LIQ).map(([k, l]) => html`<option value="${k}" ${h.liquidity === k ? 'selected' : ''}>${l}</option>`)}</select></label>
       </div>
       <div class="grid-2">
@@ -720,10 +740,13 @@
       </div><small class="muted">Pour un crédit, indiquez le capital restant dû, en positif.</small>`}
       <label class="field"><span>Notes</span><textarea class="textarea" name="notes" maxlength="1000">${h.notes || ''}</textarea></label>
       <p class="error-text" hidden></p>
-      <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${existing ? 'Enregistrer' : "Ajouter l'avoir"}</button></div>
+      <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon(existing ? 'check' : 'plus')}${existing ? 'Enregistrer' : "Ajouter l'avoir"}</button></div>
     </form>`);
     const form = d.querySelector('form');
     const syncLiq = () => { if (!existing) form.liquidity.value = form.category_id.selectedOptions[0].dataset.liq; };
+    const syncPict = () => { const o = form.category_id.selectedOptions[0]; $('[data-cat-pict]', form).innerHTML = part(catPict({ icon: o.dataset.icon, kind: o.dataset.kind })); };
+    syncPict();
+    form.category_id.addEventListener('change', syncPict);
     form.category_id.addEventListener('change', syncLiq);
     if (!existing) syncLiq();
     const newOwner = $('[data-new-owner]', form);
@@ -756,26 +779,26 @@
     const cat = cats.find((c) => c.id === h.category_id) || {};
     const asc = [...valuations].reverse();
     const d = openDialog(html`<div class="dialog-body">
-      ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`)}
+      ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, catPict(cat, 'lg'))}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.value_cents === null ? '—' : money(h.value_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${valuations[0] ? `Valeur au ${dateLong(valuations[0].valued_at)}` : 'Aucune valeur enregistrée'}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${canEdit() ? html`<form class="panel form" id="valuation-form" style="padding:16px">
-        <h3>Nouvelle valeur</h3>
+        ${h3i('plus', 'Nouvelle valeur')}
         <div class="grid-2"><label class="field"><span>Valeur en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
         <label class="field"><span>Note (facultative)</span><input class="input" name="note" maxlength="120" placeholder="Relevé annuel, estimation notaire…"></label>
-        <div class="form-actions"><button class="btn primary" type="submit">Enregistrer la valeur</button></div>
+        <div class="form-actions"><button class="btn primary" type="submit">${icon('check')}Enregistrer la valeur</button></div>
         <small class="muted">Une seule valeur par date : enregistrer à une date existante remplace la valeur de ce jour.</small>
       </form>` : ''}
       <dl class="kv">
-        <dt>Établissement</dt><dd>${h.institution || '—'}</dd>
-        <dt>Titulaire</dt><dd>${h.owner || '—'}</dd>
-        <dt>Devise</dt><dd>${h.currency}</dd>
-        <dt>Liquidité</dt><dd>${LIQ[h.liquidity]}</dd>
-        ${h.notes ? html`<dt>Notes</dt><dd style="white-space:pre-wrap">${h.notes}</dd>` : ''}
+        <dt>${icon('bank')}Établissement</dt><dd>${h.institution || '—'}</dd>
+        <dt>${icon('user')}Titulaire</dt><dd>${h.owner || '—'}</dd>
+        <dt>${icon('exchange')}Devise</dt><dd>${h.currency}</dd>
+        <dt>${icon(LIQ_ICON[h.liquidity])}Liquidité</dt><dd>${LIQ[h.liquidity]}</dd>
+        ${h.notes ? html`<dt>${icon('journal')}Notes</dt><dd style="white-space:pre-wrap">${h.notes}</dd>` : ''}
       </dl>
-      <section class="section"><h3>Historique des valeurs</h3>
+      <section class="section">${h3i('clock', 'Historique des valeurs')}
         ${valuations.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${valuations.map((v, i) => {
             const prev = valuations[i + 1];
@@ -787,7 +810,7 @@
       </section>
       ${canEdit() ? html`<div class="form-actions" style="justify-content:flex-start">
         <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier</button>
-        ${h.closed_at ? html`<button class="btn" type="button" data-action="reopen-holding" data-id="${h.id}">Rouvrir</button>` : html`<button class="btn" type="button" data-action="close-holding" data-id="${h.id}">Clôturer</button>`}
+        ${h.closed_at ? html`<button class="btn" type="button" data-action="reopen-holding" data-id="${h.id}">${icon('unlock')}Rouvrir</button>` : html`<button class="btn" type="button" data-action="close-holding" data-id="${h.id}">${icon('lock')}Clôturer</button>`}
         <button class="btn danger" type="button" data-action="delete-holding" data-id="${h.id}" data-name="${h.name}">${icon('trash')}Supprimer</button></div>` : ''}
     </div>`, { drawer: true, onClose: () => { if (location.hash.match(/^#\/avoirs\/\d+/)) history.replaceState(null, '', '#/avoirs'); } });
     d.dataset.holding = h.id;
@@ -821,7 +844,7 @@
     state.base = v.base_currency;
     setHeader('Mise à jour rapide', 'Saisissez les nouvelles valeurs, les autres restent inchangées', discretButton());
     const open = v.holdings.filter((h) => !h.closed_at);
-    if (!open.length) { el.innerHTML = part(html`<div class="panel empty"><h2>Aucun avoir à mettre à jour</h2><p>Ajoutez d'abord vos avoirs.</p><a class="btn primary" href="#/avoirs">Voir les avoirs</a></div>`); return; }
+    if (!open.length) { el.innerHTML = part(html`<div class="panel empty">${pict('update', 'lg')}<h2>Aucun avoir à mettre à jour</h2><p>Ajoutez d'abord vos avoirs.</p><a class="btn primary" href="#/avoirs">Voir les avoirs</a></div>`); return; }
     const rate = (cur) => (cur === v.base_currency ? 1 : (s.rates.find((r) => r.currency === cur) || {}).rate);
     const kind = new Map(v.categories.map((c) => [c.id, c.kind]));
     const signFor = (h) => (kind.get(h.category_id) === 'liability' ? -1 : 1);
@@ -830,21 +853,21 @@
     const groups = v.categories.map((c) => ({ c, items: open.filter((h) => h.category_id === c.id) })).filter((g) => g.items.length);
     el.innerHTML = part(html`
       <form id="quick-form" class="stack">
-        <div class="toolbar"><label class="field" style="max-width:200px"><span>Date des valeurs</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label>
+        <div class="toolbar"><label class="field" style="max-width:200px"><span>${il('calendar', 'Date des valeurs')}</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label>
           <label class="check" style="align-self:end;margin-bottom:9px"><input type="checkbox" id="only-stale"><span>Seulement les valeurs à actualiser</span></label></div>
         ${groups.map(({ c, items }) => html`<section class="panel flush group" data-group>
-          <div class="group-head"><h3>${c.name}</h3><span class="sub">${c.kind === 'liability' ? 'Capital restant dû' : ''}</span></div>
+          <div class="group-head"><div class="gh">${catPict(c, 'sm')}<h3>${c.name}</h3></div><span class="sub">${c.kind === 'liability' ? 'Capital restant dû' : ''}</span></div>
           ${items.map((h) => {
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             return html`<div class="quick" data-row data-stale="${stale}" data-id="${h.id}">
-              <div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span>${stale ? html` <span class="tag stale">À actualiser</span>` : ''}</div>
+              <div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : 'aucune valeur'}</span></div>
               <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}" placeholder="${h.currency}">
-              <button class="btn small keep" type="button" data-action="keep-value" data-id="${h.id}" ${h.value_cents === null ? 'disabled' : ''} title="Reprendre la dernière valeur à la date choisie">Inchangée</button>
+              <button class="btn small keep" type="button" data-action="keep-value" data-id="${h.id}" ${h.value_cents === null ? 'disabled' : ''} title="Reprendre la dernière valeur à la date choisie">${icon('equal')}Inchangée</button>
             </div>`;
           })}</section>`)}
         <div class="sticky-foot"><div><b id="quick-count">Aucune valeur saisie</b><br><span class="small muted" id="quick-preview">Patrimoine net actuel : ${money(netNow)}</span></div>
-          <button class="btn primary" type="submit" id="quick-save" disabled>Enregistrer les valeurs</button></div>
+          <button class="btn primary" type="submit" id="quick-save" disabled>${icon('check')}Enregistrer les valeurs</button></div>
       </form>`);
     const form = $('#quick-form');
     const byId = new Map(open.map((h) => [String(h.id), h]));
@@ -913,13 +936,13 @@
     const targetSum = categories.filter((c) => c.kind === 'asset').reduce((s, c) => s + (c.target_pct || 0), 0);
     const table = (kind, title) => {
       const list = categories.filter((c) => c.kind === kind);
-      return html`<section class="section"><div class="section-head"><h2>${title}</h2>${kind === 'asset' && targetSum > 0 ? html`<p>Total des cibles : <b class="${Math.abs(targetSum - 100) > 0.05 ? 'neg' : ''}">${targetSum.toLocaleString('fr-FR')} %</b>${Math.abs(targetSum - 100) > 0.05 ? ', idéalement 100 %' : ''}</p>` : ''}</div>
+      return html`<section class="section"><div class="section-head">${h2i(kind === 'asset' ? 'stack' : 'debt', title)}${kind === 'asset' && targetSum > 0 ? html`<p>Total des cibles : <b class="${Math.abs(targetSum - 100) > 0.05 ? 'neg' : ''}">${targetSum.toLocaleString('fr-FR')} %</b>${Math.abs(targetSum - 100) > 0.05 ? ', idéalement 100 %' : ''}</p>` : ''}</div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Catégorie</th><th>Liquidité par défaut</th>${kind === 'asset' ? html`<th class="num">Part actuelle</th><th class="num">Cible</th>` : ''}<th class="num">Montant</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
         ${list.length ? list.map((c, i) => {
           const t = totals.get(c.id) || {};
-          return html`<tr><td><b style="font-weight:500">${c.name}</b><br><span class="small muted">${c.description || ''}${c.holding_count ? ` (${c.holding_count} avoir${c.holding_count > 1 ? 's' : ''})` : ''}</span></td>
-            <td>${LIQ_SHORT[c.default_liquidity]}</td>
-            ${kind === 'asset' ? html`<td class="num">${pct(t.pct || 0)}</td><td class="num">${c.target_pct !== null ? `${c.target_pct.toLocaleString('fr-FR')} %` : '—'}</td>` : ''}
+          return html`<tr><td><div class="cell-lead">${catPict(c)}<div><b style="font-weight:500">${c.name}</b><br><span class="small muted">${c.description || ''}${c.holding_count ? ` (${c.holding_count} avoir${c.holding_count > 1 ? 's' : ''})` : ''}</span></div></div></td>
+            <td>${il(LIQ_ICON[c.default_liquidity], LIQ_SHORT[c.default_liquidity])}</td>
+            ${kind === 'asset' ? html`<td class="num">${pct(t.pct || 0)}</td><td class="num">${c.target_pct !== null ? il('target', `${c.target_pct.toLocaleString('fr-FR')} %`) : '—'}</td>` : ''}
             <td class="num">${money(t.value || 0)}</td>
             ${canEdit() ? html`<td class="num nowrap">
               <button class="btn icon ghost small" data-action="move-category" data-id="${c.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Monter ${c.name}">${icon('chevUp')}</button>
@@ -934,19 +957,39 @@
 
   function categoryForm(existing = null) {
     const c = existing || { kind: 'asset', default_liquidity: 'immediate' };
+    const current = catIconKey(c);
     const d = openDialog(html`<form class="dialog-body form">
-      ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter une catégorie')}
+      ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter une catégorie', '', html`<span data-icon-preview>${catPict(c, 'lg')}</span>`)}
       <label class="field"><span>Nom</span><input class="input" name="name" required maxlength="60" value="${c.name || ''}" autofocus></label>
       <label class="field"><span>Description</span><input class="input" name="description" maxlength="120" value="${c.description || ''}"></label>
       <div class="grid-2">
         <label class="field"><span>Type</span><select class="select" name="kind" ${existing && existing.holding_count ? 'disabled' : ''}><option value="asset" ${c.kind === 'asset' ? 'selected' : ''}>Actif</option><option value="liability" ${c.kind === 'liability' ? 'selected' : ''}>Passif (crédit, dette)</option></select></label>
         <label class="field"><span>Liquidité par défaut</span><select class="select" name="default_liquidity">${Object.entries(LIQ).map(([k, l]) => html`<option value="${k}" ${c.default_liquidity === k ? 'selected' : ''}>${l}</option>`)}</select></label>
       </div>
-      <label class="field" data-target><span>Allocation cible (%)</span><input class="input" name="target_pct" inputmode="decimal" value="${c.target_pct ?? ''}" placeholder="Aucune"><small>Part visée de cette catégorie dans vos actifs. Laissez vide pour ne pas en fixer.</small></label>
+      <fieldset class="field icon-picker"><legend>Pictogramme : <b data-icon-label>${(CAT_ICONS[current] || {}).label || ''}</b></legend>
+        <div class="picker">${Object.entries(CAT_ICONS).map(([k, v]) => html`<label class="pick" title="${v.label}"><input type="radio" name="icon" value="${k}" ${k === current ? 'checked' : ''}><span class="pict">${icon(k)}</span><span class="sr-only">${v.label}</span></label>`)}</div>
+      </fieldset>
+      <label class="field" data-target><span>${il('target', 'Allocation cible (%)')}</span><input class="input" name="target_pct" inputmode="decimal" value="${c.target_pct ?? ''}" placeholder="Aucune"><small>Part visée de cette catégorie dans vos actifs. Laissez vide pour ne pas en fixer.</small></label>
       <p class="error-text" hidden></p>
-      <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${existing ? 'Enregistrer' : 'Ajouter la catégorie'}</button></div>
+      <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon(existing ? 'check' : 'plus')}${existing ? 'Enregistrer' : 'Ajouter la catégorie'}</button></div>
     </form>`);
     const form = d.querySelector('form');
+    let iconTouched = false;
+    const preview = () => {
+      const k = (form.querySelector('input[name=icon]:checked') || {}).value;
+      $('[data-icon-preview]', d).innerHTML = part(catPict({ icon: k, kind: form.kind.value }, 'lg'));
+      $('[data-icon-label]', d).textContent = (CAT_ICONS[k] || {}).label || '';
+    };
+    form.addEventListener('change', (e) => {
+      if (e.target.name === 'icon') iconTouched = true;
+      // Nouvelle catégorie : passer en « Passif » propose le pictogramme Crédit tant qu'aucun choix n'a été fait.
+      if (e.target.name === 'kind' && !existing && !iconTouched) {
+        const def = form.kind.value === 'liability' ? 'loanDoc' : 'cube';
+        const r = form.querySelector(`input[name=icon][value="${def}"]`);
+        if (r) r.checked = true;
+      }
+      preview();
+    });
     const sync = () => { $('[data-target]', form).hidden = form.kind.value !== 'asset'; };
     form.kind.addEventListener('change', sync); sync();
     form.addEventListener('submit', async (e) => {
@@ -973,24 +1016,24 @@
     const curOptions = (sel) => [...new Set([s.base_currency, ...s.currencies])].map((c) => html`<option ${c === sel ? 'selected' : ''}>${c}</option>`);
     const addable = [...new Set([...s.currencies_in_use, ...s.currencies])].filter((c) => c !== s.base_currency);
     el.innerHTML = part(html`
-      <section class="section"><h2>Devise et rappels</h2><div class="panel">
+      <section class="section">${h2i('bell', 'Devise et rappels')}<div class="panel">
         ${isAdmin() ? html`<form class="form" id="settings-form"><div class="grid-2">
           <label class="field"><span>Devise de référence</span><select class="select" name="base_currency">${curOptions(s.base_currency)}</select><small>Changer de devise efface les taux de change saisis.</small></label>
           <label class="field"><span>Rappel d'actualisation (jours)</span><input class="input" type="number" name="stale_days" min="0" max="3650" value="${s.stale_days}"><small>Un avoir est signalé « à actualiser » au-delà de ce délai. 0 désactive le rappel.</small></label>
-        </div><div class="form-actions"><button class="btn primary" type="submit">Enregistrer</button></div></form>`
+        </div><div class="form-actions"><button class="btn primary" type="submit">${icon('check')}Enregistrer</button></div></form>`
         : html`<dl class="kv"><dt>Devise de référence</dt><dd>${s.base_currency}</dd><dt>Rappel d'actualisation</dt><dd>${s.stale_days ? `${s.stale_days} jours` : 'désactivé'}</dd></dl>`}
       </div></section>
 
-      <section class="section"><div class="section-head"><h2>Titulaires</h2><p>Personnes à qui appartiennent les avoirs</p></div>
+      <section class="section"><div class="section-head">${h2i('users', 'Titulaires')}<p>Personnes à qui appartiennent les avoirs</p></div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Titulaire</th><th class="num">Avoirs</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
-          ${owners.map((o) => html`<tr><td>${o.name}</td><td class="num">${o.count}</td>
-            ${canEdit() ? html`<td class="num nowrap"><button class="btn small" data-action="rename-owner" data-name="${o.name}">Renommer</button>
+          ${owners.map((o) => html`<tr><td><span class="cell-lead">${avatar(o.name, 'sm')}<span>${o.name}</span></span></td><td class="num">${o.count}</td>
+            ${canEdit() ? html`<td class="num nowrap"><button class="btn small" data-action="rename-owner" data-name="${o.name}">${icon('edit')}Renommer</button>
               <button class="btn icon ghost small" data-action="delete-owner" data-name="${o.name}" ${o.count ? raw('disabled title="Indiqué sur des avoirs"') : ''} aria-label="Supprimer ${o.name}">${icon('trash')}</button></td>` : ''}</tr>`)}
         </tbody></table></div>
         ${canEdit() ? html`<form class="toolbar" id="owner-form"><input class="input" name="name" required maxlength="40" placeholder="Nouveau titulaire" aria-label="Nouveau titulaire" style="max-width:240px"><button class="btn" type="submit">${icon('plus')}Ajouter le titulaire</button></form>` : ''}
       </section>
 
-      <section class="section"><div class="section-head"><h2>Taux de change</h2><p>1 unité de la devise vaut x ${s.base_currency}</p></div>
+      <section class="section"><div class="section-head">${h2i('exchange', 'Taux de change')}<p>1 unité de la devise vaut x ${s.base_currency}</p></div>
         ${s.missing_rates.length ? html`<div class="notice">${icon('alert')}<div>Taux manquant pour ${s.missing_rates.join(', ')}.</div></div>` : ''}
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Devise</th><th class="num">Taux</th><th>Source</th><th>Mis à jour</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${s.rates.length ? s.rates.map((r) => html`<tr><td>${r.currency}</td><td class="num">1 ${r.currency} = ${r.rate.toLocaleString('fr-FR', { maximumFractionDigits: 6 })} ${s.base_currency}</td><td>${r.source}</td><td>${dateTime(r.updated_at)}</td>
@@ -1000,39 +1043,39 @@
         ${canEdit() ? html`<form class="toolbar" id="rate-form">
           <select class="select" name="currency" aria-label="Devise" style="max-width:120px">${addable.map((c) => html`<option ${s.missing_rates[0] === c ? 'selected' : ''}>${c}</option>`)}</select>
           <input class="input amount" name="rate" inputmode="decimal" placeholder="Taux, ex. 0,92" required style="max-width:180px" aria-label="Taux">
-          <button class="btn" type="submit">Enregistrer le taux</button>
+          <button class="btn" type="submit">${icon('check')}Enregistrer le taux</button>
           ${s.ecb_enabled ? html`<button class="btn" type="button" data-action="ecb-rates">${icon('globe')}Récupérer les taux de la BCE</button>` : ''}
         </form>` : ''}
       </section>
 
-      <section class="section"><h2>Exporter mes données</h2><div class="panel"><div class="toolbar">
+      <section class="section">${h2i('download', 'Exporter mes données')}<div class="panel"><div class="toolbar">
         <a class="btn" href="/api/export.json" download>${icon('download')}Export complet (JSON)</a>
         <a class="btn" href="/api/export/holdings.csv" download>${icon('download')}Avoirs (CSV)</a>
         <a class="btn" href="/api/export/history.csv" download>${icon('download')}Historique des valeurs (CSV)</a>
       </div><p class="small muted" style="margin-top:10px">Les fichiers CSV utilisent le point-virgule et la virgule décimale, pour s'ouvrir directement dans Excel ou LibreOffice.</p></div></section>
 
       ${isAdmin() ? html`
-      <section class="section"><h2>Restaurer un export</h2><div class="panel form">
+      <section class="section">${h2i('upload', 'Restaurer un export')}<div class="panel form">
         <p class="muted">Remplace toutes les catégories, tous les avoirs, l'historique et les taux par ceux d'un export JSON de Vigie. Les comptes utilisateurs ne changent pas. Une sauvegarde de la base est créée juste avant.</p>
         <div class="toolbar"><input type="file" id="import-file" accept="application/json,.json" class="input" style="max-width:360px"><button class="btn" type="button" data-action="import">${icon('upload')}Restaurer cet export</button></div>
       </div></section>
 
-      <section class="section"><div class="section-head"><h2>Sauvegardes de la base</h2><p>${backups.keep_days ? `Automatique chaque jour vers ${backups.hour} h, conservée ${backups.keep_days} jours` : 'Sauvegarde automatique désactivée'}</p></div>
+      <section class="section"><div class="section-head">${h2i('database', 'Sauvegardes de la base')}<p>${backups.keep_days ? `Automatique chaque jour vers ${backups.hour} h, conservée ${backups.keep_days} jours` : 'Sauvegarde automatique désactivée'}</p></div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Fichier</th><th>Date</th><th class="num">Taille</th><th><span class="sr-only">Télécharger</span></th></tr></thead><tbody>
         ${backups.backups.length ? backups.backups.slice(0, 15).map((b) => html`<tr><td>${b.name}</td><td>${dateTime(b.created_at)}</td><td class="num">${(b.size / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko</td>
           <td class="num"><a class="btn icon ghost small" href="/api/admin/backups/${encodeURIComponent(b.name)}" download aria-label="Télécharger ${b.name}">${icon('download')}</a></td></tr>`)
           : html`<tr><td colspan="4" class="muted">Aucune sauvegarde pour l'instant.</td></tr>`}
         </tbody></table></div>
-        <div class="toolbar"><button class="btn" type="button" data-action="backup-now">Créer une sauvegarde maintenant</button>
+        <div class="toolbar"><button class="btn" type="button" data-action="backup-now">${icon('database')}Créer une sauvegarde maintenant</button>
           <span class="small muted">Fichiers SQLite dans le dossier data/backups de l'application, inclus dans les sauvegardes Runtipi.</span></div>
       </section>
 
-      <section class="section"><h2>Sécurité du serveur</h2><div class="panel">
+      <section class="section">${h2i('shield', 'Sécurité du serveur')}<div class="panel">
         <dl class="kv">
-          <dt>Déconnexion après inactivité</dt><dd>${s.security.session_idle_minutes} min</dd>
-          <dt>Durée maximale d'une session</dt><dd>${s.security.session_max_hours} h</dd>
-          <dt>Blocage du compte</dt><dd>après ${s.security.login_max_attempts} échecs, pendant ${s.security.login_lock_minutes} min</dd>
-          <dt>Double authentification</dt><dd>${s.security.require_2fa ? 'obligatoire pour tous' : 'facultative'}</dd>
+          <dt>${icon('clock')}Déconnexion après inactivité</dt><dd>${s.security.session_idle_minutes} min</dd>
+          <dt>${icon('devices')}Durée maximale d'une session</dt><dd>${s.security.session_max_hours} h</dd>
+          <dt>${icon('lock')}Blocage du compte</dt><dd>après ${s.security.login_max_attempts} échecs, pendant ${s.security.login_lock_minutes} min</dd>
+          <dt>${icon('key')}Double authentification</dt><dd>${s.security.require_2fa ? 'obligatoire pour tous' : 'facultative'}</dd>
         </dl>
         <p class="small muted" style="margin-top:12px">Ces réglages se modifient dans le fichier <b>data/config/vigie.env</b> de l'application, puis en redémarrant Vigie dans Runtipi.</p>
       </div></section>` : ''}`);
@@ -1076,29 +1119,30 @@
       ${state.boot.needs_2fa_setup && !user.totp_enabled ? html`<div class="notice">${icon('shield')}<div>La double authentification est obligatoire sur ce serveur. Activez-la pour accéder à vos données.</div></div>` : ''}
       <div class="cols">
         <div class="stack">
-          <section class="section"><h2>Double authentification</h2><div class="panel form" id="totp-panel">
+          <section class="section">${h2i('shield', 'Double authentification')}<div class="panel form" id="totp-panel">
             ${user.totp_enabled ? html`<p><span class="tag brand">${icon('check')} Active</span></p>
               <p class="muted">À chaque connexion, un code de votre application d'authentification est demandé après le mot de passe. Codes de secours restants : <b>${user.recovery_codes_left}</b>.</p>
-              <div class="toolbar"><button class="btn" data-action="regen-codes">Générer de nouveaux codes de secours</button>${require_2fa ? '' : html`<button class="btn danger" data-action="disable-totp">Désactiver</button>`}</div>`
+              <div class="toolbar"><button class="btn" data-action="regen-codes">${icon('key')}Générer de nouveaux codes de secours</button>${require_2fa ? '' : html`<button class="btn danger" data-action="disable-totp">${icon('unlock')}Désactiver</button>`}</div>`
             : html`<p class="muted">Protégez l'accès à votre patrimoine avec un code temporaire, généré par une application comme Aegis, 2FAS, Google Authenticator, Microsoft Authenticator ou Bitwarden.</p>
               <div><button class="btn primary" data-action="setup-totp">${icon('shield')}Activer la double authentification</button></div>`}
           </div></section>
-          <section class="section"><div class="section-head"><h2>Sessions ouvertes</h2>${sessions.length > 1 ? html`<button class="btn small" data-action="revoke-others">Fermer les autres sessions</button>` : ''}</div>
+          <section class="section"><div class="section-head">${h2i('devices', 'Sessions ouvertes')}${sessions.length > 1 ? html`<button class="btn small" data-action="revoke-others">${icon('logout')}Fermer les autres sessions</button>` : ''}</div>
             <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Appareil</th><th>Adresse IP</th><th>Dernière activité</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
-            ${sessions.map((x) => html`<tr><td>${uaLabel(x.user_agent)}${x.current ? html` <span class="tag brand">Cette session</span>` : ''}</td><td>${x.ip || '—'}</td><td>${dateTime(x.last_seen_at)}</td>
-              <td class="num">${x.current ? '' : html`<button class="btn small" data-action="revoke-session" data-id="${x.id}">Fermer</button>`}</td></tr>`)}
+            ${sessions.map((x) => html`<tr><td>${il(/iPhone|Android|Mobile/.test(x.user_agent || '') ? 'phone' : 'devices', uaLabel(x.user_agent))}${x.current ? html` <span class="tag brand">Cette session</span>` : ''}</td><td>${x.ip || '—'}</td><td>${dateTime(x.last_seen_at)}</td>
+              <td class="num">${x.current ? '' : html`<button class="btn small" data-action="revoke-session" data-id="${x.id}">${icon('logout')}Fermer</button>`}</td></tr>`)}
             </tbody></table></div></section>
         </div>
         <div class="stack">
-          <section class="section"><h2>Profil</h2><form class="panel form" id="profile-form">
+          <section class="section">${h2i('user', 'Profil')}<form class="panel form" id="profile-form">
+            <div class="cell-lead">${avatar(user.display_name, 'lg')}<div><b>${user.display_name}</b><br><span class="small muted">${il(ROLE_ICON[user.role], ROLE[user.role])}</span></div></div>
             ${nameFields(user)}
-            <div class="form-actions"><button class="btn" type="submit">Enregistrer</button></div></form></section>
-          <section class="section"><h2>Mot de passe</h2><form class="panel form" id="password-form">
+            <div class="form-actions"><button class="btn" type="submit">${icon('check')}Enregistrer</button></div></form></section>
+          <section class="section">${h2i('key', 'Mot de passe')}<form class="panel form" id="password-form">
             <input type="text" name="username" value="${user.username}" autocomplete="username" hidden>
             <label class="field"><span>Mot de passe actuel</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
             <label class="field"><span>Nouveau mot de passe</span><input class="input" type="password" name="new_password" autocomplete="new-password" minlength="10" required><small>10 caractères minimum. Les autres sessions seront fermées.</small></label>
             <label class="field"><span>Confirmation</span><input class="input" type="password" name="confirm" autocomplete="new-password" minlength="10" required></label>
-            <div class="form-actions"><button class="btn" type="submit">Changer le mot de passe</button></div></form></section>
+            <div class="form-actions"><button class="btn" type="submit">${icon('key')}Changer le mot de passe</button></div></form></section>
         </div>
       </div>`);
     $('#profile-form').addEventListener('submit', async (e) => {
@@ -1157,12 +1201,12 @@
     if (!current()) return;
     setHeader('Utilisateurs', 'Qui peut consulter ou modifier le patrimoine', html`<button class="btn primary" data-action="new-user">${icon('plus')}Ajouter un utilisateur</button>`);
     el.innerHTML = part(html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Double authentification</th><th>Dernière connexion</th><th>État</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
-      ${users.map((u) => html`<tr><td><b style="font-weight:500">${u.display_name}</b><br><span class="small muted">${u.username}</span></td><td>${ROLE[u.role]}</td>
-        <td>${u.totp_enabled ? html`<span class="tag brand">Active</span>` : html`<span class="tag">Inactive</span>`}</td><td>${dateTime(u.last_login_at)}</td>
-        <td>${u.disabled ? html`<span class="tag bad">Désactivé</span>` : u.locked ? html`<span class="tag stale">Bloqué</span>` : 'Actif'}</td>
-        <td class="num"><button class="btn small" data-action="edit-user" data-id="${u.id}">Gérer</button></td></tr>`)}
+      ${users.map((u) => html`<tr><td><div class="cell-lead">${avatar(u.display_name, 'sm')}<div><b style="font-weight:500">${u.display_name}</b><br><span class="small muted">${u.username}</span></div></div></td><td>${il(ROLE_ICON[u.role], ROLE[u.role])}</td>
+        <td>${u.totp_enabled ? html`<span class="tag brand">${icon('shield')}Active</span>` : html`<span class="tag">${icon('unlock')}Inactive</span>`}</td><td>${dateTime(u.last_login_at)}</td>
+        <td>${u.disabled ? html`<span class="tag bad">${icon('close')}Désactivé</span>` : u.locked ? html`<span class="tag stale">${icon('lock')}Bloqué</span>` : il('check', 'Actif')}</td>
+        <td class="num"><button class="btn small" data-action="edit-user" data-id="${u.id}">${icon('settings')}Gérer</button></td></tr>`)}
       </tbody></table></div>
-      <section class="section"><h2>Les rôles</h2><div class="panel"><dl class="kv">${Object.entries(ROLE).map(([k, l]) => html`<dt>${l}</dt><dd>${ROLE_HINT[k]}</dd>`)}</dl></div></section>`);
+      <section class="section">${h2i('users', 'Les rôles')}<div class="panel"><dl class="kv">${Object.entries(ROLE).map(([k, l]) => html`<dt>${icon(ROLE_ICON[k])}${l}</dt><dd>${ROLE_HINT[k]}</dd>`)}</dl></div></section>`);
     el._users = users;
   }
 
@@ -1170,7 +1214,7 @@
     const roles = Object.entries(ROLE).map(([k, l]) => html`<option value="${k}" ${u ? (u.role === k ? 'selected' : '') : k === 'viewer' ? 'selected' : ''}>${l}</option>`);
     const self = u && u.id === state.user.id;
     const d = openDialog(html`<div class="dialog-body">
-      ${dialogHead(u ? u.display_name : 'Ajouter un utilisateur', u ? `Identifiant : ${u.username}` : "Communiquez-lui son mot de passe provisoire : il pourra le changer dans « Mon compte ».")}
+      ${dialogHead(u ? u.display_name : 'Ajouter un utilisateur', u ? `Identifiant : ${u.username}` : "Communiquez-lui son mot de passe provisoire : il pourra le changer dans « Mon compte ».", u ? avatar(u.display_name, 'lg') : pict('user', 'lg'))}
       <form class="form" id="user-form">
         ${u ? '' : html`<label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" required minlength="3" maxlength="40" autocomplete="off" autofocus></label>`}
         ${nameFields(u || {}, Boolean(u))}
@@ -1178,13 +1222,13 @@
         ${u ? (self ? '' : html`<label class="check"><input type="checkbox" name="disabled" ${u.disabled ? 'checked' : ''}><span>Compte désactivé (connexion impossible)</span></label>`)
           : html`<label class="field"><span>Mot de passe provisoire</span><input class="input" name="password" type="text" required minlength="10" autocomplete="off"><small>10 caractères minimum.</small></label>`}
         <p class="error-text" hidden></p>
-        <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${u ? 'Enregistrer' : "Ajouter l'utilisateur"}</button></div>
+        <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon(u ? 'check' : 'plus')}${u ? 'Enregistrer' : "Ajouter l'utilisateur"}</button></div>
       </form>
-      ${u ? html`<section class="section"><h3>Autres actions</h3><div class="toolbar">
-        <button class="btn small" data-action="user-password" data-id="${u.id}">Définir un nouveau mot de passe</button>
-        ${u.totp_enabled ? html`<button class="btn small" data-action="user-reset-2fa" data-id="${u.id}">Réinitialiser la double authentification</button>` : ''}
-        ${u.locked ? html`<button class="btn small" data-action="user-unlock" data-id="${u.id}">Débloquer</button>` : ''}
-        ${self ? '' : html`<button class="btn small danger" data-action="user-delete" data-id="${u.id}" data-name="${u.username}">Supprimer</button>`}
+      ${u ? html`<section class="section">${h3i('settings', 'Autres actions')}<div class="toolbar">
+        <button class="btn small" data-action="user-password" data-id="${u.id}">${icon('key')}Définir un nouveau mot de passe</button>
+        ${u.totp_enabled ? html`<button class="btn small" data-action="user-reset-2fa" data-id="${u.id}">${icon('shield')}Réinitialiser la double authentification</button>` : ''}
+        ${u.locked ? html`<button class="btn small" data-action="user-unlock" data-id="${u.id}">${icon('unlock')}Débloquer</button>` : ''}
+        ${self ? '' : html`<button class="btn small danger" data-action="user-delete" data-id="${u.id}" data-name="${u.username}">${icon('trash')}Supprimer</button>`}
       </div></section>` : ''}
     </div>`);
     const form = $('#user-form', d);
@@ -1214,6 +1258,12 @@
     utilisateur_modifie: 'Utilisateur modifié', mot_de_passe_reinitialise: 'Mot de passe redéfini', double_auth_reinitialisee: 'Double authentification réinitialisée',
     utilisateur_supprime: 'Utilisateur supprimé', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
   };
+  const actionIcon = (a) => (/refusee|bloque/.test(a) ? 'alert' : /^connexion$|installation/.test(a) ? 'login' : a === 'deconnexion' ? 'logout'
+    : /double_auth|code_secours|codes_secours/.test(a) ? 'shield' : /mot_de_passe/.test(a) ? 'key' : /session/.test(a) ? 'devices'
+    : /supprim/.test(a) ? 'trash' : /export|telecharg/.test(a) ? 'download' : a === 'import' ? 'upload' : /sauvegarde/.test(a) ? 'database'
+    : /taux/.test(a) ? 'exchange' : /titulaire/.test(a) ? 'user' : /utilisateur/.test(a) ? 'users' : /cloture/.test(a) ? 'lock' : /rouvert/.test(a) ? 'unlock'
+    : /valeur|mise_a_jour/.test(a) ? 'update' : /categorie/.test(a) ? 'categories' : /reglages/.test(a) ? 'settings' : /cree/.test(a) ? 'plus' : 'edit');
+
   async function pageAudit(el, route, current) {
     let entries = [];
     const load = async (before) => {
@@ -1227,7 +1277,7 @@
     const draw = (hasMore) => {
       el.innerHTML = part(html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Détail</th><th>Adresse IP</th></tr></thead><tbody>
         ${entries.map((a) => html`<tr><td class="nowrap">${dateTime(a.at)}</td><td>${a.username || '—'}</td>
-          <td class="${/refusee|bloque/.test(a.action) ? 'neg' : ''}">${ACTION[a.action] || a.action}</td><td class="small">${a.detail || ''}</td><td class="small muted">${a.ip || ''}</td></tr>`)}
+          <td class="${/refusee|bloque/.test(a.action) ? 'neg' : ''}">${il(actionIcon(a.action), ACTION[a.action] || a.action)}</td><td class="small">${a.detail || ''}</td><td class="small muted">${a.ip || ''}</td></tr>`)}
         </tbody></table></div>${hasMore ? html`<div><button class="btn" id="audit-more">Afficher les entrées plus anciennes</button></div>` : ''}`);
       const b = $('#audit-more');
       if (b) b.addEventListener('click', async () => { draw(await load(entries[entries.length - 1].id)); });

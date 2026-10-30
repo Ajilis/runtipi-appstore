@@ -99,6 +99,21 @@ test('avoirs, valeurs, devises et passifs', async () => {
   assert.equal(hist.points.at(-1).net, d.totals.net);
 });
 
+test('pictogrammes des catégories', async () => {
+  const cats = (await admin.get('/api/categories')).data.categories;
+  assert.deepEqual(cats.map((c) => c.icon), ['wallet', 'piggy', 'umbrella', 'chart', 'hourglass', 'briefcase', 'house', 'crypto', 'gold', 'gem', 'loanHouse', 'loanDoc']);
+  const created = await admin.post('/api/categories', { name: 'Véhicules', kind: 'asset' });
+  assert.equal(created.data.category.icon, 'cube', 'pictogramme par défaut');
+  const upd = await admin.patch(`/api/categories/${created.data.category.id}`, { icon: 'car' });
+  assert.equal(upd.data.category.icon, 'car');
+  assert.equal((await admin.patch(`/api/categories/${created.data.category.id}`, { icon: '<script>' })).status, 400);
+  const d = (await admin.get('/api/dashboard')).data;
+  assert.equal(d.categories.find((c) => c.name === 'Bourse').icon, 'chart');
+  const exp = (await admin.get('/api/export.json')).data;
+  assert.equal(exp.categories.find((c) => c.name === 'Véhicules').icon, 'car');
+  await admin.del(`/api/categories/${created.data.category.id}`);
+});
+
 test('allocation cible et écart', async () => {
   const cats = (await admin.get('/api/categories')).data.categories;
   const bourseId = cats.find((c) => c.name === 'Bourse').id;

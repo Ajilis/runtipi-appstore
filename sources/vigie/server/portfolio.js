@@ -163,7 +163,7 @@ export function dashboard(db, options = {}) {
       openCount += 1;
       const last = snap.valuation ? snap.valuation.valued_at : null;
       const age = last ? daysBetween(last, today) : null;
-      if (staleDays > 0 && (age === null || age > staleDays)) stale.push({ id: h.id, name: h.name, category: cat.name, last_date: last, age_days: age });
+      if (staleDays > 0 && (age === null || age > staleDays)) stale.push({ id: h.id, name: h.name, category: cat.name, category_icon: cat.icon, kind: cat.kind, last_date: last, age_days: age });
     }
     if (snap.missingRate) { missingRates.add(h.currency); continue; }
     if (snap.base === null || (h.closed_at && snap.base === 0)) continue;
@@ -182,7 +182,7 @@ export function dashboard(db, options = {}) {
     const pct = denom > 0 ? t.value / denom : 0;
     const target = c.kind === 'asset' && c.target_pct !== null && c.target_pct !== undefined ? c.target_pct / 100 : null;
     return {
-      id: c.id, name: c.name, kind: c.kind, value: t.value, count: t.count, pct,
+      id: c.id, name: c.name, kind: c.kind, icon: c.icon, value: t.value, count: t.count, pct,
       target_pct: target, gap: target === null ? null : Math.round(target * assets - t.value),
     };
   });

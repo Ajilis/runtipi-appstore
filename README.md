@@ -19,6 +19,8 @@ Accès direct LAN : `http://IP_DU_SERVEUR:8291` ; Cloudflare Tunnel vers ce port
 Fichiers : [Docker Compose](apps/cloakbrowser/docker-compose.yml) · [Configuration Runtipi](apps/cloakbrowser/config.json) · [Documentation de CloakBrowser](apps/cloakbrowser/metadata/description.md).
 
 ---
+**Vigie Patrimoine V3 (0.3.0)** : pictogrammes dans toute l'application, dont un pictogramme au choix par catégorie (22 dessins), repris dans le tableau de bord, les avoirs et la mise à jour rapide. [Documentation](apps/vigie/metadata/description.md).
+
 **Vigie Patrimoine V2 (0.2.0)** : bouton Modifier d'un avoir et fenêtres imbriquées corrigés, Titulaire en liste déroulante gérée dans Réglages, prénom et nom des utilisateurs, interface responsive de 320 px à l'écran large. [Documentation](apps/vigie/metadata/description.md).
 
 **Vigie Patrimoine (0.1.0)** : nouvelle application de suivi de patrimoine personnel sur le port LAN **8289**, sans Traefik ; Cloudflare Tunnel via HTTP local. Avoirs par catégorie sans gestion des mouvements, historique, passifs, contrôle d'accès avec double authentification. [Installation](#installer-vigie-patrimoine-suivi-de-patrimoine-cloudflare-tunnel-sans-traefik).
@@ -142,7 +144,7 @@ Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/d
 
 ## Installer Vigie Patrimoine (suivi de patrimoine, Cloudflare Tunnel, sans Traefik)
 
-**Version du catalogue Runtipi : 2** · **Version du logiciel : Vigie 0.2.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 3** · **Version du logiciel : Vigie 0.3.0** · **Runtipi minimum : 4.9.1**
 
 Vigie donne une vue globale de votre patrimoine sans gérer les mouvements : une valeur par avoir et par date. Patrimoine net (passifs déduits), historique et variations, répartition par catégorie, établissement, titulaire, devise et liquidité, allocation cible, mise à jour rapide, rappels, multi-devises (taux BCE), mode discret, exports et sauvegardes. Un seul conteneur (Node.js + SQLite, image `ghcr.io/ajilis/vigie`).
 

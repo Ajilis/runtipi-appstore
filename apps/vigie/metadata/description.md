@@ -1,6 +1,12 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 2** · **Version de Vigie : 0.2.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 3** · **Version de Vigie : 0.3.0** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.3.0
+
+- **Un pictogramme par catégorie**, choisi parmi 22 (portefeuille, carte, banque, espèces, tirelire, assurance, protection, bourse, retraite, entreprise, résidence, immeuble, crypto-actif, lingots, objets de valeur, véhicule, œuvre d'art, forêt et terres, autre, prêt immobilier, crédit, prêt entre proches). Il apparaît dans le tableau de bord, la liste des avoirs, la mise à jour rapide, le détail d'un avoir et les rappels. Les catégories existantes reçoivent automatiquement le pictogramme correspondant à leur nom ; il se change dans **Catégories → Modifier**.
+- **Pictogrammes d'interface** : chiffres clés, niveaux de liquidité (disponible, court terme, bloqué), titres de sections, boutons, étiquettes (à actualiser, clôturé, taux manquant), rôles, actions du journal et messages de confirmation.
+- **Initiales** des titulaires et des utilisateurs, et pictogramme d'établissement ou de devise dans les répartitions.
 
 ## Nouveautés de la version 0.2.0
 

@@ -2,7 +2,7 @@
 # Aucune dépendance npm : serveur Node.js natif (http, crypto) et base SQLite intégrée à Node (node:sqlite).
 FROM node:24-alpine
 
-ARG APP_VERSION=0.2.0
+ARG APP_VERSION=0.3.0
 LABEL org.opencontainers.image.title="Vigie Patrimoine" \
       org.opencontainers.image.description="Vue globale et privée de votre patrimoine, auto-hébergée" \
       org.opencontainers.image.source="https://github.com/Ajilis/runtipi-appstore" \

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fail, readJson } from './http.js';
-import { transaction, getSetting, setSetting, seedCategories, schemaVersion } from './db.js';
+import { transaction, getSetting, setSetting, seedCategories, schemaVersion, CATEGORY_ICONS } from './db.js';
 import {
   hashPassword, verifyPassword, passwordProblem, encrypt, decrypt, generateTotpSecret, verifyTotp,
   otpauthUri, generateRecoveryCodes, normalizeRecoveryCode, sha256,
@@ -458,14 +458,15 @@ export function registerRoutes(router, deps) {
     const description = text(b.description ?? existing.description ?? '', 'Description', { max: 120 });
     const liquidity = oneOf(b.default_liquidity ?? existing.default_liquidity ?? 'immediate', LIQUIDITY, 'Liquidité');
     const target = kind === 'asset' ? targetPct(b.target_pct !== undefined ? b.target_pct : existing.target_pct) : null;
-    return { name, kind, description, liquidity, target };
+    const icon = oneOf(b.icon ?? existing.icon ?? (kind === 'liability' ? 'loanDoc' : 'cube'), CATEGORY_ICONS, 'Pictogramme');
+    return { name, kind, description, liquidity, target, icon };
   }
 
   router.post('/api/categories', { auth: 'editor' }, (ctx) => {
     const f = categoryFields(ctx.body);
     const order = (db.prepare('SELECT MAX(sort_order) AS m FROM categories').get().m || 0) + 10;
-    const r = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, target_pct, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(f.name, f.kind, f.description, f.liquidity, f.target, order, Date.now());
+    const r = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, target_pct, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(f.name, f.kind, f.description, f.liquidity, f.target, f.icon, order, Date.now());
     audit(ctx, 'categorie_creee', f.name);
     return { category: db.prepare('SELECT * FROM categories WHERE id = ?').get(Number(r.lastInsertRowid)) };
   });
@@ -478,8 +479,8 @@ export function registerRoutes(router, deps) {
     if (f.kind !== existing.kind && db.prepare('SELECT COUNT(*) AS n FROM holdings WHERE category_id = ?').get(id).n > 0) {
       fail(409, 'category_not_empty', "Impossible de changer le type d'une catégorie qui contient des avoirs.");
     }
-    db.prepare('UPDATE categories SET name = ?, kind = ?, description = ?, default_liquidity = ?, target_pct = ? WHERE id = ?')
-      .run(f.name, f.kind, f.description, f.liquidity, f.target, id);
+    db.prepare('UPDATE categories SET name = ?, kind = ?, description = ?, default_liquidity = ?, target_pct = ?, icon = ? WHERE id = ?')
+      .run(f.name, f.kind, f.description, f.liquidity, f.target, f.icon, id);
     audit(ctx, 'categorie_modifiee', f.name);
     return { category: db.prepare('SELECT * FROM categories WHERE id = ?').get(id) };
   });
@@ -787,7 +788,7 @@ export function registerRoutes(router, deps) {
       exported_at: new Date().toISOString(),
       settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList().map((o) => o.name) },
       fx_rates: db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates').all(),
-      categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, sort_order FROM categories ORDER BY sort_order, id').all(),
+      categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories ORDER BY sort_order, id').all(),
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
     };
@@ -831,9 +832,10 @@ export function registerRoutes(router, deps) {
       db.exec('DELETE FROM valuations; DELETE FROM holdings; DELETE FROM categories; DELETE FROM fx_rates;');
       const now = Date.now();
       for (const c of d.categories) {
-        db.prepare('INSERT INTO categories (id, name, kind, description, default_liquidity, target_pct, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        const icon = CATEGORY_ICONS.includes(c.icon) ? c.icon : (c.kind === 'liability' ? 'loanDoc' : 'cube');
+        db.prepare('INSERT INTO categories (id, name, kind, description, default_liquidity, target_pct, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .run(intId(c.id), text(c.name, 'Catégorie', { required: true, max: 60 }), oneOf(c.kind, ['asset', 'liability'], 'Type'), text(c.description || '', 'Description', { max: 120 }),
-            oneOf(c.default_liquidity || 'immediate', LIQUIDITY, 'Liquidité'), targetPct(c.target_pct), Number(c.sort_order) || 0, now);
+            oneOf(c.default_liquidity || 'immediate', LIQUIDITY, 'Liquidité'), targetPct(c.target_pct), icon, Number(c.sort_order) || 0, now);
       }
       for (const h of d.holdings) {
         if (h.closed_at && !isIsoDate(h.closed_at)) fail(400, 'invalid_import', `Date de clôture invalide pour ${h.name}.`);

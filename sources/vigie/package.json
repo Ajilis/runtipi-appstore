@@ -1,6 +1,6 @@
 {
   "name": "vigie",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Vigie Patrimoine : vue globale et privée de votre patrimoine, auto-hébergée.",
   "private": true,
   "type": "module",

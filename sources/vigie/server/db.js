@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 // Chaque migration est appliquée une seule fois, dans une transaction. Ne jamais modifier une migration publiée :
 // ajouter une nouvelle entrée à la fin du tableau.
-const MIGRATIONS = [
+export const MIGRATIONS = [
   `
   CREATE TABLE users (
     id INTEGER PRIMARY KEY,
@@ -97,7 +97,32 @@ const MIGRATIONS = [
     first_name = CASE WHEN instr(trim(display_name), ' ') > 0 THEN substr(trim(display_name), 1, instr(trim(display_name), ' ') - 1) ELSE trim(display_name) END,
     last_name = CASE WHEN instr(trim(display_name), ' ') > 0 THEN trim(substr(trim(display_name), instr(trim(display_name), ' ') + 1)) ELSE '' END;
   `,
+  // 0.3.0 : pictogramme de chaque catégorie, déduit du nom pour les catégories existantes.
+  `
+  ALTER TABLE categories ADD COLUMN icon TEXT;
+  UPDATE categories SET icon = CASE
+    WHEN lower(name) LIKE '%courant%' OR lower(name) LIKE '%esp_ce%' OR lower(name) LIKE '%liquidit%' THEN 'wallet'
+    WHEN lower(name) LIKE '%r_glement_e%' OR lower(name) LIKE '%livret%' OR lower(name) LIKE '%_pargne de pr_caution%' THEN 'piggy'
+    WHEN lower(name) LIKE '%assurance%' THEN 'umbrella'
+    WHEN lower(name) LIKE '%bourse%' OR lower(name) LIKE '%action%' OR lower(name) LIKE '%pea%' OR lower(name) LIKE '%titre%' THEN 'chart'
+    WHEN lower(name) LIKE '%retraite%' OR lower(name) LIKE '%per %' OR lower(name) = 'per' THEN 'hourglass'
+    WHEN lower(name) LIKE '%salariale%' OR lower(name) LIKE '%entreprise%' OR lower(name) LIKE '%soci_t_%' THEN 'briefcase'
+    WHEN kind = 'liability' AND (lower(name) LIKE '%immobilier%' OR lower(name) LIKE '%hypoth%') THEN 'loanHouse'
+    WHEN lower(name) LIKE '%scpi%' OR lower(name) LIKE '%locatif%' THEN 'building'
+    WHEN lower(name) LIKE '%immobilier%' OR lower(name) LIKE '%maison%' OR lower(name) LIKE '%appartement%' THEN 'house'
+    WHEN lower(name) LIKE '%crypto%' OR lower(name) LIKE '%bitcoin%' THEN 'crypto'
+    WHEN lower(name) LIKE '%m_taux%' OR lower(name) LIKE '%or %' OR lower(name) = 'or' THEN 'gold'
+    WHEN lower(name) LIKE '%v_hicule%' OR lower(name) LIKE '%voiture%' THEN 'car'
+    WHEN lower(name) LIKE '%art%' THEN 'art'
+    WHEN kind = 'liability' THEN 'loanDoc'
+    WHEN lower(name) LIKE '%autre%' THEN 'gem'
+    ELSE 'cube' END;
+  `,
 ];
+
+// Pictogrammes de catégorie autorisés (voir web/icons.js).
+export const CATEGORY_ICONS = ['wallet', 'card', 'bank', 'coins', 'piggy', 'umbrella', 'shield', 'chart', 'hourglass', 'briefcase', 'house',
+  'building', 'crypto', 'gold', 'gem', 'car', 'art', 'leaf', 'cube', 'loanHouse', 'loanDoc', 'handshake'];
 
 export function openDatabase(dir) {
   const db = new DatabaseSync(path.join(dir, 'vigie.sqlite'));
@@ -142,22 +167,22 @@ export function setSetting(db, key, value) {
 
 // Catégories proposées à l'installation (modifiables ensuite).
 export const DEFAULT_CATEGORIES = [
-  { name: 'Comptes courants', kind: 'asset', default_liquidity: 'immediate', description: 'Comptes de dépôt et espèces' },
-  { name: 'Épargne réglementée', kind: 'asset', default_liquidity: 'immediate', description: 'Livret A, LDDS, LEP, PEL, CEL' },
-  { name: 'Assurance-vie', kind: 'asset', default_liquidity: 'short', description: 'Contrats en euros et en unités de compte' },
-  { name: 'Bourse', kind: 'asset', default_liquidity: 'short', description: 'PEA, compte-titres' },
-  { name: 'Épargne retraite', kind: 'asset', default_liquidity: 'locked', description: 'PER, Madelin, contrats retraite' },
-  { name: 'Épargne salariale', kind: 'asset', default_liquidity: 'locked', description: 'PEE, PERCOL, intéressement' },
-  { name: 'Immobilier', kind: 'asset', default_liquidity: 'locked', description: 'Résidence principale, locatif, SCPI' },
-  { name: 'Crypto-actifs', kind: 'asset', default_liquidity: 'short', description: 'Portefeuilles et plateformes' },
-  { name: 'Métaux précieux', kind: 'asset', default_liquidity: 'short', description: 'Or, argent' },
-  { name: 'Autres actifs', kind: 'asset', default_liquidity: 'locked', description: 'Véhicules, objets de valeur, parts de société' },
-  { name: 'Crédits immobiliers', kind: 'liability', default_liquidity: 'locked', description: 'Capital restant dû' },
-  { name: 'Autres crédits', kind: 'liability', default_liquidity: 'locked', description: 'Prêts personnels, auto, travaux' },
+  { name: 'Comptes courants', kind: 'asset', default_liquidity: 'immediate', description: 'Comptes de dépôt et espèces', icon: 'wallet' },
+  { name: 'Épargne réglementée', kind: 'asset', default_liquidity: 'immediate', description: 'Livret A, LDDS, LEP, PEL, CEL', icon: 'piggy' },
+  { name: 'Assurance-vie', kind: 'asset', default_liquidity: 'short', description: 'Contrats en euros et en unités de compte', icon: 'umbrella' },
+  { name: 'Bourse', kind: 'asset', default_liquidity: 'short', description: 'PEA, compte-titres', icon: 'chart' },
+  { name: 'Épargne retraite', kind: 'asset', default_liquidity: 'locked', description: 'PER, Madelin, contrats retraite', icon: 'hourglass' },
+  { name: 'Épargne salariale', kind: 'asset', default_liquidity: 'locked', description: 'PEE, PERCOL, intéressement', icon: 'briefcase' },
+  { name: 'Immobilier', kind: 'asset', default_liquidity: 'locked', description: 'Résidence principale, locatif, SCPI', icon: 'house' },
+  { name: 'Crypto-actifs', kind: 'asset', default_liquidity: 'short', description: 'Portefeuilles et plateformes', icon: 'crypto' },
+  { name: 'Métaux précieux', kind: 'asset', default_liquidity: 'short', description: 'Or, argent', icon: 'gold' },
+  { name: 'Autres actifs', kind: 'asset', default_liquidity: 'locked', description: 'Véhicules, objets de valeur, parts de société', icon: 'gem' },
+  { name: 'Crédits immobiliers', kind: 'liability', default_liquidity: 'locked', description: 'Capital restant dû', icon: 'loanHouse' },
+  { name: 'Autres crédits', kind: 'liability', default_liquidity: 'locked', description: 'Prêts personnels, auto, travaux', icon: 'loanDoc' },
 ];
 
 export function seedCategories(db) {
   const now = Date.now();
-  const insert = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)');
-  DEFAULT_CATEGORIES.forEach((c, i) => insert.run(c.name, c.kind, c.description, c.default_liquidity, (i + 1) * 10, now));
+  const insert = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  DEFAULT_CATEGORIES.forEach((c, i) => insert.run(c.name, c.kind, c.description, c.default_liquidity, c.icon, (i + 1) * 10, now));
 }
