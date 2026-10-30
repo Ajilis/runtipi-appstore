@@ -8,7 +8,7 @@ before(async () => { srv = await startServer({ REQUIRE_2FA: true }); c = client(
 after(async () => { await srv.stop(); });
 
 test('double authentification obligatoire : données bloquées tant qu\'elle n\'est pas activée', async () => {
-  const setup = await c.post('/api/auth/setup', { username: 'alex', display_name: 'Alex', password: 'motdepasse-solide-42' });
+  const setup = await c.post('/api/auth/setup', { username: 'alex', first_name: 'Alex', last_name: 'Martin', password: 'motdepasse-solide-42' });
   assert.equal(setup.status, 200);
   assert.equal(setup.data.needs_2fa_setup, true);
   const blocked = await c.get('/api/dashboard');

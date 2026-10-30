@@ -89,6 +89,21 @@ function frNumber(cents) {
 }
 
 const LIQ_LABEL = { immediate: 'Disponible', short: 'Sous quelques semaines', locked: 'Bloqué ou illiquide' };
+export const DEFAULT_OWNERS = ['Moi', 'Conjoint', 'Commun'];
+
+// Prénom et nom ; accepte aussi l'ancien champ display_name (« Prénom Nom ») pour les clients 0.1.
+function personFields(b, existing = null) {
+  let first = b.first_name, last = b.last_name;
+  if (first === undefined && last === undefined && typeof b.display_name === 'string') {
+    const parts = b.display_name.trim().split(/\s+/);
+    first = parts.shift() || '';
+    last = parts.join(' ');
+  }
+  const first_name = text(first ?? existing?.first_name ?? '', 'Prénom', { required: true, max: 60 });
+  const last_name = text(last ?? existing?.last_name ?? '', 'Nom', { required: true, max: 60 });
+  return { first_name, last_name, display_name: `${first_name} ${last_name}`.trim() };
+}
+const hasPerson = (b) => b.first_name !== undefined || b.last_name !== undefined || b.display_name !== undefined;
 
 export function registerRoutes(router, deps) {
   const { db, cfg, sessions, ipLimiter, challenges, paths, log } = deps;
@@ -100,6 +115,42 @@ export function registerRoutes(router, deps) {
   const userCount = () => db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
   const setupAllowed = (req, ip) => cfg.ALLOW_SETUP_THROUGH_TUNNEL || (!cameThroughCloudflare(req) && isPrivateIp(ip));
   const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  // --- Titulaires : liste enregistrée (réglage « owners ») complétée par ceux utilisés dans les avoirs ---
+  function storedOwners() {
+    try {
+      const v = JSON.parse(getSetting(db, 'owners', 'null'));
+      return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : null;
+    } catch { return null; }
+  }
+  function ownerCounts() {
+    const map = new Map();
+    for (const r of db.prepare("SELECT owner, COUNT(*) AS n FROM holdings WHERE owner IS NOT NULL AND owner <> '' GROUP BY owner").all()) {
+      const k = r.owner.toLowerCase();
+      const e = map.get(k) || { name: r.owner, count: 0 };
+      e.count += r.n;
+      map.set(k, e);
+    }
+    return map;
+  }
+  function ownersList() {
+    const list = storedOwners() || [...DEFAULT_OWNERS];
+    const seen = new Set(list.map((x) => x.toLowerCase()));
+    const counts = ownerCounts();
+    for (const [k, e] of [...counts].sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'))) if (!seen.has(k)) { list.push(e.name); seen.add(k); }
+    return list.map((name) => ({ name, count: (counts.get(name.toLowerCase()) || { count: 0 }).count }));
+  }
+  const saveOwners = (names) => setSetting(db, 'owners', JSON.stringify(names));
+  // Renvoie le titulaire avec l'orthographe de la liste, et l'ajoute à la liste s'il est nouveau.
+  function canonicalOwner(name) {
+    if (!name) return '';
+    const list = ownersList().map((o) => o.name);
+    const found = list.find((x) => x.toLowerCase() === name.toLowerCase());
+    if (found) return found;
+    saveOwners([...list, name]);
+    return name;
+  }
+  const ownerName = (v) => text(v, 'Titulaire', { required: true, max: 40 });
+
   const activeAdmins = (exceptId = 0) => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0 AND id <> ?").get(exceptId).n;
 
   function completeLogin(ctx, user) {
@@ -150,7 +201,7 @@ export function registerRoutes(router, deps) {
     if (!setupAllowed(ctx.req, ctx.ip)) fail(403, 'setup_local_only', 'Créez le premier compte depuis votre réseau local (http://IP_DU_SERVEUR:port), pas via Cloudflare.');
     const b = ctx.body;
     const uname = username(b.username);
-    const display = text(b.display_name, 'Nom affiché', { required: true, max: 60 });
+    const person = personFields(b);
     const problem = passwordProblem(b.password);
     if (problem) fail(400, 'weak_password', problem);
     const base = currency(b.base_currency || 'EUR');
@@ -158,11 +209,12 @@ export function registerRoutes(router, deps) {
     const user = transaction(db, () => {
       if (userCount() > 0) fail(409, 'already_setup', "L'application est déjà initialisée.");
       const now = Date.now();
-      const r = db.prepare("INSERT INTO users (username, display_name, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, 'admin', ?, ?)")
-        .run(uname, display, hash, now, now);
+      const r = db.prepare("INSERT INTO users (username, display_name, first_name, last_name, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, 'admin', ?, ?)")
+        .run(uname, person.display_name, person.first_name, person.last_name, hash, now, now);
       if (db.prepare('SELECT COUNT(*) AS n FROM categories').get().n === 0) seedCategories(db);
       setSetting(db, 'base_currency', base);
       setSetting(db, 'stale_days', '45');
+      if (getSetting(db, 'owners') === null) saveOwners(DEFAULT_OWNERS);
       return getUser(Number(r.lastInsertRowid));
     });
     ctx.user = user;
@@ -238,8 +290,8 @@ export function registerRoutes(router, deps) {
   router.get('/api/account', { auth: 'viewer', allowWithout2fa: true }, (ctx) => ({ user: publicUser(ctx.user), require_2fa: cfg.REQUIRE_2FA }));
 
   router.patch('/api/account', { auth: 'viewer', allowWithout2fa: true }, (ctx) => {
-    const display = text(ctx.body.display_name, 'Nom affiché', { required: true, max: 60 });
-    db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(display, ctx.user.id);
+    const p = personFields(ctx.body, ctx.user);
+    db.prepare('UPDATE users SET display_name = ?, first_name = ?, last_name = ? WHERE id = ?').run(p.display_name, p.first_name, p.last_name, ctx.user.id);
     return { user: publicUser(getUser(ctx.user.id)) };
   });
 
@@ -347,7 +399,7 @@ export function registerRoutes(router, deps) {
       missing_rates: used.filter((c) => c !== base && !rates.some((r) => r.currency === c)),
       currencies: CURRENCIES,
       ecb_enabled: cfg.ECB_RATES_ENABLED,
-      owners: db.prepare("SELECT DISTINCT owner FROM holdings WHERE owner IS NOT NULL AND owner <> '' ORDER BY owner").all().map((r) => r.owner),
+      owners: ownersList().map((o) => o.name),
       institutions: db.prepare("SELECT DISTINCT institution FROM holdings WHERE institution IS NOT NULL AND institution <> '' ORDER BY institution").all().map((r) => r.institution),
     };
     if (ctx.user.role === 'admin') {
@@ -357,6 +409,46 @@ export function registerRoutes(router, deps) {
       };
     }
     return out;
+  });
+
+  // --- Titulaires -----------------------------------------------------------------------------------------------
+  router.get('/api/owners', { auth: 'viewer' }, () => ({ owners: ownersList() }));
+
+  router.post('/api/owners', { auth: 'editor' }, (ctx) => {
+    const name = ownerName(ctx.body.name);
+    const list = ownersList().map((o) => o.name);
+    if (list.some((x) => x.toLowerCase() === name.toLowerCase())) fail(409, 'owner_exists', 'Ce titulaire existe déjà.');
+    saveOwners([...list, name]);
+    audit(ctx, 'titulaire_ajoute', name);
+    return { owners: ownersList() };
+  });
+
+  router.post('/api/owners/rename', { auth: 'editor' }, (ctx) => {
+    const from = ownerName(ctx.body.from);
+    const to = ownerName(ctx.body.to);
+    const list = ownersList().map((o) => o.name);
+    const idx = list.findIndex((x) => x.toLowerCase() === from.toLowerCase());
+    if (idx < 0) fail(404, 'not_found', 'Titulaire introuvable.');
+    const target = list.find((x, i) => i !== idx && x.toLowerCase() === to.toLowerCase());
+    const original = list[idx];
+    transaction(db, () => {
+      const finalName = target || to;
+      db.prepare('UPDATE holdings SET owner = ?, updated_at = ? WHERE lower(owner) = lower(?)').run(finalName, Date.now(), list[idx]);
+      if (target) list.splice(idx, 1); else list[idx] = to;
+      saveOwners(list);
+    });
+    audit(ctx, 'titulaire_renomme', `${original} → ${target || to}${target ? ' (fusion)' : ''}`);
+    return { owners: ownersList(), merged: Boolean(target) };
+  });
+
+  router.post('/api/owners/delete', { auth: 'editor' }, (ctx) => {
+    const name = ownerName(ctx.body.name);
+    const entry = ownersList().find((o) => o.name.toLowerCase() === name.toLowerCase());
+    if (!entry) fail(404, 'not_found', 'Titulaire introuvable.');
+    if (entry.count > 0) fail(409, 'owner_in_use', `Ce titulaire est indiqué sur ${entry.count} avoir(s) : renommez-le ou modifiez ces avoirs d'abord.`);
+    saveOwners(ownersList().map((o) => o.name).filter((x) => x.toLowerCase() !== name.toLowerCase()));
+    audit(ctx, 'titulaire_supprime', entry.name);
+    return { owners: ownersList() };
   });
 
   // --- Catégories ---------------------------------------------------------------------------------------------
@@ -419,7 +511,7 @@ export function registerRoutes(router, deps) {
       category_id: categoryId,
       name: text(b.name ?? existing.name, 'Nom', { required: true, max: 80 }),
       institution: text(b.institution ?? existing.institution ?? '', 'Établissement', { max: 80 }),
-      owner: text(b.owner ?? existing.owner ?? '', 'Titulaire', { max: 40 }),
+      owner: canonicalOwner(text(b.owner ?? existing.owner ?? '', 'Titulaire', { max: 40 })),
       currency: currency(b.currency ?? existing.currency ?? getSetting(db, 'base_currency', 'EUR')),
       liquidity: oneOf(b.liquidity ?? existing.liquidity ?? cat.default_liquidity, LIQUIDITY, 'Liquidité'),
       notes: longText(b.notes ?? existing.notes ?? '', 'Notes'),
@@ -614,15 +706,15 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/users', { auth: 'admin' }, async (ctx) => {
     const uname = username(ctx.body.username);
-    const display = text(ctx.body.display_name, 'Nom affiché', { required: true, max: 60 });
+    const person = personFields(ctx.body);
     const role = oneOf(ctx.body.role, ROLES, 'Rôle');
     const problem = passwordProblem(ctx.body.password);
     if (problem) fail(400, 'weak_password', problem);
     if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(uname)) fail(409, 'username_taken', "Ce nom d'utilisateur existe déjà.");
     const hash = await hashPassword(ctx.body.password);
     const now = Date.now();
-    const r = db.prepare('INSERT INTO users (username, display_name, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(uname, display, hash, role, now, now);
+    const r = db.prepare('INSERT INTO users (username, display_name, first_name, last_name, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(uname, person.display_name, person.first_name, person.last_name, hash, role, now, now);
     audit(ctx, 'utilisateur_cree', `${uname} (${role})`);
     return { user: publicUser(getUser(Number(r.lastInsertRowid))) };
   });
@@ -631,13 +723,14 @@ export function registerRoutes(router, deps) {
     const id = intId(ctx.params.id);
     const u = getUser(id);
     if (!u) fail(404, 'not_found', 'Utilisateur introuvable.');
-    const display = ctx.body.display_name !== undefined ? text(ctx.body.display_name, 'Nom affiché', { required: true, max: 60 }) : u.display_name;
+    const person = hasPerson(ctx.body) ? personFields(ctx.body, u) : { display_name: u.display_name, first_name: u.first_name, last_name: u.last_name };
     const role = ctx.body.role !== undefined ? oneOf(ctx.body.role, ROLES, 'Rôle') : u.role;
     const disabled = ctx.body.disabled !== undefined ? (ctx.body.disabled ? 1 : 0) : u.disabled;
     if (id === ctx.user.id && (role !== 'admin' || disabled)) fail(400, 'self_protection', 'Vous ne pouvez pas retirer vos propres droits administrateur ni désactiver votre compte.');
     if (u.role === 'admin' && !u.disabled && (role !== 'admin' || disabled) && activeAdmins(id) === 0) fail(400, 'last_admin', 'Il doit rester au moins un administrateur actif.');
     const unlock = ctx.body.unlock === true;
-    db.prepare(`UPDATE users SET display_name = ?, role = ?, disabled = ?${unlock ? ', locked_until = NULL, failed_attempts = 0' : ''} WHERE id = ?`).run(display, role, disabled, id);
+    db.prepare(`UPDATE users SET display_name = ?, first_name = ?, last_name = ?, role = ?, disabled = ?${unlock ? ', locked_until = NULL, failed_attempts = 0' : ''} WHERE id = ?`)
+      .run(person.display_name, person.first_name, person.last_name, role, disabled, id);
     if (disabled || role !== u.role) sessions.destroyAllForUser(id);
     audit(ctx, 'utilisateur_modifie', `${u.username} : rôle ${role}${disabled ? ', désactivé' : ''}${unlock ? ', débloqué' : ''}`);
     return { user: publicUser(getUser(id)) };
@@ -692,7 +785,7 @@ export function registerRoutes(router, deps) {
       version: 1,
       app_version: cfg.VERSION,
       exported_at: new Date().toISOString(),
-      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')) },
+      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList().map((o) => o.name) },
       fx_rates: db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates').all(),
       categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, sort_order FROM categories ORDER BY sort_order, id').all(),
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
@@ -760,6 +853,7 @@ export function registerRoutes(router, deps) {
       }
       setSetting(db, 'base_currency', base);
       if (Number.isInteger(d.settings?.stale_days)) setSetting(db, 'stale_days', d.settings.stale_days);
+      if (Array.isArray(d.settings?.owners)) saveOwners(d.settings.owners.filter((x) => typeof x === 'string' && x.trim()).map((x) => ownerName(x)));
     });
     audit(ctx, 'import', `${d.holdings.length} avoir(s), ${d.valuations.length} valeur(s) ; sauvegarde préalable ${backup.name}`);
     return { ok: true, backup: backup.name, holdings: d.holdings.length, valuations: d.valuations.length };

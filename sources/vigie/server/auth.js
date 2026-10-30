@@ -152,6 +152,8 @@ export function publicUser(u) {
     id: u.id,
     username: u.username,
     display_name: u.display_name,
+    first_name: u.first_name || '',
+    last_name: u.last_name || '',
     role: u.role,
     totp_enabled: Boolean(u.totp_enabled),
     disabled: Boolean(u.disabled),

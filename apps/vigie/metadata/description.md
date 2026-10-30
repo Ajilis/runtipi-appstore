@@ -1,6 +1,15 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 1** · **Version de Vigie : 0.1.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 2** · **Version de Vigie : 0.2.0** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.2.0
+
+- **Bouton « Modifier » d'un avoir corrigé.** Toutes les fenêtres ouvertes depuis une autre fenêtre s'affichent désormais : formulaire de modification, confirmations de clôture et de suppression, codes de secours après l'activation de la double authentification, gestion d'un utilisateur.
+- **Titulaire en liste déroulante**, avec l'option « Nouveau titulaire… ». La liste se gère dans **Réglages → Titulaires** : ajouter, renommer (tous les avoirs suivent), fusionner deux titulaires en choisissant un nom existant, supprimer un titulaire inutilisé.
+- **Prénom et nom** dans Mon compte, à l'installation et dans la gestion des utilisateurs. Les comptes existants sont repris automatiquement (« Alex Martin » devient Alex / Martin).
+- **Interface responsive de 320 px à l'écran large**, vérifiée écran par écran : menu repliable sur téléphone et tablette, tableaux affichés en cartes, champs à 16 px (pas de zoom automatique sur iPhone), boutons de 44 px.
+
+La mise à jour applique une migration additive de la base : aucune donnée n'est supprimée.
 
 Vigie donne une vue globale et privée de votre patrimoine. Vous ne gérez aucun mouvement de compte : pour chaque avoir, vous saisissez simplement sa valeur à une date. Vigie calcule le reste.
 
@@ -12,7 +21,7 @@ Vigie donne une vue globale et privée de votre patrimoine. Vous ne gérez aucun
 - **Mise à jour rapide** : un écran pour actualiser tous les avoirs d'un coup, avec l'estimation du nouveau patrimoine avant d'enregistrer.
 - **Rappels** : les avoirs dont la valeur date de plus de 45 jours (réglable) sont signalés « à actualiser ».
 - **Allocation cible** : un pourcentage visé par catégorie, avec l'écart en euros.
-- **Répartitions** : par catégorie, établissement, titulaire (Moi, Conjoint, Commun…), devise et liquidité (disponible, sous quelques semaines, bloqué).
+- **Répartitions** : par catégorie, établissement (banque, courtier, assureur, plateforme), titulaire (la personne à qui appartient l'avoir : Moi, Conjoint, Commun ou tout autre nom de la liste), devise et liquidité (disponible, sous quelques semaines, bloqué).
 - **Multi-devises** : taux saisis à la main ou récupérés auprès de la Banque centrale européenne.
 - **Mode discret** : masque les montants à l'écran d'un clic.
 - **Exports** : JSON complet, avoirs et historique en CSV (compatibles Excel et LibreOffice). Restauration d'un export JSON.

@@ -102,6 +102,10 @@
   const LIQ = { immediate: 'Disponible', short: 'Sous quelques semaines', locked: 'Bloqué ou illiquide' };
   const LIQ_SHORT = { immediate: 'Disponible', short: 'Court terme', locked: 'Bloqué' };
   const ROLE = { admin: 'Administrateur', editor: 'Éditeur', viewer: 'Lecture seule' };
+  const initials = (u) => (((u.first_name || u.display_name || u.username || '?').trim().charAt(0)) + ((u.last_name || '').trim().charAt(0))).toUpperCase();
+  const nameFields = (u = {}, autofocus = false) => html`<div class="grid-2">
+    <label class="field"><span>Prénom</span><input class="input" name="first_name" autocomplete="given-name" required maxlength="60" value="${u.first_name || ''}" ${autofocus ? raw('autofocus') : ''}></label>
+    <label class="field"><span>Nom</span><input class="input" name="last_name" autocomplete="family-name" required maxlength="60" value="${u.last_name || ''}"></label></div>`;
   const ROLE_HINT = { admin: 'Tout, y compris les comptes, les sauvegardes et la restauration', editor: 'Avoirs, valeurs, catégories et taux de change', viewer: 'Consultation et export, sans modification' };
 
   // ---------------------------------------------------------------------------------------------------------
@@ -124,6 +128,7 @@
     down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
     alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.5"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
     download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
@@ -301,18 +306,31 @@
   const fail = (err) => toast(err.message || String(err), 'error');
 
   const modal = () => $('#modal');
+  // Une seule fenêtre <dialog> sert à tout. Remplacer son contenu ne la referme pas : l'événement « close »
+  // est asynchrone et viderait sinon la nouvelle fenêtre (bouton Modifier, confirmations, codes de secours).
   function openDialog(content, { drawer = false, onClose } = {}) {
     const d = modal();
-    if (d.open) d.close();
+    const previous = d._onClose;
+    d._onClose = null;
+    if (previous) previous();
     d.className = drawer ? 'drawer' : '';
     d.innerHTML = part(content);
-    d.onclose = () => { d.innerHTML = ''; if (onClose) onClose(); };
-    d.showModal();
+    d._onClose = onClose || null;
+    d.scrollTop = 0;
+    if (!d.open) d.showModal();
     const first = d.querySelector('[autofocus]') || d.querySelector('input:not([type=hidden]), select, textarea, button');
     if (first) first.focus();
     return d;
   }
   const closeDialog = () => { if (modal().open) modal().close(); };
+  modal().addEventListener('close', () => {
+    const d = modal();
+    if (d.open) return; // rouverte avant la livraison de l'événement
+    const cb = d._onClose;
+    d._onClose = null;
+    d.innerHTML = '';
+    if (cb) cb();
+  });
   modal().addEventListener('click', (e) => { if (e.target === modal()) closeDialog(); });
 
   function dialogHead(title, sub) {
@@ -383,7 +401,7 @@
     const cur = state.boot.currencies.map((c) => html`<option ${c === 'EUR' ? 'selected' : ''}>${c}</option>`);
     gate(html`<div><h1>Bienvenue</h1><p class="lead">Créez le compte administrateur. Il pourra ensuite inviter d'autres personnes.</p></div>
       <form class="form" id="setup-form">
-        <label class="field"><span>Votre nom</span><input class="input" name="display_name" autocomplete="name" required maxlength="60" autofocus></label>
+        ${nameFields({}, true)}
         <label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" autocomplete="username" required minlength="3" maxlength="40" pattern="[A-Za-z0-9._@\\-]+"><small>Lettres sans accent, chiffres et . _ @ -</small></label>
         <label class="field"><span>Mot de passe</span><input class="input" type="password" name="password" autocomplete="new-password" required minlength="10"><small>10 caractères minimum. Une phrase facile à retenir est idéale.</small></label>
         <label class="field"><span>Confirmation du mot de passe</span><input class="input" type="password" name="confirm" autocomplete="new-password" required minlength="10"></label>
@@ -485,17 +503,20 @@
       return html`<a href="#/${key}" data-nav="${key}">${icon(p.icon)}<span class="txt">${p.title}</span></a>`;
     };
     app.innerHTML = part(html`<div class="shell">
-      <aside class="rail">
+      <aside class="rail" id="rail">
         <a class="mark" href="#/">${MARK}<div><b>Vigie</b><span>Patrimoine</span></div></a>
-        <nav class="nav" aria-label="Navigation principale">
-          ${link('')}${link('avoirs')}${link('actualiser')}${link('categories')}${link('reglages')}
-          <div class="sep" role="presentation"></div>
-          ${link('compte')}${link('utilisateurs')}${link('journal')}
-        </nav>
-        <div class="rail-foot">
-          <div class="who"><span class="avatar" aria-hidden="true">${(u.display_name || u.username).trim().charAt(0).toUpperCase()}</span><div><b>${u.display_name}</b><span>${ROLE[u.role]}</span></div></div>
-          <button class="btn ghost small" type="button" data-action="logout">${icon('logout')}<span class="txt">Se déconnecter</span></button>
-          <span class="version">Version ${state.boot.version}</span>
+        <button class="btn icon ghost menu-toggle" type="button" data-action="toggle-menu" aria-expanded="false" aria-controls="rail-menu" aria-label="Ouvrir le menu"><span class="when-closed">${icon('menu')}</span><span class="when-open">${icon('close')}</span></button>
+        <div class="rail-menu" id="rail-menu">
+          <nav class="nav" aria-label="Navigation principale">
+            ${link('')}${link('avoirs')}${link('actualiser')}${link('categories')}${link('reglages')}
+            <div class="sep" role="presentation"></div>
+            ${link('compte')}${link('utilisateurs')}${link('journal')}
+          </nav>
+          <div class="rail-foot">
+            <div class="who"><span class="avatar" aria-hidden="true">${initials(u)}</span><div><b>${u.display_name}</b><span>${ROLE[u.role]}</span></div></div>
+            <button class="btn ghost small" type="button" data-action="logout">${icon('logout')}<span class="txt">Se déconnecter</span></button>
+            <span class="version">Version ${state.boot.version}</span>
+          </div>
         </div>
       </aside>
       <main class="main" id="main" tabindex="-1">
@@ -671,7 +692,8 @@
     const [cats, settings] = await Promise.all([api('GET', '/api/categories'), api('GET', '/api/settings')]);
     const h = existing || {};
     const catOptions = (kind, label) => html`<optgroup label="${label}">${cats.categories.filter((c) => c.kind === kind).map((c) => html`<option value="${c.id}" data-liq="${c.default_liquidity}" ${h.category_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</optgroup>`;
-    const owners = [...new Set(['Moi', 'Conjoint', 'Commun', ...settings.owners])];
+    const owners = [...settings.owners];
+    if (h.owner && !owners.some((o) => o.toLowerCase() === h.owner.toLowerCase())) owners.push(h.owner);
     const curList = [...new Set([settings.base_currency, ...settings.currencies])];
     const d = openDialog(html`<form class="dialog-body form" id="holding-form">
       ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter un avoir', existing ? '' : 'Un compte, un placement, un bien ou un crédit. Seule sa valeur compte, pas ses mouvements.')}
@@ -682,10 +704,14 @@
       </div>
       <div class="grid-2">
         <label class="field"><span>Établissement</span><input class="input" name="institution" maxlength="80" value="${h.institution || ''}" list="institutions"></label>
-        <label class="field"><span>Titulaire</span><input class="input" name="owner" maxlength="40" value="${h.owner || ''}" list="owners"></label>
+        <label class="field"><span>Titulaire</span><select class="select" name="owner_choice">
+          <option value="">Non précisé</option>
+          ${owners.map((o) => html`<option value="${o}" ${(h.owner || '').toLowerCase() === o.toLowerCase() ? 'selected' : ''}>${o}</option>`)}
+          ${canEdit() ? html`<option value="__new__">Nouveau titulaire…</option>` : ''}
+        </select></label>
       </div>
+      <label class="field" data-new-owner hidden><span>Nom du nouveau titulaire</span><input class="input" name="owner_new" maxlength="40" autocomplete="off" placeholder="Prénom, enfant, SCI…"></label>
       <datalist id="institutions">${settings.institutions.map((i) => html`<option value="${i}">`)}</datalist>
-      <datalist id="owners">${owners.map((o) => html`<option value="${o}">`)}</datalist>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
         : html`<div class="grid-3">
         <label class="field"><span>Valeur actuelle</span><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"></label>
@@ -700,9 +726,17 @@
     const syncLiq = () => { if (!existing) form.liquidity.value = form.category_id.selectedOptions[0].dataset.liq; };
     form.category_id.addEventListener('change', syncLiq);
     if (!existing) syncLiq();
+    const newOwner = $('[data-new-owner]', form);
+    form.owner_choice.addEventListener('change', () => {
+      newOwner.hidden = form.owner_choice.value !== '__new__';
+      form.owner_new.required = !newOwner.hidden;
+      if (!newOwner.hidden) form.owner_new.focus();
+    });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const body = formData(form);
+      body.owner = body.owner_choice === '__new__' ? body.owner_new.trim() : body.owner_choice;
+      delete body.owner_choice; delete body.owner_new;
       await withBusy(e.submitter, async () => {
         try {
           const r = existing ? await api('PATCH', `/api/holdings/${existing.id}`, body) : await api('POST', '/api/holdings', body);
@@ -932,7 +966,7 @@
   // Réglages : devise, taux, export, import, sauvegardes
   // ---------------------------------------------------------------------------------------------------------
   async function pageSettings(el, route, current) {
-    const [s, backups] = await Promise.all([api('GET', '/api/settings'), isAdmin() ? api('GET', '/api/admin/backups') : null]);
+    const [s, backups, { owners }] = await Promise.all([api('GET', '/api/settings'), isAdmin() ? api('GET', '/api/admin/backups') : null, api('GET', '/api/owners')]);
     if (!current()) return;
     state.base = s.base_currency;
     setHeader('Réglages', 'Devise, taux de change, exports et sauvegardes');
@@ -946,6 +980,15 @@
         </div><div class="form-actions"><button class="btn primary" type="submit">Enregistrer</button></div></form>`
         : html`<dl class="kv"><dt>Devise de référence</dt><dd>${s.base_currency}</dd><dt>Rappel d'actualisation</dt><dd>${s.stale_days ? `${s.stale_days} jours` : 'désactivé'}</dd></dl>`}
       </div></section>
+
+      <section class="section"><div class="section-head"><h2>Titulaires</h2><p>Personnes à qui appartiennent les avoirs</p></div>
+        <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Titulaire</th><th class="num">Avoirs</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
+          ${owners.map((o) => html`<tr><td>${o.name}</td><td class="num">${o.count}</td>
+            ${canEdit() ? html`<td class="num nowrap"><button class="btn small" data-action="rename-owner" data-name="${o.name}">Renommer</button>
+              <button class="btn icon ghost small" data-action="delete-owner" data-name="${o.name}" ${o.count ? raw('disabled title="Indiqué sur des avoirs"') : ''} aria-label="Supprimer ${o.name}">${icon('trash')}</button></td>` : ''}</tr>`)}
+        </tbody></table></div>
+        ${canEdit() ? html`<form class="toolbar" id="owner-form"><input class="input" name="name" required maxlength="40" placeholder="Nouveau titulaire" aria-label="Nouveau titulaire" style="max-width:240px"><button class="btn" type="submit">${icon('plus')}Ajouter le titulaire</button></form>` : ''}
+      </section>
 
       <section class="section"><div class="section-head"><h2>Taux de change</h2><p>1 unité de la devise vaut x ${s.base_currency}</p></div>
         ${s.missing_rates.length ? html`<div class="notice">${icon('alert')}<div>Taux manquant pour ${s.missing_rates.join(', ')}.</div></div>` : ''}
@@ -1001,6 +1044,11 @@
       if (body.base_currency !== s.base_currency && !(await confirmDialog({ title: 'Changer de devise de référence ?', message: `Tous les totaux seront exprimés en ${body.base_currency} et les taux de change actuels seront effacés.`, confirm: 'Changer de devise' }))) return;
       try { const r = await api('PUT', '/api/settings', { base_currency: body.base_currency, stale_days: Number(body.stale_days) }); toast(r.warning || 'Réglages enregistrés'); render(); } catch (err) { fail(err); }
     });
+    const of = $('#owner-form');
+    if (of) of.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { await api('POST', '/api/owners', { name: of.name.value }); toast(`Titulaire ${of.name.value.trim()} ajouté`); render(); } catch (err) { fail(err); }
+    });
     const rf = $('#rate-form');
     if (rf) rf.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1043,7 +1091,7 @@
         </div>
         <div class="stack">
           <section class="section"><h2>Profil</h2><form class="panel form" id="profile-form">
-            <label class="field"><span>Nom affiché</span><input class="input" name="display_name" required maxlength="60" value="${user.display_name}"></label>
+            ${nameFields(user)}
             <div class="form-actions"><button class="btn" type="submit">Enregistrer</button></div></form></section>
           <section class="section"><h2>Mot de passe</h2><form class="panel form" id="password-form">
             <input type="text" name="username" value="${user.username}" autocomplete="username" hidden>
@@ -1125,7 +1173,7 @@
       ${dialogHead(u ? u.display_name : 'Ajouter un utilisateur', u ? `Identifiant : ${u.username}` : "Communiquez-lui son mot de passe provisoire : il pourra le changer dans « Mon compte ».")}
       <form class="form" id="user-form">
         ${u ? '' : html`<label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" required minlength="3" maxlength="40" autocomplete="off" autofocus></label>`}
-        <label class="field"><span>Nom affiché</span><input class="input" name="display_name" required maxlength="60" value="${u ? u.display_name : ''}"></label>
+        ${nameFields(u || {}, Boolean(u))}
         <label class="field"><span>Rôle</span><select class="select" name="role" ${self ? 'disabled' : ''}>${roles}</select></label>
         ${u ? (self ? '' : html`<label class="check"><input type="checkbox" name="disabled" ${u.disabled ? 'checked' : ''}><span>Compte désactivé (connexion impossible)</span></label>`)
           : html`<label class="field"><span>Mot de passe provisoire</span><input class="input" name="password" type="text" required minlength="10" autocomplete="off"><small>10 caractères minimum.</small></label>`}
@@ -1164,7 +1212,7 @@
     valeur_enregistree: 'Valeur enregistrée', valeur_supprimee: 'Valeur supprimée', mise_a_jour_rapide: 'Mise à jour rapide', taux_modifies: 'Taux modifiés',
     taux_supprime: 'Taux supprimé', taux_bce: 'Taux BCE récupérés', reglages_modifies: 'Réglages modifiés', utilisateur_cree: 'Utilisateur ajouté',
     utilisateur_modifie: 'Utilisateur modifié', mot_de_passe_reinitialise: 'Mot de passe redéfini', double_auth_reinitialisee: 'Double authentification réinitialisée',
-    utilisateur_supprime: 'Utilisateur supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
+    utilisateur_supprime: 'Utilisateur supprimé', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
   };
   async function pageAudit(el, route, current) {
     let entries = [];
@@ -1232,6 +1280,24 @@
       const ordered = c.kind === 'asset' ? [...same, ...other] : [...other, ...same];
       try { await api('POST', '/api/categories/reorder', { ids: ordered.map((x) => x.id) }); render(); } catch (err) { fail(err); }
     },
+    'toggle-menu': () => setMenu(!$('#rail').classList.contains('open')),
+    'rename-owner': (b) => {
+      const from = b.dataset.name;
+      const d = openDialog(html`<form class="dialog-body form">${dialogHead(`Renommer ${from}`, 'Tous les avoirs de ce titulaire sont mis à jour. Choisir un nom existant fusionne les deux titulaires.')}
+        <label class="field"><span>Nouveau nom</span><input class="input" name="to" required maxlength="40" value="${from}" autofocus></label>
+        <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">Renommer</button></div></form>`);
+      d.querySelector('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const r = await api('POST', '/api/owners/rename', { from, to: e.target.to.value });
+          closeDialog(); toast(r.merged ? 'Titulaires fusionnés' : 'Titulaire renommé'); render();
+        } catch (err) { fail(err); }
+      });
+    },
+    'delete-owner': async (b) => {
+      if (!(await confirmDialog({ title: `Supprimer ${b.dataset.name} ?`, message: "Il disparaît de la liste des titulaires proposés. Aucun avoir n'est modifié.", confirm: 'Supprimer', danger: true }))) return;
+      try { await api('POST', '/api/owners/delete', { name: b.dataset.name }); toast('Titulaire supprimé'); render(); } catch (err) { fail(err); }
+    },
     'delete-rate': async (b) => { try { await api('DELETE', `/api/fx/${b.dataset.cur}`); toast(`Taux ${b.dataset.cur} supprimé`); render(); } catch (err) { fail(err); } },
     'ecb-rates': async (b) => withBusy(b, async () => {
       try {
@@ -1297,9 +1363,36 @@
     Promise.resolve(fn(b, e)).catch(fail);
   });
 
+  function setMenu(open) {
+    const rail = $('#rail');
+    if (!rail) return;
+    rail.classList.toggle('open', open);
+    const t = $('.menu-toggle', rail);
+    t.setAttribute('aria-expanded', String(open));
+    t.setAttribute('aria-label', open ? 'Fermer le menu' : 'Ouvrir le menu');
+  }
+  document.addEventListener('click', (e) => {
+    const rail = $('#rail');
+    if (!rail || !rail.classList.contains('open')) return;
+    // composedPath() : chemin du clic figé au moment de l'événement, même si le DOM change entre-temps.
+    const path = e.composedPath();
+    if (!path.includes(rail) || path.some((el) => el instanceof Element && el.matches('.nav a, [data-action="logout"]'))) setMenu(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#rail.open')) setMenu(false); });
+
+  // Tableaux : chaque cellule reçoit l'intitulé de sa colonne, affiché en mode carte sur téléphone.
+  function labelTables(root = document) {
+    for (const table of root.querySelectorAll('table.table:not([data-labelled])')) {
+      const heads = [...table.querySelectorAll('thead th')].map((th) => (th.querySelector('.sr-only') ? '' : th.textContent.trim()));
+      for (const tr of table.querySelectorAll('tbody tr')) [...tr.children].forEach((td, i) => { if (!td.hasAttribute('colspan')) td.dataset.label = heads[i] || ''; });
+      table.dataset.labelled = '1';
+    }
+  }
+  new MutationObserver(() => labelTables()).observe(document.body, { childList: true, subtree: true });
+
   let resizeTimer = null;
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => state.charts.forEach((draw) => draw()), 120); });
-  window.addEventListener('hashchange', () => { if (state.user) render(); });
+  window.addEventListener('hashchange', () => { setMenu(false); if (state.user) render(); });
 
   // ---------------------------------------------------------------------------------------------------------
   // Démarrage

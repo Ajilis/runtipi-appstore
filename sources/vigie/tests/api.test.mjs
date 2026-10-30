@@ -32,9 +32,14 @@ test("l'installation est refusée à travers Cloudflare", async () => {
 test('installation locale du compte administrateur', async () => {
   const weak = await admin.post('/api/auth/setup', { username: 'alex', display_name: 'Alex', password: 'court' });
   assert.equal(weak.status, 400);
-  const r = await admin.post('/api/auth/setup', { username: 'alex', display_name: 'Alex Martin', password: PASSWORD, base_currency: 'EUR' });
+  const noLast = await admin.post('/api/auth/setup', { username: 'alex', first_name: 'Alex', last_name: '', password: PASSWORD });
+  assert.equal(noLast.status, 400);
+  const r = await admin.post('/api/auth/setup', { username: 'alex', first_name: 'Alex', last_name: 'Martin', password: PASSWORD, base_currency: 'EUR' });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal(r.data.user.role, 'admin');
+  assert.equal(r.data.user.first_name, 'Alex');
+  assert.equal(r.data.user.last_name, 'Martin');
+  assert.equal(r.data.user.display_name, 'Alex Martin');
   assert.ok(admin.jar.has('vigie_sid'));
   const again = await client(srv.base).post('/api/auth/setup', { username: 'bob', display_name: 'Bob', password: PASSWORD });
   assert.equal(again.status, 409);
@@ -124,7 +129,7 @@ test('mise à jour rapide et clôture', async () => {
 });
 
 test('rôle lecture seule', async () => {
-  const r = await admin.post('/api/users', { username: 'conjoint', display_name: 'Sam', role: 'viewer', password: PASSWORD });
+  const r = await admin.post('/api/users', { username: 'conjoint', first_name: 'Sam', last_name: 'Martin', role: 'viewer', password: PASSWORD });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   const viewer = client(srv.base);
   const login = await viewer.post('/api/auth/login', { username: 'conjoint', password: PASSWORD });
@@ -138,7 +143,7 @@ test('rôle lecture seule', async () => {
 });
 
 test('blocage du compte après plusieurs échecs', async () => {
-  await admin.post('/api/users', { username: 'cible', display_name: 'Cible', role: 'editor', password: PASSWORD });
+  await admin.post('/api/users', { username: 'cible', display_name: 'Camille Durand', role: 'editor', password: PASSWORD });
   const c = client(srv.base, { 'cf-connecting-ip': '198.51.100.7' });
   for (let i = 0; i < 5; i++) {
     const r = await c.post('/api/auth/login', { username: 'cible', password: 'mauvais-mot-de-passe' });
@@ -182,6 +187,54 @@ test('double authentification TOTP et codes de secours', async () => {
   assert.equal(reuse.status, 401, 'un code de secours ne sert qu\'une fois');
   const me = (await c.get('/api/account')).data.user;
   assert.equal(me.recovery_codes_left, 9);
+});
+
+test('profil : prénom et nom', async () => {
+  const r = await admin.patch('/api/account', { first_name: ' Alexandra ', last_name: 'Martin-Dupont' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.user.display_name, 'Alexandra Martin-Dupont');
+  assert.equal((await admin.patch('/api/account', { first_name: '', last_name: 'X' })).status, 400);
+  const users = (await admin.get('/api/users')).data.users;
+  const cible = users.find((u) => u.username === 'cible');
+  assert.equal(cible.first_name, 'Camille');
+  assert.equal(cible.last_name, 'Durand');
+  const role = await admin.patch(`/api/users/${cible.id}`, { role: 'viewer' });
+  assert.equal(role.status, 200);
+  assert.equal(role.data.user.last_name, 'Durand', 'changer le rôle conserve le nom');
+  const ren = await admin.patch(`/api/users/${cible.id}`, { first_name: 'Camille', last_name: 'Bernard' });
+  assert.equal(ren.data.user.display_name, 'Camille Bernard');
+});
+
+test('titulaires : liste, ajout, renommage, fusion et suppression', async () => {
+  let o = (await admin.get('/api/owners')).data.owners;
+  assert.deepEqual(o.map((x) => x.name), ['Moi', 'Conjoint', 'Commun']);
+  assert.equal(o.find((x) => x.name === 'Moi').count, 2);
+  const cats = (await admin.get('/api/categories')).data.categories;
+  const h = await admin.post('/api/holdings', { category_id: cats[0].id, name: 'Livret Léa', owner: 'Léa', amount: 500 });
+  assert.equal(h.status, 200);
+  o = (await admin.get('/api/owners')).data.owners;
+  assert.ok(o.some((x) => x.name === 'Léa' && x.count === 1), 'un nouveau titulaire saisi sur un avoir rejoint la liste');
+  const lower = await admin.post('/api/holdings', { category_id: cats[0].id, name: 'Compte Léa', owner: 'léa', amount: 10 });
+  assert.equal((await admin.get(`/api/holdings/${lower.data.id}`)).data.holding.owner, 'Léa', 'orthographe de la liste reprise');
+  assert.equal((await admin.post('/api/owners', { name: 'conjoint' })).status, 409);
+  assert.equal((await admin.post('/api/owners', { name: 'Hugo' })).status, 200);
+  const del = await admin.post('/api/owners/delete', { name: 'Moi' });
+  assert.equal(del.status, 409, 'titulaire utilisé : suppression refusée');
+  assert.equal((await admin.post('/api/owners/delete', { name: 'Hugo' })).status, 200);
+  const ren = await admin.post('/api/owners/rename', { from: 'Moi', to: 'Alexandra' });
+  assert.equal(ren.status, 200);
+  o = ren.data.owners;
+  assert.equal(o[0].name, 'Alexandra');
+  assert.equal(o[0].count, 2);
+  const merge = await admin.post('/api/owners/rename', { from: 'Léa', to: 'Commun' });
+  assert.equal(merge.data.merged, true);
+  assert.equal(merge.data.owners.find((x) => x.name === 'Commun').count, 2);
+  assert.ok(!merge.data.owners.some((x) => x.name === 'Léa'));
+  const d = (await admin.get('/api/dashboard')).data;
+  assert.ok(d.groups.owner.some((g) => g.label === 'Alexandra'));
+  await admin.del(`/api/holdings/${h.data.id}`);
+  await admin.del(`/api/holdings/${lower.data.id}`);
+  await admin.post('/api/owners/rename', { from: 'Alexandra', to: 'Moi' });
 });
 
 test('sessions : liste et fermeture des autres sessions', async () => {
