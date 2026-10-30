@@ -27,7 +27,7 @@ RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
  && chown -R node:node /data
 
 EXPOSE 8080
-VOLUME ["/data/config", "/data/db", "/data/backups"]
+# Pas de VOLUME : le Compose Runtipi monte data/config, data/db et data/backups (un montage de /data entier fonctionne aussi).
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
   CMD wget -qO- http://127.0.0.1:8080/api/health > /dev/null || exit 1

@@ -94,8 +94,10 @@ jobs:
 
       - name: Smoke test (start, health, persistent files, security headers)
         run: |
-          mkdir -p /tmp/vigie-data
-          docker run -d --name vigie -p 18080:8080 -e VIGIE_APP_SECRET="$(openssl rand -hex 32)" -v /tmp/vigie-data:/data vigie:smoke
+          # Mêmes montages que apps/vigie/docker-compose.yml.
+          mkdir -p /tmp/vigie-data/config /tmp/vigie-data/db /tmp/vigie-data/backups
+          docker run -d --name vigie -p 18080:8080 -e VIGIE_APP_SECRET="$(openssl rand -hex 32)" \
+            -v /tmp/vigie-data/config:/data/config -v /tmp/vigie-data/db:/data/db -v /tmp/vigie-data/backups:/data/backups vigie:smoke
           ok=""
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18080/api/health; then ok=1; break; fi
