@@ -1,6 +1,13 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 4** · **Version de Vigie : 0.4.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 5** · **Version de Vigie : 0.5.0** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.5.0 : établissements et logos
+
+- **Suggestions dès la 3e lettre** dans le champ **Établissement** d'un avoir : vos établissements déjà utilisés d'abord, puis un catalogue de 73 établissements (banques, banques en ligne, néobanques, courtiers, assureurs et plateformes d'assurance-vie, gestion pilotée, épargne salariale, crypto, SCPI, métaux précieux). La recherche ignore les accents et les majuscules et reconnaît les anciens noms ou abréviations : « bourso » propose BoursoBank, « lyonnais » propose LCL. Choix à la souris, au doigt ou au clavier (flèches, Entrée, Échap). La saisie libre reste possible pour un établissement absent de la liste.
+- **Pastille d'établissement** dans chaque avoir, le panneau d'un avoir, la mise à jour rapide et la répartition « Actifs par établissement » du tableau de bord.
+- **Logos** : aucun logo n'est fourni avec Vigie. Pour un établissement du catalogue, votre serveur récupère l'icône publiée par son site officiel (adresse fixée dans le catalogue, jamais une adresse saisie) et la conserve dans la base. Sinon, ou si la récupération échoue, un **monogramme coloré** (initiales) s'affiche. Les logos manquants sont réessayés automatiquement après quelques jours, ou tout de suite depuis **Réglages → Sécurité du serveur**.
+- **Confidentialité** : la récupération d'un logo est une simple requête vers le site public de l'établissement, sans aucune donnée personnelle. Pour qu'aucune connexion sortante ne soit faite, mettre `INSTITUTION_LOGOS=false` dans `data/config/vigie.env` puis redémarrer : seuls les monogrammes s'affichent.
 
 ## Nouveautés de la version 0.4.0 : application installable (PWA)
 
@@ -98,6 +105,7 @@ Modifier `APP_DATA_DIR/data/config/vigie.env`, puis redémarrer l'application da
 | `BACKUP_HOUR` | 3 | Heure de la sauvegarde quotidienne |
 | `BACKUP_KEEP_DAYS` | 30 | Durée de conservation (0 désactive) |
 | `ECB_RATES_ENABLED` | true | Bouton de récupération des taux BCE |
+| `INSTITUTION_LOGOS` | true | Logos des établissements récupérés sur leur site officiel (false : monogrammes uniquement) |
 | `LOG_LEVEL` | info | Détail des journaux du conteneur |
 
 ## Mises à jour et sauvegardes

@@ -13,6 +13,7 @@ import {
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
+import { TRANSPARENT_PNG } from './logos.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP', 'CAD', 'JPY', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'CNY', 'HKD', 'SGD', 'NZD', 'ZAR', 'BRL', 'MXN', 'INR', 'KRW', 'TRY', 'ILS', 'THB', 'IDR', 'MYR', 'PHP', 'ISK'];
 
@@ -106,7 +107,7 @@ function personFields(b, existing = null) {
 const hasPerson = (b) => b.first_name !== undefined || b.last_name !== undefined || b.display_name !== undefined;
 
 export function registerRoutes(router, deps) {
-  const { db, cfg, sessions, ipLimiter, challenges, paths, log } = deps;
+  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos } = deps;
 
   const audit = (ctx, action, detail = '') => {
     db.prepare('INSERT INTO audit_log (at, user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?, ?)')
@@ -192,6 +193,7 @@ export function registerRoutes(router, deps) {
       user: ctx.user ? publicUser(ctx.user) : null,
       needs_2fa_setup: Boolean(ctx.user && cfg.REQUIRE_2FA && !ctx.user.totp_enabled),
       require_2fa: cfg.REQUIRE_2FA,
+      logos_enabled: cfg.INSTITUTION_LOGOS,
       currencies: CURRENCIES,
     };
   });
@@ -399,6 +401,7 @@ export function registerRoutes(router, deps) {
       missing_rates: used.filter((c) => c !== base && !rates.some((r) => r.currency === c)),
       currencies: CURRENCIES,
       ecb_enabled: cfg.ECB_RATES_ENABLED,
+      logos_enabled: cfg.INSTITUTION_LOGOS,
       owners: ownersList().map((o) => o.name),
       institutions: db.prepare("SELECT DISTINCT institution FROM holdings WHERE institution IS NOT NULL AND institution <> '' ORDER BY institution").all().map((r) => r.institution),
     };
@@ -406,9 +409,25 @@ export function registerRoutes(router, deps) {
       out.security = {
         session_idle_minutes: cfg.SESSION_IDLE_MINUTES, session_max_hours: cfg.SESSION_MAX_HOURS, login_max_attempts: cfg.LOGIN_MAX_ATTEMPTS,
         login_lock_minutes: cfg.LOGIN_LOCK_MINUTES, require_2fa: cfg.REQUIRE_2FA, backup_hour: cfg.BACKUP_HOUR, backup_keep_days: cfg.BACKUP_KEEP_DAYS,
+        institution_logos: cfg.INSTITUTION_LOGOS,
       };
     }
     return out;
+  });
+
+  // --- Logos des établissements ----------------------------------------------------------------------------------
+  router.get('/api/institutions/logo/:id', { auth: 'viewer' }, async (ctx) => {
+    if (!/^[a-z0-9-]{1,40}$/.test(ctx.params.id)) fail(404, 'not_found', 'Établissement inconnu.');
+    const logo = await logos.get(ctx.params.id);
+    if (logo === undefined) fail(404, 'not_found', 'Établissement inconnu.');
+    if (logo) ctx.sendBody(200, Buffer.from(logo.data), logo.type, { 'Cache-Control': 'private, max-age=604800' });
+    else ctx.sendBody(200, TRANSPARENT_PNG, 'image/png', { 'Cache-Control': 'private, max-age=600' });
+  });
+
+  router.post('/api/admin/logos/retry', { auth: 'admin' }, (ctx) => {
+    const n = logos.clearFailures();
+    audit(ctx, 'logos_reessai', `${n} établissement(s) sans logo seront réessayés`);
+    return { cleared: n };
   });
 
   // --- Titulaires -----------------------------------------------------------------------------------------------

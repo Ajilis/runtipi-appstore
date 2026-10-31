@@ -7,6 +7,7 @@ import { Router, HttpError, readJson, sendJson, sendFile, parseCookies, createSt
 import { SessionStore, IpLimiter, PendingChallenges, SESSION_COOKIE, roleAtLeast, clientIp } from './auth.js';
 import { registerRoutes } from './routes.js';
 import { startBackupScheduler } from './backup.js';
+import { LogoService } from './logos.js';
 
 const WEB_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 
@@ -30,13 +31,14 @@ function checkSameOrigin(req) {
   }
 }
 
-export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withScheduler = true }) {
+export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withScheduler = true, fetcher = globalThis.fetch }) {
   const db = openDatabase(paths.db);
   const sessions = new SessionStore(db, cfg);
   const ipLimiter = new IpLimiter(cfg.IP_MAX_FAILURES);
   const challenges = new PendingChallenges();
   const router = new Router();
-  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log });
+  const logos = new LogoService(db, { enabled: cfg.INSTITUTION_LOGOS, fetcher, log });
+  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos });
   const serveStatic = createStatic(WEB_DIR, cfg.VERSION);
 
   async function handleApi(req, res, url) {
@@ -46,6 +48,10 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
       ip: clientIp(req, cfg),
       setCookie: (c) => cookieHeaders.push(c),
       handled: false,
+      sendBody(status, buffer, type, headers = {}) {
+        this.handled = true;
+        sendFile(res, status, buffer, type, { ...headers, ...(cookieHeaders.length ? { 'Set-Cookie': cookieHeaders } : {}) });
+      },
       sendRaw(status, buffer, type, filename) {
         this.handled = true;
         sendFile(res, status, buffer, type, { 'Content-Disposition': `attachment; filename="${filename}"`, ...(cookieHeaders.length ? { 'Set-Cookie': cookieHeaders } : {}) });

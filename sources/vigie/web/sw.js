@@ -11,6 +11,7 @@ const SHELL = [
   `/app.css?v=${VERSION}`,
   `/app.js?v=${VERSION}`,
   `/icons.js?v=${VERSION}`,
+  `/institutions.json?v=${VERSION}`,
   `/icon.svg?v=${VERSION}`,
   '/vendor/qrcode.js',
   '/fonts/PublicSans-Light.woff2',

@@ -118,6 +118,16 @@ export const MIGRATIONS = [
     WHEN lower(name) LIKE '%autre%' THEN 'gem'
     ELSE 'cube' END;
   `,
+  // 0.5.0 : logos des établissements récupérés sur leur site officiel.
+  `
+  CREATE TABLE logo_cache (
+    host TEXT PRIMARY KEY,
+    content_type TEXT,
+    data BLOB,
+    ok INTEGER NOT NULL,
+    fetched_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

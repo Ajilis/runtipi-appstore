@@ -101,6 +101,39 @@ h3.ti svg { width: 17px; height: 17px; color: var(--brand); flex: none; }
 .kv dt svg { width: 15px; height: 15px; flex: none; }
 .empty .pict { margin-bottom: 4px; }
 
+/* --- Établissements : monogramme coloré, recouvert par le logo du site officiel dès qu'il est chargé ---------------- */
+.inst { --s: 32px; position: relative; width: var(--s); height: var(--s); flex: none; display: inline-grid; place-items: center; overflow: hidden;
+  border-radius: calc(var(--s) * 0.28); background: hsl(var(--h, 168) 36% 91%); color: hsl(var(--h, 168) 45% 27%);
+  font-weight: 600; font-size: calc(var(--s) * 0.4); line-height: 1; letter-spacing: 0.01em; }
+.inst.m3 { font-size: calc(var(--s) * 0.3); }
+.inst img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 12%; opacity: 0; }
+.inst.has-logo { background: #ffffff; box-shadow: inset 0 0 0 1px var(--line); }
+.inst.has-logo img { opacity: 1; }
+.inst.has-logo .mono { visibility: hidden; }
+.inst.s20 { --s: 20px; }
+.inst.s24 { --s: 24px; }
+.inst.s36 { --s: 36px; }
+.pict.md { width: 32px; height: 32px; border-radius: 9px; }
+.pict.md svg { width: 18px; height: 18px; }
+.lead-stack { position: relative; display: inline-flex; flex: none; }
+.lead-stack .inst.badge { position: absolute; right: -7px; bottom: -7px; box-shadow: 0 0 0 2px var(--panel); }
+.lead-stack .inst.badge.has-logo { box-shadow: 0 0 0 2px var(--panel), inset 0 0 0 1px var(--line); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .inst:not(.has-logo) { background: hsl(var(--h, 168) 24% 23%); color: hsl(var(--h, 168) 50% 82%); }
+}
+:root[data-theme="dark"] .inst:not(.has-logo) { background: hsl(var(--h, 168) 24% 23%); color: hsl(var(--h, 168) 50% 82%); }
+
+/* Liste de suggestions (champ Établissement) */
+.ac { position: relative; }
+.ac-list { position: absolute; top: calc(100% + 4px); left: 46px; width: max(calc(100% - 46px), min(300px, calc(100vw - 120px))); z-index: 5; margin: 0; padding: 4px; list-style: none; max-height: 304px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-s); box-shadow: var(--shadow); }
+.ac-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.ac-item[aria-selected="true"], .ac-item:hover { background: var(--brand-soft); }
+.ac-txt { min-width: 0; }
+.ac-txt b { display: block; font-weight: 500; }
+.ac-txt > span { display: block; font-size: 0.8125rem; color: var(--muted); }
+.ac-txt mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; text-decoration-color: var(--brand); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
 /* --- Charpente ------------------------------------------------------------------------------------------- */
 .shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
 .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; padding: 22px 14px; border-right: 1px solid var(--line); background: var(--panel); }
@@ -153,7 +186,7 @@ h3.ti svg { width: 17px; height: 17px; color: var(--brand); flex: none; }
 .btn[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand); }
 
 .field { display: grid; gap: 6px; }
-.field > span { font-weight: 500; font-size: 0.875rem; }
+.field > span, .field > label { font-weight: 500; font-size: 0.875rem; }
 .field small { color: var(--muted); font-size: 0.8125rem; }
 .input, .select, .textarea { width: 100%; min-height: 40px; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--panel); }
 .textarea { min-height: 80px; resize: vertical; }
@@ -288,9 +321,10 @@ fieldset.field legend b { font-weight: 400; color: var(--muted); }
 .holding { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(70px, 0.6fr) minmax(0, 0.9fr) minmax(120px, auto); gap: 14px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); cursor: pointer; background: none; border-left: 0; border-right: 0; border-top: 0; width: 100%; text-align: left; }
 .holding:last-child { border-bottom: 0; }
 .holding:hover { background: var(--panel-2); }
+.holding .name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.holding .nt { min-width: 0; }
 .holding .name b { font-weight: 500; display: block; }
-.holding .name span { color: var(--muted); font-size: 0.8125rem; }
-.holding .meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 1px; }
+.holding .meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 1px; color: var(--muted); font-size: 0.8125rem; }
 .holding .meta .il { gap: 5px; }
 .holding .meta .il > svg { width: 13px; height: 13px; }
 .holding .when { font-size: 0.8125rem; color: var(--muted); }
@@ -404,6 +438,7 @@ dialog[open].drawer { animation: slide-in 0.18s ease-out; }
   .form-actions .btn { flex: 1 1 auto; }
 }
 @media (max-width: 480px) {
+  .ac-list { left: 0; width: 100%; }
   .bar-row .label { gap: 10px; }
   .pict.lg { width: 42px; height: 42px; }
 }

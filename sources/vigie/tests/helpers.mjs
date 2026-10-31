@@ -3,14 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export async function startServer(overrides = {}) {
+export async function startServer(overrides = {}, { fetcher } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vigie-test-'));
   process.env.DATA_DIR = dir;
   const { loadConfig, paths } = await import(`../server/config.js?dir=${encodeURIComponent(dir)}`);
   const { createApp, createLogger } = await import('../server/app.js');
   const { cfg } = loadConfig();
   Object.assign(cfg, { APP_SECRET: 'test-secret-'.padEnd(64, 'x'), VERSION: 'test' }, overrides);
-  const app = createApp({ cfg, paths, log: createLogger('error'), withScheduler: false });
+  const app = createApp({ cfg, paths, log: createLogger('error'), withScheduler: false, fetcher: fetcher || (async () => { throw new Error('réseau désactivé pendant les tests'); }) });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   return {

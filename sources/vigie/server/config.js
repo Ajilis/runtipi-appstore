@@ -29,6 +29,7 @@ const SPEC = {
   BACKUP_HOUR: { type: 'int', def: 3, min: 0, max: 23, doc: 'Heure de la sauvegarde quotidienne automatique de la base (0 à 23).' },
   BACKUP_KEEP_DAYS: { type: 'int', def: 30, min: 0, max: 3650, doc: 'Nombre de jours de sauvegardes conservées (0 désactive la sauvegarde automatique).' },
   ECB_RATES_ENABLED: { type: 'bool', def: true, doc: 'Autoriser la récupération des taux de change de la Banque centrale européenne.' },
+  INSTITUTION_LOGOS: { type: 'bool', def: true, doc: 'Afficher le logo des établissements connus, récupéré par le serveur sur leur site officiel (false : monogrammes uniquement, aucune connexion sortante).' },
   LOG_LEVEL: { type: 'enum', def: 'info', values: ['debug', 'info', 'warn', 'error'], doc: 'Niveau de détail des journaux du conteneur.' },
 };
 

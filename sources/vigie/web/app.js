@@ -23,6 +23,8 @@
     range: store.get('range', '1y'),
     breakdown: store.get('breakdown', 'institution'),
     showClosed: false,
+    inst: { list: [], map: new Map() },
+    logos: false,
     filter: '',
     base: 'EUR',
     charts: [],
@@ -112,6 +114,34 @@
   const h2i = (name, text) => html`<h2 class="ti">${icon(name)}<span>${text}</span></h2>`;
   const h3i = (name, text) => html`<h3 class="ti">${icon(name)}<span>${text}</span></h3>`;
   const il = (name, text) => html`<span class="il">${icon(name)}<span>${text}</span></span>`;
+  // Établissements : catalogue (web/institutions.json), logos servis par le serveur, monogramme de secours.
+  const fold = (s) => [...String(s || '')].map((c) => c.normalize('NFD')[0].toLowerCase()).join('');
+  const normKey = (s) => fold(s).replace(/[^a-z0-9]+/g, ' ').trim();
+  function indexInstitutions(list) {
+    const map = new Map();
+    for (const e of list) for (const n of [e.name, ...e.aliases]) for (const k of [normKey(n), normKey(n).replace(/ /g, '')]) if (k && !map.has(k)) map.set(k, e);
+    return { list, map };
+  }
+  const findInstitution = (name) => { const k = normKey(name); return k ? state.inst.map.get(k) || state.inst.map.get(k.replace(/ /g, '')) || null : null; };
+  const MONO_STOP = new Set(['la', 'le', 'les', 'de', 'du', 'des', 'd', 'l', 'et', 'the', 'and']);
+  function monoText(name) {
+    const words = String(name).replace(/[&!'’.,()/+-]/g, ' ').split(/\s+/).filter(Boolean);
+    let sig = words.filter((w) => !MONO_STOP.has(fold(w)));
+    if (!sig.length) sig = words;
+    if (!sig.length) return '?';
+    if (sig.length === 1) return /^[A-Z0-9]{2,4}$/.test(sig[0]) ? sig[0].slice(0, 3) : sig[0].charAt(0).toUpperCase();
+    return (sig[0].charAt(0) + sig[1].charAt(0)).toUpperCase();
+  }
+  const MONO_HUES = [168, 196, 214, 250, 286, 330, 18, 38, 130];
+  const monoHue = (name) => { let h = 0; for (const c of normKey(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return MONO_HUES[h % MONO_HUES.length]; };
+  // Pastille d'établissement : monogramme coloré, recouvert par le logo dès qu'il est chargé.
+  function instLogo(name, cls = '') {
+    if (!String(name || '').trim()) return pict('bank', `neutral ${cls}`);
+    const entry = findInstitution(name);
+    const label = entry ? entry.name : name;
+    const txt = monoText(label);
+    return html`<span class="inst ${cls} ${txt.length > 2 ? 'm3' : ''}" style="--h:${monoHue(label)}" aria-hidden="true"><span class="mono">${txt}</span>${entry && state.logos ? html`<img class="inst-img" src="/api/institutions/logo/${entry.id}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
+  }
   const initials = (u) => (((u.first_name || u.display_name || u.username || '?').trim().charAt(0)) + ((u.last_name || '').trim().charAt(0))).toUpperCase();
   const nameFields = (u = {}, autofocus = false) => html`<div class="grid-2">
     <label class="field"><span>Prénom</span><input class="input" name="first_name" autocomplete="given-name" required maxlength="60" value="${u.first_name || ''}" ${autofocus ? raw('autofocus') : ''}></label>
@@ -585,7 +615,7 @@
   function groupLead(kind, g) {
     if (kind === 'currency') return html`<span class="pict neutral code" aria-hidden="true">${g.label}</span>`;
     if (kind === 'owner') return g.key === '—' ? pict('user', 'neutral') : avatar(g.label, 'pictsize');
-    return pict(g.key === '—' ? 'cube' : 'bank', 'neutral');
+    return g.key === '—' ? pict('cube', 'neutral') : instLogo(g.label, 's36');
   }
 
   async function pageDashboard(el, route, current) {
@@ -684,7 +714,7 @@
             const stale = !h.closed_at && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             const diff = h.previous_cents !== null && h.value_cents !== null ? h.value_cents - h.previous_cents : null;
             return html`<button type="button" class="holding ${h.closed_at ? 'closed' : ''}" data-action="open-holding" data-id="${h.id}">
-              <span class="name"><b>${h.name}</b><span class="meta">${h.institution ? il('bank', h.institution) : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}</span></span>
+              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}</span></span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>` : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`}</span>
               <span class="amount"><b>${h.value_cents === null ? '—' : money(h.value_cents, h.currency)}</b>
@@ -724,7 +754,12 @@
         <label class="field"><span>Liquidité</span><select class="select" name="liquidity">${Object.entries(LIQ).map(([k, l]) => html`<option value="${k}" ${h.liquidity === k ? 'selected' : ''}>${l}</option>`)}</select></label>
       </div>
       <div class="grid-2">
-        <label class="field"><span>Établissement</span><input class="input" name="institution" maxlength="80" value="${h.institution || ''}" list="institutions"></label>
+        <div class="field"><label for="f-institution">Établissement</label>
+          <div class="with-pict ac"><span data-inst-preview>${instLogo(h.institution || '', 's36')}</span>
+            <input class="input" id="f-institution" name="institution" maxlength="80" value="${h.institution || ''}" autocomplete="off" spellcheck="false"
+              role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="inst-list" aria-describedby="inst-hint" placeholder="Banque, courtier, assureur…">
+            <ul class="ac-list" id="inst-list" role="listbox" aria-label="Établissements proposés" hidden></ul></div>
+          <small id="inst-hint">Suggestions dès 3 lettres, ou saisissez librement.</small></div>
         <label class="field"><span>Titulaire</span><select class="select" name="owner_choice">
           <option value="">Non précisé</option>
           ${owners.map((o) => html`<option value="${o}" ${(h.owner || '').toLowerCase() === o.toLowerCase() ? 'selected' : ''}>${o}</option>`)}
@@ -732,7 +767,6 @@
         </select></label>
       </div>
       <label class="field" data-new-owner hidden><span>Nom du nouveau titulaire</span><input class="input" name="owner_new" maxlength="40" autocomplete="off" placeholder="Prénom, enfant, SCI…"></label>
-      <datalist id="institutions">${settings.institutions.map((i) => html`<option value="${i}">`)}</datalist>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
         : html`<div class="grid-3">
         <label class="field"><span>Valeur actuelle</span><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"></label>
@@ -747,6 +781,7 @@
     const syncLiq = () => { if (!existing) form.liquidity.value = form.category_id.selectedOptions[0].dataset.liq; };
     const syncPict = () => { const o = form.category_id.selectedOptions[0]; $('[data-cat-pict]', form).innerHTML = part(catPict({ icon: o.dataset.icon, kind: o.dataset.kind })); };
     syncPict();
+    institutionAutocomplete(form.institution, $('#inst-list', d), $('[data-inst-preview]', d), settings.institutions);
     form.category_id.addEventListener('change', syncPict);
     form.category_id.addEventListener('change', syncLiq);
     if (!existing) syncLiq();
@@ -772,6 +807,95 @@
     });
   }
 
+  // Liste de suggestions du champ Établissement (motif ARIA « combobox ») : vos établissements, puis le catalogue.
+  function suggestInstitutions(q, own) {
+    const fq = fold(q.trim());
+    if (fq.length < 3) return [];
+    const seen = new Set(), out = [];
+    const words = (s) => s.split(/[\s'’&().-]+/).filter(Boolean);
+    const consider = (name, entry, mine) => {
+      const key = entry ? `id:${entry.id}` : `n:${normKey(name)}`;
+      if (seen.has(key)) return;
+      const fn = fold(name);
+      let score = fn.startsWith(fq) ? 0 : words(fn).some((w) => w.startsWith(fq)) ? 1 : fn.includes(fq) ? 3 : null;
+      let via = null;
+      if (score === null && entry) {
+        for (const al of entry.aliases) {
+          const fa = fold(al);
+          if (fa.startsWith(fq) || words(fa).some((w) => w.startsWith(fq))) { score = 2; via = al; break; }
+          if (fa.includes(fq) && score === null) { score = 4; via = al; }
+        }
+      }
+      if (score === null) return;
+      seen.add(key);
+      out.push({ name, entry, mine, via, score: score - (mine ? 0.5 : 0) });
+    };
+    for (const n of own) consider(n, findInstitution(n), true);
+    for (const e of state.inst.list) consider(e.name, e, false);
+    return out.sort((x, y) => x.score - y.score || x.name.localeCompare(y.name, 'fr')).slice(0, 8);
+  }
+
+  function highlight(name, q) {
+    const fq = fold(q.trim()), chars = [...name], i = fold(name).indexOf(fq);
+    if (!fq || i < 0) return html`${name}`;
+    return html`${chars.slice(0, i).join('')}<mark>${chars.slice(i, i + [...fq].length).join('')}</mark>${chars.slice(i + [...fq].length).join('')}`;
+  }
+
+  function institutionAutocomplete(input, list, preview, own) {
+    let items = [], active = -1, closeTimer = null;
+    const setPreview = () => { preview.innerHTML = part(instLogo(input.value, 's36')); };
+    const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; };
+    const paint = () => {
+      list.innerHTML = part(items.map((it, i) => {
+        const desc = it.entry ? `${it.entry.kind}${it.via ? `, ${it.via}` : ''}` : 'Établissement personnalisé';
+        return html`<li class="ac-item" role="option" id="inst-opt-${i}" data-i="${i}" aria-selected="${i === active}">${instLogo(it.name, 's24')}<span class="ac-txt"><b>${highlight(it.name, input.value)}</b><span>${it.mine ? `Déjà utilisé, ${desc.charAt(0).toLowerCase()}${desc.slice(1)}` : desc}</span></span></li>`;
+      }));
+      if (active >= 0) { input.setAttribute('aria-activedescendant', `inst-opt-${active}`); const el = list.children[active]; if (el) el.scrollIntoView({ block: 'nearest' }); }
+      else input.removeAttribute('aria-activedescendant');
+    };
+    const update = () => {
+      items = suggestInstitutions(input.value, own);
+      active = -1;
+      if (!items.length || (items.length === 1 && fold(items[0].name) === fold(input.value.trim()))) { close(); return; }
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      paint();
+    };
+    const choose = (i) => {
+      const it = items[i];
+      if (!it) return;
+      input.value = it.name;
+      close();
+      setPreview();
+    };
+    input.addEventListener('input', () => { update(); setPreview(); });
+    input.addEventListener('focus', () => { if (input.value.trim().length >= 3) update(); });
+    input.addEventListener('blur', () => { closeTimer = setTimeout(close, 150); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (list.hidden) { update(); if (list.hidden) return; }
+        e.preventDefault();
+        active = e.key === 'ArrowDown' ? (active + 1) % items.length : (active <= 0 ? items.length - 1 : active - 1);
+        paint();
+      } else if (e.key === 'Enter' && !list.hidden && active >= 0) {
+        e.preventDefault();
+        choose(active);
+      } else if (e.key === 'Escape' && !list.hidden) {
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      } else if (e.key === 'Tab') close();
+    });
+    list.addEventListener('mousedown', (e) => e.preventDefault());
+    list.addEventListener('click', (e) => {
+      const li = e.target.closest('.ac-item');
+      if (!li) return;
+      clearTimeout(closeTimer);
+      choose(Number(li.dataset.i));
+      input.focus();
+    });
+  }
+
   async function openHolding(id) {
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
@@ -780,7 +904,7 @@
     const cat = cats.find((c) => c.id === h.category_id) || {};
     const asc = [...valuations].reverse();
     const d = openDialog(html`<div class="dialog-body">
-      ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, catPict(cat, 'lg'))}
+      ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.value_cents === null ? '—' : money(h.value_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${valuations[0] ? `Valeur au ${dateLong(valuations[0].valued_at)}` : 'Aucune valeur enregistrée'}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
@@ -793,7 +917,7 @@
         <small class="muted">Une seule valeur par date : enregistrer à une date existante remplace la valeur de ce jour.</small>
       </form>` : ''}
       <dl class="kv">
-        <dt>${icon('bank')}Établissement</dt><dd>${h.institution || '—'}</dd>
+        <dt>${icon('bank')}Établissement</dt><dd>${h.institution ? html`<span class="cell-lead">${instLogo(h.institution, 's24')}<span>${h.institution}</span></span>` : '—'}</dd>
         <dt>${icon('user')}Titulaire</dt><dd>${h.owner || '—'}</dd>
         <dt>${icon('exchange')}Devise</dt><dd>${h.currency}</dd>
         <dt>${icon(LIQ_ICON[h.liquidity])}Liquidité</dt><dd>${LIQ[h.liquidity]}</dd>
@@ -861,7 +985,7 @@
           ${items.map((h) => {
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             return html`<div class="quick" data-row data-stale="${stale}" data-id="${h.id}">
-              <div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div>
+              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : 'aucune valeur'}</span></div>
               <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}" placeholder="${h.currency}">
               <button class="btn small keep" type="button" data-action="keep-value" data-id="${h.id}" ${h.value_cents === null ? 'disabled' : ''} title="Reprendre la dernière valeur à la date choisie">${icon('equal')}Inchangée</button>
@@ -1077,6 +1201,7 @@
           <dt>${icon('devices')}Durée maximale d'une session</dt><dd>${s.security.session_max_hours} h</dd>
           <dt>${icon('lock')}Blocage du compte</dt><dd>après ${s.security.login_max_attempts} échecs, pendant ${s.security.login_lock_minutes} min</dd>
           <dt>${icon('key')}Double authentification</dt><dd>${s.security.require_2fa ? 'obligatoire pour tous' : 'facultative'}</dd>
+          <dt>${icon('bank')}Logos des établissements</dt><dd>${s.security.institution_logos ? html`récupérés sur les sites officiels <button class="btn small" type="button" data-action="logos-retry">${icon('update')}Réessayer les logos manquants</button>` : 'désactivés (monogrammes)'}</dd>
         </dl>
         <p class="small muted" style="margin-top:12px">Ces réglages se modifient dans le fichier <b>data/config/vigie.env</b> de l'application, puis en redémarrant Vigie dans Runtipi.</p>
       </div></section>` : ''}`);
@@ -1273,7 +1398,7 @@
     valeur_enregistree: 'Valeur enregistrée', valeur_supprimee: 'Valeur supprimée', mise_a_jour_rapide: 'Mise à jour rapide', taux_modifies: 'Taux modifiés',
     taux_supprime: 'Taux supprimé', taux_bce: 'Taux BCE récupérés', reglages_modifies: 'Réglages modifiés', utilisateur_cree: 'Utilisateur ajouté',
     utilisateur_modifie: 'Utilisateur modifié', mot_de_passe_reinitialise: 'Mot de passe redéfini', double_auth_reinitialisee: 'Double authentification réinitialisée',
-    utilisateur_supprime: 'Utilisateur supprimé', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
+    utilisateur_supprime: 'Utilisateur supprimé', logos_reessai: 'Logos réessayés', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
   };
   const actionIcon = (a) => (/refusee|bloque/.test(a) ? 'alert' : /^connexion$|installation/.test(a) ? 'login' : a === 'deconnexion' ? 'logout'
     : /double_auth|code_secours|codes_secours/.test(a) ? 'shield' : /mot_de_passe/.test(a) ? 'key' : /session/.test(a) ? 'devices'
@@ -1309,6 +1434,9 @@
     'close-dialog': () => closeDialog(),
     reload: () => location.reload(),
     retry: () => boot(),
+    'logos-retry': async () => {
+      try { const r = await api('POST', '/api/admin/logos/retry', {}); toast(r.cleared ? `${r.cleared} logo(s) seront recherchés à nouveau` : 'Aucun logo manquant'); } catch (err) { fail(err); }
+    },
     'install-app': async () => {
       const ev = pwa.prompt;
       if (!ev) { location.hash = '#/compte'; return; }
@@ -1467,6 +1595,12 @@
   }
   new MutationObserver(() => labelTables()).observe(document.body, { childList: true, subtree: true });
 
+  // Un logo réellement chargé (plus grand que l'image transparente de secours) recouvre le monogramme.
+  document.addEventListener('load', (e) => {
+    const t = e.target;
+    if (t instanceof HTMLImageElement && t.classList.contains('inst-img') && t.naturalWidth > 1) t.parentElement.classList.add('has-logo');
+  }, true);
+
   let resizeTimer = null;
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => state.charts.forEach((draw) => draw()), 120); });
   window.addEventListener('hashchange', () => { setMenu(false); if (state.user) render(); });
@@ -1537,6 +1671,11 @@
     try { state.boot = await api('GET', '/api/auth/state'); }
     catch (err) { state.boot = null; showUnreachable(err); return; }
     retryCount = 0;
+    state.logos = Boolean(state.boot.logos_enabled);
+    if (!state.inst.list.length) {
+      try { state.inst = indexInstitutions((await (await fetch(`/institutions.json?v=${encodeURIComponent(state.boot.version)}`)).json()).institutions); }
+      catch { state.inst = indexInstitutions([]); }
+    }
     if (state.boot.setup_required) return showSetup();
     if (!state.boot.user) return showLogin();
     state.user = state.boot.user;

@@ -19,6 +19,8 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 | `server/portfolio.js` | Calculs : valeurs à une date, totaux, répartitions, variations, historique |
 | `server/fx.js` | Taux de change de la BCE |
 | `server/backup.js` | Sauvegardes `VACUUM INTO` et rotation |
+| `server/logos.js` | Logos des établissements : récupération sécurisée sur le site officiel (catalogue uniquement), cache en base |
+| `web/institutions.json` | Catalogue des établissements proposés (nom, type, alias, site officiel) |
 | `web/` | Interface, police et générateur de QR code (MIT, voir `web/vendor`) |
 
 ## Modèle de données
