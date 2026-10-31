@@ -119,6 +119,7 @@ const MIME = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
+  '.webp': 'image/webp',
 };
 
 // Sert web/ en mémoire : petit volume, fichiers figés dans l'image.
@@ -134,7 +135,8 @@ export function createStatic(rootDir, version) {
       const stat = fs.statSync(full);
       if (stat.isFile()) {
         let buf = fs.readFileSync(full);
-        if (rel === '/index.html') buf = Buffer.from(buf.toString('utf8').replaceAll('__VERSION__', version));
+        // La page et le service worker portent le numéro de version (cache des fichiers et mise à jour de l'application).
+        if (rel === '/index.html' || rel === '/sw.js') buf = Buffer.from(buf.toString('utf8').replaceAll('__VERSION__', version));
         entry = { buf, type: MIME[path.extname(full)] || 'application/octet-stream' };
       }
     } catch { entry = null; }
@@ -148,7 +150,9 @@ export function createStatic(rootDir, version) {
     const entry = load(rel);
     if (!entry) return false;
     const immutable = /^\/(fonts|vendor)\//.test(rel) || /\?v=/.test(req.url);
-    const headers = { 'Cache-Control': rel === '/index.html' ? 'no-cache' : immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=300' };
+    const noCache = rel === '/index.html' || rel === '/sw.js' || rel === '/manifest.webmanifest';
+    const headers = { 'Cache-Control': noCache ? 'no-cache' : immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=300' };
+    if (rel === '/sw.js') headers['Service-Worker-Allowed'] = '/';
     res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': entry.type, 'Content-Length': entry.buf.length, ...headers });
     res.end(req.method === 'HEAD' ? undefined : entry.buf);
     return true;

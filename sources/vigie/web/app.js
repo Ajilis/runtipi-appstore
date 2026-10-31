@@ -528,6 +528,7 @@
           </nav>
           <div class="rail-foot">
             <div class="who"><span class="avatar" aria-hidden="true">${initials(u)}</span><div><b>${u.display_name}</b><span>${ROLE[u.role]}</span></div></div>
+            <button class="btn ghost small" type="button" data-action="install-app" data-install-btn ${pwa.state() === 'prompt' ? '' : raw('hidden')}>${icon('download')}<span class="txt">Installer l'application</span></button>
             <button class="btn ghost small" type="button" data-action="logout">${icon('logout')}<span class="txt">Se déconnecter</span></button>
             <span class="version">Version ${state.boot.version}</span>
           </div>
@@ -1110,6 +1111,21 @@
     return os ? `${browser} sur ${os}` : browser;
   }
 
+  // Installation de l'application (PWA) : état selon le navigateur et l'appareil.
+  function installSection() {
+    const st = pwa.state();
+    const body = {
+      installed: html`<p><span class="tag brand">${icon('check')}Installée</span></p><p class="muted">Vous utilisez Vigie comme une application sur cet appareil.</p>`,
+      prompt: html`<p class="muted">Ajoutez Vigie à l'écran d'accueil ou au menu des applications : elle s'ouvre dans sa propre fenêtre, sans barre d'adresse.</p>
+        <div><button class="btn primary" type="button" data-action="install-app">${icon('download')}Installer Vigie</button></div>`,
+      ios: html`<p class="muted">Sur iPhone et iPad, dans <b>Safari</b> : touchez ${il('upload', 'Partager')}, puis <b>Sur l'écran d'accueil</b>, puis <b>Ajouter</b>.</p>`,
+      insecure: html`<div class="notice">${icon('lock')}<div>L'installation demande une connexion sécurisée (HTTPS). Ouvrez Vigie avec son adresse Cloudflare, par exemple <b>https://patrimoine.exemple.fr</b>, puis revenez ici. Par l'adresse locale http://IP:port, Vigie reste utilisable dans le navigateur.</div></div>`,
+      manual: html`<p class="muted">Dans le menu du navigateur, choisissez <b>Installer Vigie</b> ou <b>Ajouter à l'écran d'accueil</b>. Sur Mac avec Safari : menu Fichier, <b>Ajouter au Dock</b>.</p>`,
+    }[st];
+    return html`${h2i('phone', 'Application sur cet appareil')}<div class="panel form">${body}
+      <p class="small muted">${il('shield', "Aucune donnée de patrimoine n'est enregistrée sur l'appareil : l'application affiche les chiffres de votre serveur à chaque ouverture.")}</p></div>`;
+  }
+
   async function pageAccount(el, route, current) {
     const [{ user, require_2fa }, { sessions }] = await Promise.all([api('GET', '/api/account'), api('GET', '/api/account/sessions')]);
     if (!current()) return;
@@ -1119,6 +1135,7 @@
       ${state.boot.needs_2fa_setup && !user.totp_enabled ? html`<div class="notice">${icon('shield')}<div>La double authentification est obligatoire sur ce serveur. Activez-la pour accéder à vos données.</div></div>` : ''}
       <div class="cols">
         <div class="stack">
+          <section class="section" id="install-section">${installSection()}</section>
           <section class="section">${h2i('shield', 'Double authentification')}<div class="panel form" id="totp-panel">
             ${user.totp_enabled ? html`<p><span class="tag brand">${icon('check')} Active</span></p>
               <p class="muted">À chaque connexion, un code de votre application d'authentification est demandé après le mot de passe. Codes de secours restants : <b>${user.recovery_codes_left}</b>.</p>
@@ -1291,6 +1308,16 @@
   const actions = {
     'close-dialog': () => closeDialog(),
     reload: () => location.reload(),
+    retry: () => boot(),
+    'install-app': async () => {
+      const ev = pwa.prompt;
+      if (!ev) { location.hash = '#/compte'; return; }
+      ev.prompt();
+      const choice = await ev.userChoice.catch(() => null);
+      pwa.prompt = null;
+      pwa.refresh();
+      if (choice && choice.outcome === 'accepted') toast('Installation de Vigie en cours');
+    },
     'toggle-discret': () => { state.discret = !state.discret; store.set('discret', state.discret); render(); },
     range: (b) => { state.range = b.dataset.range; store.set('range', state.range); render(); },
     breakdown: (b) => { state.breakdown = b.dataset.key; store.set('breakdown', state.breakdown); render(); },
@@ -1447,10 +1474,69 @@
   // ---------------------------------------------------------------------------------------------------------
   // Démarrage
   // ---------------------------------------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------------------------------------
+  // Application installable (PWA) et hors ligne
+  // ---------------------------------------------------------------------------------------------------------
+  var pwa = {
+    prompt: null,
+    standalone: () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true,
+    ios: () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    state() {
+      if (this.standalone()) return 'installed';
+      if (this.prompt) return 'prompt';
+      if (!window.isSecureContext) return 'insecure';
+      if (this.ios()) return 'ios';
+      return 'manual';
+    },
+    refresh() {
+      $$('[data-install-btn]').forEach((b) => { b.hidden = this.state() !== 'prompt'; });
+      const sec = $('#install-section');
+      if (sec) sec.innerHTML = part(installSection());
+    },
+  };
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); pwa.prompt = e; pwa.refresh(); });
+  window.addEventListener('appinstalled', () => { pwa.prompt = null; pwa.refresh(); toast('Vigie est installée sur cet appareil'); });
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => console.warn('Service worker non enregistré :', err.message)); });
+  }
+
+  const netbar = $('#netbar');
+  function setOnline(online) {
+    netbar.hidden = online;
+    if (!online) netbar.innerHTML = part(html`${icon('alert')}<span>Hors ligne : les chiffres affichés ne sont plus actualisés et les modifications sont impossibles.</span>`);
+  }
+  window.addEventListener('offline', () => setOnline(false));
+  window.addEventListener('online', () => {
+    setOnline(true);
+    if (state.user) render(); else if (!state.boot) boot();
+  });
+  if (!navigator.onLine) setOnline(false);
+
+  // Serveur injoignable : nouvel essai automatique (5 s, puis de plus en plus espacé jusqu'à 1 min),
+  // au retour du réseau et quand l'application revient au premier plan.
+  let retryTimer = null, retryCount = 0;
+  function showUnreachable(err) {
+    const offline = !navigator.onLine;
+    const delay = Math.min(60_000, 5_000 * 2 ** retryCount);
+    retryCount += 1;
+    gate(html`<div>${pict(offline ? 'alert' : 'database', 'lg')}</div>
+      <div><h1>${offline ? 'Vous êtes hors ligne' : 'Le serveur Vigie ne répond pas'}</h1>
+      <p class="lead">${offline
+        ? "Vigie a besoin d'une connexion à votre serveur pour afficher vos données : rien n'est conservé sur cet appareil."
+        : err.status === 0 ? 'Vérifiez que le serveur est allumé et que le tunnel Cloudflare fonctionne.' : err.message}</p>
+      <p class="small muted">${il('clock', `Nouvel essai automatique dans ${Math.round(delay / 1000)} s.`)}</p></div>
+      <button class="btn primary" type="button" data-action="retry">${icon('update')}Réessayer</button>`);
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => { if (!state.boot) boot(); }, delay);
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !state.boot) boot(); });
+
   async function boot() {
     lostShown = false;
+    clearTimeout(retryTimer);
     try { state.boot = await api('GET', '/api/auth/state'); }
-    catch (err) { app.innerHTML = part(html`<main class="gate"><div class="gate-card"><h1>Vigie est injoignable</h1><p class="lead">${err.message}</p><button class="btn primary" data-action="reload">Réessayer</button></div></main>`); return; }
+    catch (err) { state.boot = null; showUnreachable(err); return; }
+    retryCount = 0;
     if (state.boot.setup_required) return showSetup();
     if (!state.boot.user) return showLogin();
     state.user = state.boot.user;

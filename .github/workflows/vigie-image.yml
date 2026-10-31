@@ -111,6 +111,11 @@ jobs:
           headers="$(curl -fsS -D - -o /dev/null http://127.0.0.1:18080/)"
           echo "$headers"
           grep -qi '^content-security-policy:' <<< "$headers" || { echo "::error::Missing CSP header"; exit 1; }
+          manifest="$(curl -fsS http://127.0.0.1:18080/manifest.webmanifest)"
+          grep -q '"display": "standalone"' <<< "$manifest" || { echo "::error::PWA manifest missing or invalid"; exit 1; }
+          sw="$(curl -fsS http://127.0.0.1:18080/sw.js)"
+          grep -q "const VERSION = '${{ steps.meta.outputs.version }}'" <<< "$sw" || { echo "::error::Service worker version mismatch"; exit 1; }
+          curl -fsS -o /dev/null http://127.0.0.1:18080/icons/icon-512.png || { echo "::error::Missing PWA icon"; exit 1; }
           sudo ls -la /tmp/vigie-data/config /tmp/vigie-data/db
           sudo test -s /tmp/vigie-data/config/vigie.env || { echo "::error::Missing persistent config file"; exit 1; }
           sudo test -s /tmp/vigie-data/db/vigie.sqlite || { echo "::error::Missing persistent database"; exit 1; }

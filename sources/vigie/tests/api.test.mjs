@@ -295,6 +295,42 @@ test('en-têtes de sécurité sur la page', async () => {
   assert.equal((await fetch(srv.base + '/../server/index.js')).status, 404);
 });
 
+test('application installable : manifeste, service worker et icônes', async () => {
+  const m = await fetch(srv.base + '/manifest.webmanifest');
+  assert.equal(m.status, 200);
+  assert.match(m.headers.get('content-type'), /application\/manifest\+json/);
+  assert.equal(m.headers.get('cache-control'), 'no-cache');
+  const manifest = await m.json();
+  assert.equal(manifest.name, 'Vigie Patrimoine');
+  assert.equal(manifest.display, 'standalone');
+  assert.equal(manifest.start_url, '/');
+  const sizes = manifest.icons.map((i) => `${i.sizes}/${i.purpose}`);
+  for (const need of ['192x192/any', '512x512/any', '192x192/maskable', '512x512/maskable']) assert.ok(sizes.includes(need), need);
+  // Chaque image référencée existe et a la taille annoncée (en-tête PNG ou WebP).
+  const files = [...manifest.icons, ...manifest.shortcuts.flatMap((x) => x.icons), ...manifest.screenshots];
+  for (const f of files) {
+    const r = await fetch(`${srv.base}/${f.src}`);
+    assert.equal(r.status, 200, f.src);
+    const buf = Buffer.from(await r.arrayBuffer());
+    let w, h;
+    if (f.type === 'image/png') { w = buf.readUInt32BE(16); h = buf.readUInt32BE(20); }
+    else { assert.equal(buf.toString('ascii', 8, 12), 'WEBP', f.src); const chunk = buf.toString('ascii', 12, 16);
+      if (chunk === 'VP8X') { w = 1 + buf.readUIntLE(24, 3); h = 1 + buf.readUIntLE(27, 3); }
+      else if (chunk === 'VP8 ') { w = buf.readUInt16LE(26) & 0x3fff; h = buf.readUInt16LE(28) & 0x3fff; }
+      else { const b = buf.readUInt32LE(21); w = 1 + (b & 0x3fff); h = 1 + ((b >> 14) & 0x3fff); } }
+    assert.equal(`${w}x${h}`, f.sizes, f.src);
+  }
+  const sw = await fetch(srv.base + '/sw.js');
+  assert.equal(sw.status, 200);
+  assert.match(sw.headers.get('content-type'), /javascript/);
+  assert.equal(sw.headers.get('cache-control'), 'no-cache');
+  const code = await sw.text();
+  assert.ok(code.includes("const VERSION = 'test'"), 'version injectée dans le service worker');
+  assert.ok(code.includes("url.pathname.startsWith('/api/')"), 'les données ne passent jamais par le cache');
+  const page = await (await fetch(srv.base + '/')).text();
+  assert.ok(page.includes('rel="manifest"') && page.includes('apple-touch-icon'));
+});
+
 test('déconnexion', async () => {
   const r = await admin.post('/api/auth/logout');
   assert.equal(r.status, 200);

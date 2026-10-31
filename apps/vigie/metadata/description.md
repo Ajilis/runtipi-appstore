@@ -1,6 +1,23 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 3** · **Version de Vigie : 0.3.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 4** · **Version de Vigie : 0.4.0** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.4.0 : application installable (PWA)
+
+Vigie s'installe comme une application sur téléphone, tablette et ordinateur : icône sur l'écran d'accueil ou dans le menu des applications, ouverture dans sa propre fenêtre sans barre d'adresse, raccourcis **Mise à jour rapide** et **Avoirs** (appui long sur l'icône).
+
+**Condition : une adresse HTTPS.** Les navigateurs n'autorisent l'installation qu'en connexion sécurisée. Utilisez l'adresse Cloudflare Tunnel (par exemple `https://patrimoine.exemple.fr`). Par l'adresse locale `http://IP_DU_SERVEUR:8289`, Vigie reste utilisable normalement dans le navigateur, sans installation.
+
+| Appareil | Installation |
+| --- | --- |
+| Android (Chrome, Edge, Samsung Internet) | Bouton **Installer Vigie** dans **Mon compte**, ou menu ⋮ → **Installer l'application** |
+| iPhone, iPad | Dans **Safari** : **Partager** → **Sur l'écran d'accueil** → **Ajouter** |
+| Ordinateur (Chrome, Edge) | Bouton **Installer** de la barre d'adresse, ou **Installer Vigie** dans Mon compte |
+| Mac (Safari) | Menu **Fichier** → **Ajouter au Dock** |
+
+**Confidentialité.** Le service worker ne met en cache que l'interface (page, styles, scripts, polices, icônes). Les données de patrimoine, les exports et les sauvegardes ne sont jamais stockés sur l'appareil : sans connexion au serveur, Vigie affiche un écran « hors ligne » et se reconnecte automatiquement dès que le serveur répond.
+
+**Cloudflare Access.** Si l'adresse publique est protégée par Cloudflare Access, le manifeste est demandé avec les cookies de session (`crossorigin="use-credentials"`) : connectez-vous une première fois dans le navigateur avant d'installer.
 
 ## Nouveautés de la version 0.3.0
 

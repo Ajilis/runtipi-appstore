@@ -2,12 +2,24 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light dark">
   <title>Vigie Patrimoine</title>
+  <meta name="description" content="Vue globale et privée de votre patrimoine, auto-hébergée.">
+  <!-- Application installable (PWA) -->
+  <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+  <meta name="application-name" content="Vigie">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16211f" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Vigie">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" href="icon.svg?v=__VERSION__" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preload" href="fonts/PublicSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="app.css?v=__VERSION__">
 </head>
@@ -15,6 +27,7 @@
   <div id="app" aria-live="polite"><p class="loading" style="padding:40px">Chargement…</p></div>
   <dialog id="modal" aria-labelledby="modal-title"></dialog>
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <div class="netbar" id="netbar" role="status" hidden></div>
   <noscript>Vigie Patrimoine a besoin de JavaScript pour fonctionner.</noscript>
   <script src="vendor/qrcode.js"></script>
   <script src="icons.js?v=__VERSION__"></script>

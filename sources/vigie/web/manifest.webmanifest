@@ -1,0 +1,42 @@
+{
+  "id": "/",
+  "name": "Vigie Patrimoine",
+  "short_name": "Vigie",
+  "description": "Vue globale et privée de votre patrimoine, auto-hébergée.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f6f5",
+  "theme_color": "#1e5a4e",
+  "categories": ["finance", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Mise à jour rapide",
+      "short_name": "Mettre à jour",
+      "description": "Saisir les nouvelles valeurs de vos avoirs",
+      "url": "/#/actualiser",
+      "icons": [{ "src": "icons/shortcut-update.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Avoirs",
+      "description": "Comptes, placements, biens et crédits",
+      "url": "/#/avoirs",
+      "icons": [{ "src": "icons/shortcut-holdings.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ],
+  "screenshots": [
+    { "src": "screenshots/tableau-large.webp", "sizes": "1280x800", "type": "image/webp", "form_factor": "wide", "label": "Tableau de bord : patrimoine net, évolution et répartition" },
+    { "src": "screenshots/tableau-mobile.webp", "sizes": "780x1688", "type": "image/webp", "form_factor": "narrow", "label": "Tableau de bord sur téléphone" },
+    { "src": "screenshots/avoirs-mobile.webp", "sizes": "780x1688", "type": "image/webp", "form_factor": "narrow", "label": "Avoirs par catégorie" }
+  ]
+}
