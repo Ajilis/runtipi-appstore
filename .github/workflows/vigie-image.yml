@@ -39,11 +39,6 @@ jobs:
         working-directory: sources/vigie
         run: for f in server/*.js web/app.js; do node --check "$f"; done
 
-      - name: Probe GeoRegistry DVF field names (diagnostic only)
-        if: matrix.node == '24'
-        working-directory: sources/vigie
-        run: node tests/georegistry-contract-probe.mjs
-
       - name: Run tests (API, access control, 2FA, calculations)
         working-directory: sources/vigie
         env:
