@@ -1207,6 +1207,8 @@ export function registerRoutes(router, deps) {
     if (!u) fail(404, 'not_found', 'Utilisateur introuvable.');
     if (id === ctx.user.id) fail(400, 'self_protection', 'Vous ne pouvez pas supprimer votre propre compte.');
     if (u.role === 'admin' && !u.disabled && activeAdmins(id) === 0) fail(400, 'last_admin', 'Il doit rester au moins un administrateur actif.');
+    if (db.prepare('SELECT 1 FROM holdings WHERE account_user_id = ? LIMIT 1').get(id))
+      fail(409,'account_has_holdings','Ce compte possède encore des avoirs. Supprimez ou transférez ses biens avant de supprimer le compte : aucun patrimoine ne sera effacé automatiquement.');
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
     audit(ctx, 'utilisateur_supprime', u.username);
     return { ok: true };
