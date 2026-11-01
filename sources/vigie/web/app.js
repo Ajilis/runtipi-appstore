@@ -1032,9 +1032,11 @@
           address: form.property_address.value, condition: form.property_condition.value,
         });
         const sampleText = result.comparables + ' ventes comparables, fiabilité ' + (result.confidence === 'high' ? 'élevée' : result.confidence === 'medium' ? 'moyenne' : 'faible');
-        const methodText = result.method === 'dvf_median_nearby'
-          ? 'Calcul de secours : médiane des ventes DVF proches (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km). Ce n’est pas une seconde source indépendante.'
-          : 'Moteur GeoRegistry sur ventes DVF.';
+        const methodText = result.method === 'dvf_local_price_m2'
+          ? 'Estimation approximative : ' + Number(result.price_per_m2).toLocaleString('fr-FR') + ' €/m² × ' + Number(form.surface_m2.value).toLocaleString('fr-FR') + ' m². Médiane des ventes locales du même type de bien dans un rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km, même si leurs surfaces diffèrent. Forte incertitude ; ce n’est pas une expertise.'
+          : result.method === 'dvf_median_nearby'
+            ? 'Calcul de secours : médiane des ventes DVF de surface comparable (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km). Ce n’est pas une seconde source indépendante.'
+            : 'Moteur GeoRegistry sur ventes DVF.';
         output.textContent = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
         const accepted = await confirmDialog({ title: 'Appliquer cette estimation ?', message: output.textContent + ' La valeur d’achat restera inchangée. Vous devrez enregistrer le formulaire pour sauvegarder la nouvelle valeur.', confirm: 'Remplir la valeur actuelle' });
         if (accepted) { amountInput.value = centsInput(result.estimate_cents); amountInput.dispatchEvent(new Event('input', { bubbles: true })); }
