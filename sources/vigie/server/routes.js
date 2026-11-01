@@ -468,7 +468,7 @@ export function registerRoutes(router, deps) {
     if (!h || (ownerId !== null && h.account_user_id !== ownerId)) fail(404, 'not_found', 'Bien immobilier introuvable dans votre compte.');
     return h;
   }
-  router.get('/api/property-shares/recipients', { auth: 'admin' }, (ctx) => ({
+  router.get('/api/property-shares/recipients', { auth: 'editor' }, (ctx) => ({
     recipients: db.prepare(`SELECT id, display_name, email FROM users
       WHERE id <> ? AND disabled = 0 AND email IS NOT NULL AND email <> '' ORDER BY display_name`).all(ctx.user.id),
     mail_ready: Boolean(mailReady() && mailConf()),
@@ -492,7 +492,7 @@ export function registerRoutes(router, deps) {
       accepted_bp: sumAccepted.get(id).bp, shares: list.map((r) => shareView(shareRow.get(r.id))) };
   });
 
-  router.post('/api/holdings/:id/shares', { auth: 'admin' }, async (ctx) => {
+  router.post('/api/holdings/:id/shares', { auth: 'editor' }, async (ctx) => {
     const id = intId(ctx.params.id);
     const property = shareProperty(id, ctx.user.id);
     const targetId = intId(ctx.body.recipient_id, 'Destinataire');
