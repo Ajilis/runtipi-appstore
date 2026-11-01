@@ -514,6 +514,25 @@ details.amort > p { margin-top: 8px; }
 .amort-table tr.paid td { color: var(--faint); }
 .amort-table tr.next td { background: var(--brand-soft); color: var(--ink); font-weight: 500; }
 .m-only { display: none; }
+/* --- E-mails : connexion, invitations, réglages SMTP ------------------------------------------------------------- */
+.notice.bad { background: transparent; border-color: var(--bad); color: var(--ink); }
+.notice.bad > svg { color: var(--bad); }
+.link-btn { justify-self: center; background: none; border: 0; padding: 8px 4px; min-height: 44px; color: var(--brand); font: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.link-btn:hover { color: var(--ink); }
+.gate-card .small.muted { text-align: center; }
+.copy-row { display: flex; gap: 8px; min-width: 0; }
+.copy-row .input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125rem; }
+.mail-server { grid-template-columns: minmax(0, 2fr) minmax(0, 0.8fr) minmax(0, 1.4fr); }
+.mail-test { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; padding-top: 6px; border-top: 1px dashed var(--line); }
+@media (max-width: 860px) {
+  .mail-server { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .mail-server .field:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .mail-server, .mail-test { grid-template-columns: minmax(0, 1fr); }
+  .copy-row { flex-direction: column; }
+}
+
 /* --- Logos des établissements ------------------------------------------------------------------------------------ */
 .logo-summary { display: grid; gap: 14px; justify-items: start; }
 .logo-summary p { margin: 0; }

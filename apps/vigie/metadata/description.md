@@ -1,6 +1,31 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 7** · **Version de Vigie : 0.7.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 8** · **Version de Vigie : 0.8.0** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.8.0 : e-mails, invitations et mot de passe oublié
+
+### Envoi d'e-mails (Réglages → Envoi d'e-mails, administrateurs)
+
+- Renseignez le **serveur SMTP** de votre messagerie ou de votre hébergeur : serveur, port, sécurité (**STARTTLS** sur le port 587, **SSL/TLS** sur le port 465, ou **aucune** pour un relais de votre réseau local), identifiant, mot de passe, adresse et nom d'expédition.
+- **Préréglages** : en choisissant smtp.gmail.com, smtp.mail.me.com (iCloud), ssl0.ovh.net, smtp.free.fr, smtp.orange.fr, smtp.sfr.fr ou smtp-relay.brevo.com, le port et la sécurité se remplissent et un conseil s'affiche (Gmail et iCloud exigent un **mot de passe d'application**).
+- **Envoyer un e-mail de test** avant même d'enregistrer. En cas d'échec, Vigie explique la cause : serveur introuvable, port bloqué, mauvais mode de sécurité, certificat refusé, identifiant ou mot de passe refusé, expéditeur non autorisé.
+- **Adresse de Vigie dans les liens** : l'adresse qu'ouvriront vos invités, par exemple `https://patrimoine.exemple.fr` (Cloudflare Tunnel). Les liens des e-mails utilisent toujours cette adresse enregistrée, jamais celle de la requête.
+- Le mot de passe SMTP est **chiffré dans la base** avec le secret de l'application et n'est jamais réaffiché.
+
+### Invitations par e-mail (Utilisateurs → Inviter par e-mail)
+
+- Indiquez l'adresse, éventuellement le prénom et le nom, et le rôle. La personne reçoit un e-mail avec le bouton **Créer mon compte** : elle choisit son nom d'utilisateur et son mot de passe, puis arrive directement connectée (et active la double authentification si elle est obligatoire).
+- Le lien est **valable 7 jours et ne sert qu'une fois**. Les **invitations en attente** sont listées : renvoyer l'e-mail, créer un nouveau lien (l'ancien cesse de fonctionner) ou annuler.
+- Sans serveur SMTP, ou pour passer par une messagerie instantanée, créez un **lien à transmettre vous-même**.
+- « Ajouter directement » (avec un mot de passe provisoire) reste possible.
+
+### Mot de passe oublié
+
+- Lien **« Mot de passe oublié ? »** sur l'écran de connexion, dès que l'envoi d'e-mails est configuré : l'utilisateur indique son nom d'utilisateur ou son adresse et reçoit un lien **valable 1 heure, à usage unique**. Une nouvelle demande remplace le lien précédent.
+- Protections : réponse identique que le compte existe ou non, 5 demandes au plus par adresse IP et par quart d'heure, une demande par minute et par compte, rien n'est envoyé à un compte désactivé. Après le changement, **toutes les sessions sont fermées** et un **e-mail d'avis** est envoyé. La double authentification reste demandée à la connexion.
+- **Adresse e-mail des utilisateurs** : dans Mon compte (le mot de passe actuel est demandé pour la changer) et dans la gestion des utilisateurs. L'administrateur peut aussi **envoyer un lien de réinitialisation** à un utilisateur.
+
+Le conteneur doit pouvoir joindre votre serveur SMTP. Beaucoup de fournisseurs d'accès bloquent le port 25 vers Internet : préférez 587 ou 465.
 
 ## Nouveautés de la version 0.7.0 : logos des établissements
 
@@ -92,6 +117,7 @@ Vigie donne une vue globale et privée de votre patrimoine. Vous ne gérez aucun
 - Blocage temporaire du compte après 5 échecs, limitation par adresse IP, déconnexion après 2 h d'inactivité.
 - Sessions visibles et révocables, journal des connexions et des modifications.
 - Le **premier compte ne peut être créé que depuis le réseau local**, jamais à travers Cloudflare Tunnel.
+- **Invitations par e-mail** (lien valable 7 jours, à usage unique) et **« Mot de passe oublié »** (lien valable 1 heure), une fois l'envoi d'e-mails configuré.
 - En-têtes de sécurité stricts (CSP, anti-iframe), protection CSRF, cookies `HttpOnly` et `SameSite=Strict`.
 
 ## Installation
@@ -111,7 +137,7 @@ Tout est dans le dossier de l'application Runtipi, `APP_DATA_DIR/data/` :
 | Dossier | Contenu |
 | --- | --- |
 | `config/vigie.env` | Fichier de configuration, créé au premier démarrage puis jamais écrasé |
-| `db/vigie.sqlite` | Base de données SQLite (avoirs, historique, échéanciers, comptes, journal) |
+| `db/vigie.sqlite` | Base de données SQLite (avoirs, historique, échéanciers, comptes, invitations, réglages SMTP, journal) |
 | `backups/` | Sauvegardes quotidiennes de la base, conservées 30 jours |
 
 ## Fichier de configuration

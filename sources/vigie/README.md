@@ -20,6 +20,7 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 | `server/loans.js` | Échéancier de prêt : tableau d'amortissement (mensualités constantes ou in fine), synthèse, valeurs mensuelles |
 | `server/fx.js` | Taux de change de la BCE |
 | `server/backup.js` | Sauvegardes `VACUUM INTO` et rotation |
+| `server/mail.js` | Envoi d'e-mails : client SMTP sans dépendance (STARTTLS, SSL/TLS, AUTH PLAIN ou LOGIN), message MIME UTF-8, modèles des e-mails |
 | `server/logos.js` | Logos des établissements : recherche de la meilleure icône sur le site officiel (catalogue uniquement), service d'icônes de Google en dernier recours, préchargement, images personnelles, cache en base |
 | `web/institutions.json` | Catalogue des établissements proposés (nom, type, alias, site officiel) |
 | `web/` | Interface, police et générateur de QR code (MIT, voir `web/vendor`) |
@@ -33,7 +34,9 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - `logo_cache` : icône récupérée par site (`host`), avec ses dimensions et sa provenance ; `ok = 0` mémorise un échec (nouvel essai après 3 jours).
 - `institution_logos` : image déposée par l'administrateur, par identifiant du catalogue ou `perso-nom` pour un établissement hors catalogue ; prioritaire sur `logo_cache`.
 - `fx_rates` : 1 unité de devise = `rate` devise de référence.
-- `users`, `sessions`, `audit_log`, `settings`.
+- `users` (adresse e-mail facultative et unique), `sessions`, `audit_log`, `settings` (dont `mail` : réglages SMTP, mot de passe chiffré).
+- `invitations` : invitation par e-mail, jeton stocké haché (SHA-256), valable 7 jours, à usage unique.
+- `password_resets` : lien « Mot de passe oublié », jeton haché, valable 1 heure ; un seul lien actif par utilisateur.
 
 ## Développement
 

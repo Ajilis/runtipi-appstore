@@ -104,3 +104,17 @@ test('base 0.6.0 : logos en échec oubliés pour être recherchés de nouveau, l
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('base 0.7.0 : adresse e-mail facultative et unique, tables des invitations et des liens de réinitialisation', () => {
+  const dir = legacyDatabase(6, (raw) => {
+    raw.prepare("INSERT INTO users (username, display_name, first_name, last_name, password_hash, role, created_at) VALUES ('alex', 'Alex Martin', 'Alex', 'Martin', 'x', 'admin', 0)").run();
+  });
+  const db = openDatabase(dir);
+  assert.equal(db.prepare('SELECT email FROM users').get().email, null, 'comptes existants sans adresse');
+  db.prepare("INSERT INTO users (username, display_name, password_hash, role, created_at, email) VALUES ('lea', 'Léa', 'x', 'viewer', 0, 'lea@exemple.fr')").run();
+  assert.throws(() => db.prepare("INSERT INTO users (username, display_name, password_hash, role, created_at, email) VALUES ('lea2', 'Léa', 'x', 'viewer', 0, 'lea@exemple.fr')").run(), /UNIQUE/);
+  db.prepare("INSERT INTO users (username, display_name, password_hash, role, created_at) VALUES ('sam', 'Sam', 'x', 'viewer', 0)").run();
+  for (const t of ['invitations', 'password_resets']) assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ?').get(t).n, 1, t);
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

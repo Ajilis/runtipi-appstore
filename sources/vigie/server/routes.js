@@ -5,9 +5,10 @@ import { fail, readJson } from './http.js';
 import { transaction, getSetting, setSetting, seedCategories, schemaVersion, CATEGORY_ICONS } from './db.js';
 import {
   hashPassword, verifyPassword, passwordProblem, encrypt, decrypt, generateTotpSecret, verifyTotp,
-  otpauthUri, generateRecoveryCodes, normalizeRecoveryCode, sha256,
+  otpauthUri, generateRecoveryCodes, normalizeRecoveryCode, sha256, randomToken,
 } from './security.js';
-import { ROLES, publicUser, getDummyHash, isPrivateIp, cameThroughCloudflare } from './auth.js';
+import { ROLES, publicUser, getDummyHash, isPrivateIp, cameThroughCloudflare, isHttps } from './auth.js';
+import { sendMail, buildMessage, templates, isEmail, SmtpError, SECURITY_MODES } from './mail.js';
 import {
   LIQUIDITY, dashboard, history, holdingsView, loadState, holdingSnapshot, parseAmountToCents, isIsoDate, todayIso, addDays,
 } from './portfolio.js';
@@ -80,6 +81,14 @@ function targetPct(value) {
   return Math.round(n * 10) / 10;
 }
 
+// Adresse e-mail en minuscules ; '' ou null si facultative et vide.
+function emailField(value, { required = false, label = 'Adresse e-mail' } = {}) {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (!v) { if (required) fail(400, 'invalid_field', `${label} : champ obligatoire.`); return null; }
+  if (!isEmail(v)) fail(400, 'invalid_field', `${label} : adresse invalide, par exemple prenom@exemple.fr.`);
+  return v;
+}
+
 function csvCell(v) {
   const s = v === null || v === undefined ? '' : String(v);
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -117,6 +126,41 @@ export function registerRoutes(router, deps) {
   const userCount = () => db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
   const setupAllowed = (req, ip) => cfg.ALLOW_SETUP_THROUGH_TUNNEL || (!cameThroughCloudflare(req) && isPrivateIp(ip));
   const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+
+  // --- E-mails : réglages SMTP (mot de passe chiffré au repos), envoi d'un modèle ----------------------------------
+  function mailSettings() {
+    try { const v = JSON.parse(getSetting(db, 'mail', 'null')); return v && v.host ? v : null; } catch { return null; }
+  }
+  function mailConf(s = mailSettings()) {
+    if (!s) return null;
+    let password = '';
+    if (s.password_enc) { try { password = decrypt(cfg.APP_SECRET, s.password_enc); } catch { password = ''; } }
+    let helloName = 'localhost';
+    try { const h = new URL(s.public_url).hostname; if (/[a-z]/i.test(h) && h.includes('.')) helloName = h; } catch { /* adresse absente */ }
+    return { host: s.host, port: s.port, security: s.security, username: s.username || '', password, from_address: s.from_address,
+      from_name: s.from_name || 'Vigie Patrimoine', allow_invalid_cert: Boolean(s.allow_invalid_cert), hello_name: helloName };
+  }
+  // Les liens envoyés par e-mail utilisent toujours l'adresse enregistrée, jamais l'en-tête Host de la requête.
+  function mailReady() { const s = mailSettings(); return Boolean(s && s.public_url); }
+  async function deliver(to, kind, data, conf = mailConf()) {
+    if (!conf) fail(409, 'mail_not_configured', "L'envoi d'e-mails n'est pas configuré : Réglages → Envoi d'e-mails.");
+    const t = templates[kind](data);
+    const raw = buildMessage({ fromAddress: conf.from_address, fromName: conf.from_name, to, subject: t.subject, text: t.text, html: t.html });
+    return sendMail(conf, { to, raw });
+  }
+  function maskEmail(email) {
+    const [local, domain] = String(email || '').split('@');
+    return domain ? `${local.slice(0, 1)}${'•'.repeat(Math.max(1, Math.min(6, local.length - 1)))}@${domain}` : '';
+  }
+  function assertEmailFree(email, exceptUserId = 0) {
+    if (email && db.prepare('SELECT 1 FROM users WHERE email = ? AND id <> ?').get(email, exceptUserId)) fail(409, 'email_taken', 'Un autre utilisateur a déjà cette adresse e-mail.');
+  }
+  // Avertit l'utilisateur d'un changement de mot de passe, sans faire attendre ni échouer la requête.
+  function notifyPasswordChanged(ctx, user, how) {
+    if (!user.email || !mailSettings()) return;
+    deliver(user.email, 'passwordChanged', { firstName: user.first_name, username: user.username, ip: ctx.ip, at: Date.now(), how })
+      .catch((err) => log.warn(`Avis de changement de mot de passe non envoyé à ${maskEmail(user.email)} : ${err.message}`));
+  }
   // --- Titulaires : liste enregistrée (réglage « owners ») complétée par ceux utilisés dans les avoirs ---
   function storedOwners() {
     try {
@@ -195,6 +239,7 @@ export function registerRoutes(router, deps) {
       needs_2fa_setup: Boolean(ctx.user && cfg.REQUIRE_2FA && !ctx.user.totp_enabled),
       require_2fa: cfg.REQUIRE_2FA,
       logos_enabled: cfg.INSTITUTION_LOGOS,
+      password_reset: mailReady(),
       currencies: CURRENCIES,
     };
   });
@@ -292,9 +337,17 @@ export function registerRoutes(router, deps) {
   // --- Mon compte --------------------------------------------------------------------------------------
   router.get('/api/account', { auth: 'viewer', allowWithout2fa: true }, (ctx) => ({ user: publicUser(ctx.user), require_2fa: cfg.REQUIRE_2FA }));
 
-  router.patch('/api/account', { auth: 'viewer', allowWithout2fa: true }, (ctx) => {
+  router.patch('/api/account', { auth: 'viewer', allowWithout2fa: true }, async (ctx) => {
     const p = personFields(ctx.body, ctx.user);
-    db.prepare('UPDATE users SET display_name = ?, first_name = ?, last_name = ? WHERE id = ?').run(p.display_name, p.first_name, p.last_name, ctx.user.id);
+    let email = ctx.user.email || null;
+    if (ctx.body.email !== undefined && emailField(ctx.body.email) !== email) {
+      // Changer d'adresse permet de recevoir un lien de réinitialisation : le mot de passe actuel est exigé.
+      if (!(await verifyPassword(String(ctx.body.current_password || ''), ctx.user.password_hash))) fail(400, 'wrong_password', "Mot de passe actuel incorrect : il est demandé pour changer d'adresse e-mail.");
+      email = emailField(ctx.body.email);
+      assertEmailFree(email, ctx.user.id);
+      audit(ctx, 'email_modifie', email ? `Nouvelle adresse ${maskEmail(email)}` : 'Adresse retirée');
+    }
+    db.prepare('UPDATE users SET display_name = ?, first_name = ?, last_name = ?, email = ? WHERE id = ?').run(p.display_name, p.first_name, p.last_name, email, ctx.user.id);
     return { user: publicUser(getUser(ctx.user.id)) };
   });
 
@@ -306,6 +359,7 @@ export function registerRoutes(router, deps) {
     db.prepare('UPDATE users SET password_hash = ?, password_changed_at = ? WHERE id = ?').run(hash, Date.now(), ctx.user.id);
     sessions.destroyAllForUser(ctx.user.id, ctx.session.id);
     audit(ctx, 'mot_de_passe_modifie', 'Autres sessions fermées');
+    notifyPasswordChanged(ctx, ctx.user, 'account');
     return { ok: true };
   });
 
@@ -845,10 +899,12 @@ export function registerRoutes(router, deps) {
     const problem = passwordProblem(ctx.body.password);
     if (problem) fail(400, 'weak_password', problem);
     if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(uname)) fail(409, 'username_taken', "Ce nom d'utilisateur existe déjà.");
+    const email = emailField(ctx.body.email);
+    assertEmailFree(email);
     const hash = await hashPassword(ctx.body.password);
     const now = Date.now();
-    const r = db.prepare('INSERT INTO users (username, display_name, first_name, last_name, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(uname, person.display_name, person.first_name, person.last_name, hash, role, now, now);
+    const r = db.prepare('INSERT INTO users (username, display_name, first_name, last_name, email, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(uname, person.display_name, person.first_name, person.last_name, email, hash, role, now, now);
     audit(ctx, 'utilisateur_cree', `${uname} (${role})`);
     return { user: publicUser(getUser(Number(r.lastInsertRowid))) };
   });
@@ -863,8 +919,10 @@ export function registerRoutes(router, deps) {
     if (id === ctx.user.id && (role !== 'admin' || disabled)) fail(400, 'self_protection', 'Vous ne pouvez pas retirer vos propres droits administrateur ni désactiver votre compte.');
     if (u.role === 'admin' && !u.disabled && (role !== 'admin' || disabled) && activeAdmins(id) === 0) fail(400, 'last_admin', 'Il doit rester au moins un administrateur actif.');
     const unlock = ctx.body.unlock === true;
-    db.prepare(`UPDATE users SET display_name = ?, first_name = ?, last_name = ?, role = ?, disabled = ?${unlock ? ', locked_until = NULL, failed_attempts = 0' : ''} WHERE id = ?`)
-      .run(person.display_name, person.first_name, person.last_name, role, disabled, id);
+    const email = ctx.body.email !== undefined ? emailField(ctx.body.email) : u.email;
+    if (email !== u.email) assertEmailFree(email, id);
+    db.prepare(`UPDATE users SET display_name = ?, first_name = ?, last_name = ?, email = ?, role = ?, disabled = ?${unlock ? ', locked_until = NULL, failed_attempts = 0' : ''} WHERE id = ?`)
+      .run(person.display_name, person.first_name, person.last_name, email, role, disabled, id);
     if (disabled || role !== u.role) sessions.destroyAllForUser(id);
     audit(ctx, 'utilisateur_modifie', `${u.username} : rôle ${role}${disabled ? ', désactivé' : ''}${unlock ? ', débloqué' : ''}`);
     return { user: publicUser(getUser(id)) };
@@ -902,6 +960,283 @@ export function registerRoutes(router, deps) {
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
     audit(ctx, 'utilisateur_supprime', u.username);
     return { ok: true };
+  });
+
+  // --- Envoi d'e-mails (administrateur) ------------------------------------------------------------------------------
+  const requestOrigin = (req) => `${isHttps(req) ? 'https' : 'http'}://${String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim()}`;
+  function publicUrl(value) {
+    const s = String(value || '').trim().replace(/\/+$/, '');
+    let u = null;
+    try { u = new URL(s); } catch { /* invalide */ }
+    if (!u || !['http:', 'https:'].includes(u.protocol) || u.username || u.password || (u.pathname !== '/' && u.pathname !== '') || u.search || u.hash) {
+      fail(400, 'invalid_field', 'Adresse de Vigie : adresse complète attendue, par exemple https://patrimoine.exemple.fr');
+    }
+    return u.origin;
+  }
+  // Réglages SMTP saisis : validés, mot de passe repris de la configuration enregistrée s'il n'est pas fourni.
+  function mailFields(b, stored = mailSettings()) {
+    const host = String(b.host || '').trim().toLowerCase();
+    if (!/^(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host)) fail(400, 'invalid_field', 'Serveur SMTP : nom de serveur attendu, par exemple smtp.exemple.fr.');
+    const port = Number(b.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) fail(400, 'invalid_field', 'Port : nombre entre 1 et 65535 (587, 465 ou 25 en général).');
+    const security = oneOf(b.security, SECURITY_MODES, 'Sécurité');
+    const user = typeof b.username === 'string' ? b.username.trim() : '';
+    if (user.length > 200 || /[\r\n\0]/.test(user)) fail(400, 'invalid_field', 'Identifiant : 200 caractères au maximum.');
+    if (b.password !== undefined && b.password !== null && (typeof b.password !== 'string' || b.password.length > 500 || /[\r\n\0]/.test(b.password))) fail(400, 'invalid_field', 'Mot de passe SMTP invalide.');
+    let passwordEnc = stored && stored.password_enc ? stored.password_enc : null;
+    if (typeof b.password === 'string' && b.password !== '') passwordEnc = encrypt(cfg.APP_SECRET, b.password);
+    if (b.clear_password === true || !user) passwordEnc = null;
+    return {
+      host, port, security, username: user, password_enc: passwordEnc,
+      from_address: emailField(b.from_address, { required: true, label: "Adresse d'expédition" }),
+      from_name: text(b.from_name || 'Vigie Patrimoine', "Nom de l'expéditeur", { max: 80 }),
+      public_url: publicUrl(b.public_url),
+      allow_invalid_cert: b.allow_invalid_cert === true,
+    };
+  }
+  const mailView = (s) => (s ? { host: s.host, port: s.port, security: s.security, username: s.username, password_set: Boolean(s.password_enc), from_address: s.from_address,
+    from_name: s.from_name, public_url: s.public_url, allow_invalid_cert: s.allow_invalid_cert, updated_at: s.updated_at } : null);
+
+  router.get('/api/admin/mail', { auth: 'admin' }, (ctx) => ({ settings: mailView(mailSettings()), suggested_public_url: requestOrigin(ctx.req) }));
+
+  router.put('/api/admin/mail', { auth: 'admin' }, (ctx) => {
+    const s = { ...mailFields(ctx.body), updated_at: Date.now() };
+    setSetting(db, 'mail', JSON.stringify(s));
+    audit(ctx, 'email_reglages', `${s.host}:${s.port} (${s.security}), expéditeur ${s.from_address}`);
+    return { settings: mailView(s) };
+  });
+
+  router.delete('/api/admin/mail', { auth: 'admin' }, (ctx) => {
+    db.prepare("DELETE FROM settings WHERE key = 'mail'").run();
+    audit(ctx, 'email_desactive', "Envoi d'e-mails désactivé");
+    return { ok: true };
+  });
+
+  // Test d'envoi avec les réglages saisis (même non enregistrés) ou, à défaut, enregistrés.
+  router.post('/api/admin/mail/test', { auth: 'admin' }, async (ctx) => {
+    const to = emailField(ctx.body.to, { required: true, label: 'Destinataire du test' });
+    const s = ctx.body.host ? mailFields(ctx.body) : mailSettings();
+    if (!s) fail(409, 'mail_not_configured', "Renseignez d'abord le serveur SMTP.");
+    try {
+      const r = await deliver(to, 'test', { host: s.host, port: s.port, security: s.security, by: ctx.user.display_name, at: Date.now() }, mailConf(s));
+      audit(ctx, 'email_test', `Envoyé à ${to} par ${s.host}:${s.port}`);
+      return { ok: true, to, response: r.response };
+    } catch (err) {
+      if (!(err instanceof SmtpError)) throw err;
+      audit(ctx, 'email_test', `Échec vers ${to} par ${s.host}:${s.port} : ${err.message}`);
+      return fail(502, 'smtp_error', err.message, { stage: err.stage });
+    }
+  });
+
+  // --- Invitations par e-mail (administrateur) ------------------------------------------------------------------------
+  const INVITE_TTL_MS = 7 * 86400_000;
+  const RESET_TTL_MS = 3600_000;
+  const linkBase = (ctx) => (mailSettings() || {}).public_url || requestOrigin(ctx.req);
+  function invitationView(i) {
+    const by = i.invited_by ? getUser(i.invited_by) : null;
+    return { id: i.id, email: i.email, first_name: i.first_name, last_name: i.last_name, role: i.role, invited_by: by ? by.display_name : null,
+      created_at: i.created_at, expires_at: i.expires_at, sent_at: i.sent_at, status: i.expires_at < Date.now() ? 'expired' : 'pending' };
+  }
+  // Nouveau jeton (l'ancien lien cesse de fonctionner), puis envoi éventuel. Renvoie le lien.
+  async function issueInvitation(ctx, inv, send) {
+    const token = randomToken(32);
+    const now = Date.now();
+    db.prepare('UPDATE invitations SET token_hash = ?, expires_at = ?, sent_at = NULL WHERE id = ?').run(sha256(token), now + INVITE_TTL_MS, inv.id);
+    const link = `${linkBase(ctx)}/#/invitation/${token}`;
+    if (send) {
+      await deliver(inv.email, 'invitation', { firstName: inv.first_name, inviter: ctx.user.display_name, role: inv.role, url: link, expiresAt: now + INVITE_TTL_MS });
+      db.prepare('UPDATE invitations SET sent_at = ? WHERE id = ?').run(Date.now(), inv.id);
+    }
+    return link;
+  }
+  const smtpFail = (err) => (err instanceof SmtpError ? fail(502, 'smtp_error', `E-mail non envoyé : ${err.message}`, { stage: err.stage }) : Promise.reject(err));
+
+  router.get('/api/admin/invitations', { auth: 'admin' }, () => ({
+    invitations: db.prepare('SELECT * FROM invitations WHERE accepted_at IS NULL AND canceled_at IS NULL ORDER BY created_at DESC').all().map(invitationView),
+    mail_ready: mailReady(),
+  }));
+
+  router.post('/api/admin/invitations', { auth: 'admin' }, async (ctx) => {
+    const email = emailField(ctx.body.email, { required: true });
+    const first = text(ctx.body.first_name, 'Prénom', { max: 60 });
+    const last = text(ctx.body.last_name, 'Nom', { max: 60 });
+    const role = oneOf(ctx.body.role || 'viewer', ROLES, 'Rôle');
+    const send = ctx.body.send !== false;
+    assertEmailFree(email);
+    if (db.prepare('SELECT 1 FROM invitations WHERE email = ? AND accepted_at IS NULL AND canceled_at IS NULL').get(email)) {
+      fail(409, 'already_invited', 'Une invitation est déjà en attente pour cette adresse : renvoyez-la depuis la liste.');
+    }
+    if (send && !mailSettings()) fail(409, 'mail_not_configured', "L'envoi d'e-mails n'est pas configuré : Réglages → Envoi d'e-mails, ou créez un lien à transmettre vous-même.");
+    const now = Date.now();
+    const r = db.prepare('INSERT INTO invitations (email, first_name, last_name, role, token_hash, invited_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(email, first, last, role, sha256(randomToken(32)), ctx.user.id, now, now + INVITE_TTL_MS);
+    const inv = db.prepare('SELECT * FROM invitations WHERE id = ?').get(Number(r.lastInsertRowid));
+    let link;
+    try { link = await issueInvitation(ctx, inv, send); } catch (err) { db.prepare('DELETE FROM invitations WHERE id = ?').run(inv.id); return smtpFail(err); }
+    audit(ctx, send ? 'invitation_envoyee' : 'invitation_creee', `${email} (${role})`);
+    return { invitation: invitationView(db.prepare('SELECT * FROM invitations WHERE id = ?').get(inv.id)), link, sent: send };
+  });
+
+  router.post('/api/admin/invitations/:id/resend', { auth: 'admin' }, async (ctx) => {
+    const inv = db.prepare('SELECT * FROM invitations WHERE id = ? AND accepted_at IS NULL AND canceled_at IS NULL').get(intId(ctx.params.id));
+    if (!inv) fail(404, 'not_found', 'Invitation introuvable ou déjà utilisée.');
+    const send = ctx.body.send !== false;
+    if (send && !mailSettings()) fail(409, 'mail_not_configured', "L'envoi d'e-mails n'est pas configuré : Réglages → Envoi d'e-mails.");
+    let link;
+    try { link = await issueInvitation(ctx, inv, send); } catch (err) { return smtpFail(err); }
+    audit(ctx, send ? 'invitation_renvoyee' : 'invitation_lien', inv.email);
+    return { invitation: invitationView(db.prepare('SELECT * FROM invitations WHERE id = ?').get(inv.id)), link, sent: send };
+  });
+
+  router.delete('/api/admin/invitations/:id', { auth: 'admin' }, (ctx) => {
+    const inv = db.prepare('SELECT * FROM invitations WHERE id = ? AND accepted_at IS NULL AND canceled_at IS NULL').get(intId(ctx.params.id));
+    if (!inv) fail(404, 'not_found', 'Invitation introuvable ou déjà utilisée.');
+    db.prepare('UPDATE invitations SET canceled_at = ? WHERE id = ?').run(Date.now(), inv.id);
+    audit(ctx, 'invitation_annulee', inv.email);
+    return { ok: true };
+  });
+
+  // Lien « Mot de passe oublié » envoyé par l'administrateur à un utilisateur.
+  router.post('/api/users/:id/reset-link', { auth: 'admin' }, async (ctx) => {
+    const u = getUser(intId(ctx.params.id));
+    if (!u) fail(404, 'not_found', 'Utilisateur introuvable.');
+    if (!u.email) fail(400, 'no_email', "Cet utilisateur n'a pas d'adresse e-mail : ajoutez-la d'abord.");
+    if (u.disabled) fail(400, 'account_disabled', 'Ce compte est désactivé.');
+    if (!mailReady()) fail(409, 'mail_not_configured', "L'envoi d'e-mails n'est pas configuré : Réglages → Envoi d'e-mails.");
+    try { await sendResetLink(ctx, u); } catch (err) { return smtpFail(err); }
+    audit(ctx, 'lien_mot_de_passe', `${u.username}, envoyé à ${maskEmail(u.email)}`);
+    return { sent: true, to: u.email };
+  });
+
+  // --- Invitation : acceptation (sans connexion) ---------------------------------------------------------------------
+  const validToken = (t) => typeof t === 'string' && /^[A-Za-z0-9_-]{30,100}$/.test(t);
+  function findInvitation(token) {
+    if (!validToken(token)) return null;
+    const inv = db.prepare('SELECT * FROM invitations WHERE token_hash = ?').get(sha256(token));
+    return inv && !inv.accepted_at && !inv.canceled_at && inv.expires_at >= Date.now() ? inv : null;
+  }
+  const INVALID_INVITE = "Ce lien d'invitation n'est plus valable : il a expiré, a déjà servi ou a été annulé. Demandez une nouvelle invitation à l'administrateur.";
+  function suggestUsername(email) {
+    let base = email.split('@')[0].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9._-]+/g, '.').replace(/^[._-]+|[._-]+$/g, '').slice(0, 36);
+    if (base.length < 3) base = `${base}user`.slice(0, 36);
+    let name = base;
+    for (let i = 2; db.prepare('SELECT 1 FROM users WHERE username = ?').get(name); i++) name = `${base}${i}`;
+    return name;
+  }
+
+  router.post('/api/auth/invitation', { auth: 'public' }, (ctx) => {
+    ipLimiter.check(ctx.ip);
+    const inv = findInvitation(ctx.body.token);
+    if (!inv) { ipLimiter.fail(ctx.ip); fail(410, 'invalid_link', INVALID_INVITE); }
+    const by = inv.invited_by ? getUser(inv.invited_by) : null;
+    return { email: inv.email, first_name: inv.first_name, last_name: inv.last_name, role: inv.role, invited_by: by ? by.display_name : null,
+      expires_at: inv.expires_at, suggested_username: suggestUsername(inv.email), require_2fa: cfg.REQUIRE_2FA };
+  });
+
+  router.post('/api/auth/invitation/accept', { auth: 'public' }, async (ctx) => {
+    ipLimiter.check(ctx.ip);
+    if (!findInvitation(ctx.body.token)) { ipLimiter.fail(ctx.ip); fail(410, 'invalid_link', INVALID_INVITE); }
+    const uname = username(ctx.body.username);
+    const person = personFields(ctx.body);
+    const problem = passwordProblem(ctx.body.password);
+    if (problem) fail(400, 'weak_password', problem);
+    const hash = await hashPassword(ctx.body.password);
+    const user = transaction(db, () => {
+      const inv = findInvitation(ctx.body.token);
+      if (!inv) fail(410, 'invalid_link', INVALID_INVITE);
+      if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(uname)) fail(409, 'username_taken', "Ce nom d'utilisateur est déjà pris : choisissez-en un autre.");
+      assertEmailFree(inv.email);
+      const now = Date.now();
+      const r = db.prepare('INSERT INTO users (username, display_name, first_name, last_name, email, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(uname, person.display_name, person.first_name, person.last_name, inv.email, hash, inv.role, now, now);
+      const id = Number(r.lastInsertRowid);
+      db.prepare('UPDATE invitations SET accepted_at = ?, user_id = ? WHERE id = ?').run(now, id, inv.id);
+      return getUser(id);
+    });
+    ctx.user = user;
+    audit(ctx, 'invitation_acceptee', `${uname} (${user.role}), ${user.email}`);
+    return completeLogin(ctx, user);
+  });
+
+  // --- Mot de passe oublié (sans connexion) ---------------------------------------------------------------------------
+  const forgotByIp = new Map();
+  function forgotAllowed(ip) {
+    const now = Date.now();
+    const e = forgotByIp.get(ip);
+    if (!e || e.reset <= now) { forgotByIp.set(ip, { count: 1, reset: now + 15 * 60_000 }); return true; }
+    e.count += 1;
+    if (forgotByIp.size > 10_000) for (const [k, v] of forgotByIp) if (v.reset <= now) forgotByIp.delete(k);
+    return e.count <= 5;
+  }
+  // Un seul lien valable à la fois par utilisateur ; l'ancien cesse de fonctionner.
+  async function sendResetLink(ctx, user) {
+    const token = randomToken(32);
+    const now = Date.now();
+    db.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(user.id);
+    db.prepare('INSERT INTO password_resets (user_id, token_hash, created_at, expires_at, ip) VALUES (?, ?, ?, ?, ?)').run(user.id, sha256(token), now, now + RESET_TTL_MS, ctx.ip);
+    const url = `${mailSettings().public_url}/#/mot-de-passe/${token}`;
+    await deliver(user.email, 'reset', { firstName: user.first_name, username: user.username, url, expiresAt: now + RESET_TTL_MS, ip: ctx.ip, at: now });
+  }
+  const FORGOT_DONE = "Si un compte actif correspond et possède une adresse e-mail, un lien de réinitialisation vient d'y être envoyé. Il est valable 1 heure.";
+
+  router.post('/api/auth/forgot', { auth: 'public' }, (ctx) => {
+    if (!mailReady()) fail(409, 'reset_unavailable', "La réinitialisation par e-mail n'est pas disponible sur ce serveur : demandez à un administrateur de changer votre mot de passe.");
+    if (!forgotAllowed(ctx.ip)) fail(429, 'too_many_requests', 'Trop de demandes depuis cette adresse. Réessayez dans quelques minutes.', { retry_after: 900 });
+    const login = typeof ctx.body.login === 'string' ? ctx.body.login.trim().slice(0, 254) : '';
+    if (!login) fail(400, 'invalid_field', "Indiquez votre nom d'utilisateur ou votre adresse e-mail.");
+    ctx.auditName = login.slice(0, 40);
+    // Réponse identique et immédiate dans tous les cas : impossible de savoir si un compte existe.
+    setImmediate(async () => {
+      try {
+        const user = db.prepare('SELECT * FROM users WHERE username = ? OR email = ?').get(login, login.toLowerCase());
+        if (!user || !user.email || user.disabled) { audit(ctx, 'mot_de_passe_oublie', 'Aucun compte actif avec adresse e-mail : rien envoyé'); return; }
+        const last = db.prepare('SELECT MAX(created_at) AS t FROM password_resets WHERE user_id = ?').get(user.id).t;
+        if (last && Date.now() - last < 60_000) { audit({ ...ctx, user }, 'mot_de_passe_oublie', 'Demande répétée en moins d\'une minute : ignorée'); return; }
+        await sendResetLink(ctx, user);
+        audit({ ...ctx, user }, 'mot_de_passe_oublie', `Lien envoyé à ${maskEmail(user.email)}`);
+      } catch (err) {
+        log.warn(`Lien « Mot de passe oublié » non envoyé : ${err.message}`);
+        try { audit(ctx, 'mot_de_passe_oublie', `Échec de l'envoi : ${err.message}`); } catch { /* base fermée */ }
+      }
+    });
+    return { ok: true, message: FORGOT_DONE };
+  });
+
+  function findReset(token) {
+    if (!validToken(token)) return null;
+    const r = db.prepare('SELECT * FROM password_resets WHERE token_hash = ?').get(sha256(token));
+    if (!r || r.used_at || r.expires_at < Date.now()) return null;
+    const user = getUser(r.user_id);
+    return user && !user.disabled ? { reset: r, user } : null;
+  }
+  const INVALID_RESET = "Ce lien n'est plus valable : il a expiré (1 heure), a déjà servi ou a été remplacé par une demande plus récente. Faites une nouvelle demande.";
+
+  router.post('/api/auth/reset/check', { auth: 'public' }, (ctx) => {
+    ipLimiter.check(ctx.ip);
+    const found = findReset(ctx.body.token);
+    if (!found) { ipLimiter.fail(ctx.ip); fail(410, 'invalid_link', INVALID_RESET); }
+    return { username: found.user.username, first_name: found.user.first_name, expires_at: found.reset.expires_at, totp_enabled: Boolean(found.user.totp_enabled) };
+  });
+
+  router.post('/api/auth/reset', { auth: 'public' }, async (ctx) => {
+    ipLimiter.check(ctx.ip);
+    if (!findReset(ctx.body.token)) { ipLimiter.fail(ctx.ip); fail(410, 'invalid_link', INVALID_RESET); }
+    const problem = passwordProblem(ctx.body.password);
+    if (problem) fail(400, 'weak_password', problem);
+    const hash = await hashPassword(ctx.body.password);
+    const user = transaction(db, () => {
+      const found = findReset(ctx.body.token);
+      if (!found) fail(410, 'invalid_link', INVALID_RESET);
+      const now = Date.now();
+      db.prepare('UPDATE users SET password_hash = ?, password_changed_at = ?, locked_until = NULL, failed_attempts = 0 WHERE id = ?').run(hash, now, found.user.id);
+      db.prepare('UPDATE password_resets SET used_at = ? WHERE id = ?').run(now, found.reset.id);
+      db.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(found.user.id);
+      return found.user;
+    });
+    sessions.destroyAllForUser(user.id);
+    audit({ ...ctx, user }, 'mot_de_passe_reinitialise', 'Par le lien « Mot de passe oublié », toutes les sessions fermées');
+    notifyPasswordChanged(ctx, user, 'reset');
+    return { ok: true, username: user.username };
   });
 
   // --- Journal ---------------------------------------------------------------------------------------------------------

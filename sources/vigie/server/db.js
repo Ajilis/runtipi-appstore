@@ -165,6 +165,36 @@ export const MIGRATIONS = [
     updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
   );
   `,
+  // 0.8.0 : adresse e-mail des utilisateurs, invitations par e-mail, liens « Mot de passe oublié ».
+  `
+  ALTER TABLE users ADD COLUMN email TEXT;
+  CREATE UNIQUE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL;
+  CREATE TABLE invitations (
+    id INTEGER PRIMARY KEY,
+    email TEXT NOT NULL,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
+    token_hash TEXT NOT NULL UNIQUE,
+    invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    sent_at INTEGER,
+    accepted_at INTEGER,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    canceled_at INTEGER
+  );
+  CREATE TABLE password_resets (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    ip TEXT
+  );
+  CREATE INDEX idx_password_resets_user ON password_resets(user_id);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

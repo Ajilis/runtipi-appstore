@@ -528,14 +528,18 @@
     });
   }
 
-  function showLogin(message) {
+  function showLogin(message, username = '') {
     gate(html`<div><h1>Connexion</h1>${message ? html`<p class="lead">${message}</p>` : ''}</div>
       <form class="form" id="login-form">
-        <label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" autocomplete="username" required autofocus></label>
-        <label class="field"><span>Mot de passe</span><input class="input" type="password" name="password" autocomplete="current-password" required></label>
+        <label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" autocomplete="username" required value="${username}" ${username ? '' : raw('autofocus')}></label>
+        <label class="field"><span>Mot de passe</span><input class="input" type="password" name="password" autocomplete="current-password" required ${username ? raw('autofocus') : ''}></label>
         <p class="error-text" id="login-error" role="alert" hidden></p>
         <button class="btn primary" type="submit">${icon('login')}Se connecter</button>
-      </form>`);
+      </form>
+      ${state.boot && state.boot.password_reset ? html`<button class="link-btn" type="button" id="forgot-link">Mot de passe oublié ?</button>`
+        : html`<p class="small muted">Mot de passe oublié ? Demandez à un administrateur de Vigie de le réinitialiser.</p>`}`);
+    const forgot = $('#forgot-link');
+    if (forgot) forgot.addEventListener('click', () => showForgot($('#login-form').username.value.trim()));
     $('#login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const errEl = $('#login-error');
@@ -544,6 +548,102 @@
           const r = await api('POST', '/api/auth/login', formData(e.target));
           if (r.totp_required) return showTotp(r.challenge);
           await boot();
+        } catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
+      });
+    });
+  }
+
+  // --- Écrans ouverts depuis un e-mail : mot de passe oublié, invitation, nouveau mot de passe ---------------------
+  // Le jeton est retiré de l'adresse (et de l'historique) dès la lecture du lien.
+  function gateRoute() {
+    const m = /^#\/(invitation|mot-de-passe)\/([A-Za-z0-9_-]{30,100})$/.exec(location.hash);
+    return m ? { kind: m[1], token: m[2] } : null;
+  }
+  function gateError(title, message) {
+    gate(html`<div><h1>${title}</h1><p class="lead">${message}</p></div>
+      <button class="btn primary" type="button" id="gate-login">${icon('login')}Aller à la connexion</button>`);
+    $('#gate-login').addEventListener('click', () => showLogin());
+  }
+
+  function showForgot(prefill = '') {
+    gate(html`<div><h1>Mot de passe oublié</h1><p class="lead">Indiquez votre nom d'utilisateur ou votre adresse e-mail : vous recevrez un lien pour choisir un nouveau mot de passe.</p></div>
+      <form class="form" id="forgot-form">
+        <label class="field"><span>Nom d'utilisateur ou adresse e-mail</span><input class="input" name="login" autocomplete="username" required maxlength="254" value="${prefill}" autofocus></label>
+        <p class="error-text" role="alert" hidden></p>
+        <button class="btn primary" type="submit">${icon('send')}Recevoir le lien</button>
+      </form>
+      <button class="link-btn" type="button" id="back-login">Retour à la connexion</button>`);
+    $('#back-login').addEventListener('click', () => showLogin());
+    $('#forgot-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = e.target.querySelector('.error-text');
+      await withBusy(e.submitter, async () => {
+        try {
+          const r = await api('POST', '/api/auth/forgot', formData(e.target));
+          gate(html`<div><h1>Vérifiez vos e-mails</h1><p class="lead">${r.message}</p></div>
+            <p class="small muted">Rien reçu après quelques minutes ? Regardez dans les courriers indésirables, ou demandez à un administrateur.</p>
+            <button class="btn" type="button" id="back-login">${icon('login')}Retour à la connexion</button>`);
+          $('#back-login').addEventListener('click', () => showLogin());
+        } catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
+      });
+    });
+  }
+
+  async function showInvitation(token) {
+    gate(html`<p class="loading">Vérification de l'invitation…</p>`);
+    let inv;
+    try { inv = await api('POST', '/api/auth/invitation', { token }); } catch (err) { gateError('Invitation expirée', err.message); return; }
+    gate(html`<div><h1>Bienvenue sur Vigie</h1><p class="lead">${inv.invited_by ? `${inv.invited_by} vous invite` : 'Vous êtes invité'} avec le rôle <b>${ROLE[inv.role]}</b> : ${ROLE_HINT[inv.role].toLowerCase()}. Créez votre compte pour <b>${inv.email}</b>.</p></div>
+      <form class="form" id="invite-accept">
+        ${nameFields({ first_name: inv.first_name, last_name: inv.last_name }, !inv.first_name)}
+        <label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" autocomplete="username" required minlength="3" maxlength="40" pattern="[A-Za-z0-9._@\\-]+" value="${inv.suggested_username}" ${inv.first_name ? raw('autofocus') : ''}><small>Pour vous connecter. Lettres sans accent, chiffres et . _ @ -</small></label>
+        <label class="field"><span>Mot de passe</span><input class="input" type="password" name="password" autocomplete="new-password" required minlength="10"><small>10 caractères minimum. Une phrase facile à retenir est idéale.</small></label>
+        <label class="field"><span>Confirmation du mot de passe</span><input class="input" type="password" name="confirm" autocomplete="new-password" required minlength="10"></label>
+        ${inv.require_2fa ? html`<div class="notice info">${icon('shield')}<div>La double authentification est obligatoire sur ce serveur : vous l'activerez juste après, avec une application comme Aegis, 2FAS ou Google Authenticator.</div></div>` : ''}
+        <p class="error-text" role="alert" hidden></p>
+        <button class="btn primary" type="submit">${icon('check')}Créer mon compte</button>
+        <p class="small muted">Lien valable jusqu'au ${dateTime(inv.expires_at)}.</p>
+      </form>`);
+    $('#invite-accept').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = formData(e.target);
+      const errEl = e.target.querySelector('.error-text');
+      if (f.password !== f.confirm) { errEl.textContent = 'Les deux mots de passe ne correspondent pas.'; errEl.hidden = false; return; }
+      await withBusy(e.submitter, async () => {
+        try {
+          await api('POST', '/api/auth/invitation/accept', { ...f, token });
+          history.replaceState(null, '', '#/');
+          await boot();
+          toast('Bienvenue ! Votre compte est créé.');
+        } catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
+      });
+    });
+  }
+
+  async function showReset(token) {
+    gate(html`<p class="loading">Vérification du lien…</p>`);
+    let info;
+    try { info = await api('POST', '/api/auth/reset/check', { token }); } catch (err) { gateError('Lien expiré', err.message); return; }
+    gate(html`<div><h1>Nouveau mot de passe</h1><p class="lead">Choisissez le nouveau mot de passe du compte <b>${info.username}</b>.</p></div>
+      <form class="form" id="reset-form">
+        <input type="text" name="username" value="${info.username}" autocomplete="username" hidden>
+        <label class="field"><span>Nouveau mot de passe</span><input class="input" type="password" name="password" autocomplete="new-password" required minlength="10" autofocus><small>10 caractères minimum. Toutes vos sessions ouvertes seront fermées.</small></label>
+        <label class="field"><span>Confirmation</span><input class="input" type="password" name="confirm" autocomplete="new-password" required minlength="10"></label>
+        ${info.totp_enabled ? html`<p class="small muted">${il('shield', 'La double authentification restera demandée à la connexion.')}</p>` : ''}
+        <p class="error-text" role="alert" hidden></p>
+        <button class="btn primary" type="submit">${icon('key')}Enregistrer le mot de passe</button>
+        <p class="small muted">Lien valable jusqu'au ${dateTime(info.expires_at)}.</p>
+      </form>`);
+    $('#reset-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = formData(e.target);
+      const errEl = e.target.querySelector('.error-text');
+      if (f.password !== f.confirm) { errEl.textContent = 'Les deux mots de passe ne correspondent pas.'; errEl.hidden = false; return; }
+      await withBusy(e.submitter, async () => {
+        try {
+          const r = await api('POST', '/api/auth/reset', { token, password: f.password });
+          state.user = null;
+          showLogin('Mot de passe modifié. Connectez-vous avec votre nouveau mot de passe.', r.username);
         } catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
       });
     });
@@ -1343,7 +1443,8 @@
   // Réglages : devise, taux, export, import, sauvegardes
   // ---------------------------------------------------------------------------------------------------------
   async function pageSettings(el, route, current) {
-    const [s, backups, { owners }, logoSt] = await Promise.all([api('GET', '/api/settings'), isAdmin() ? api('GET', '/api/admin/backups') : null, api('GET', '/api/owners'), isAdmin() ? api('GET', '/api/admin/logos') : null]);
+    const [s, backups, { owners }, logoSt, mail] = await Promise.all([api('GET', '/api/settings'), isAdmin() ? api('GET', '/api/admin/backups') : null, api('GET', '/api/owners'),
+      isAdmin() ? api('GET', '/api/admin/logos') : null, isAdmin() ? api('GET', '/api/admin/mail') : null]);
     if (!current()) return;
     state.base = s.base_currency;
     setHeader('Réglages', 'Devise, taux de change, exports et sauvegardes');
@@ -1404,6 +1505,8 @@
           <span class="small muted">Fichiers SQLite dans le dossier data/backups de l'application, inclus dans les sauvegardes Runtipi.</span></div>
       </section>
 
+      ${mail ? mailSection(mail) : ''}
+
       ${logoSt ? logoSummarySection(logoSt) : ''}
 
       <section class="section">${h2i('shield', 'Sécurité du serveur')}<div class="panel">
@@ -1417,6 +1520,7 @@
         <p class="small muted" style="margin-top:12px">Ces réglages se modifient dans le fichier <b>data/config/vigie.env</b> de l'application, puis en redémarrant Vigie dans Runtipi.</p>
       </div></section>` : ''}`);
 
+    if (mail) bindMailForm(mail);
     const sf = $('#settings-form');
     if (sf) sf.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1669,6 +1773,8 @@
           <section class="section">${h2i('user', 'Profil')}<form class="panel form" id="profile-form">
             <div class="cell-lead">${avatar(user.display_name, 'lg')}<div><b>${user.display_name}</b><br><span class="small muted">${il(ROLE_ICON[user.role], ROLE[user.role])}</span></div></div>
             ${nameFields(user)}
+            <label class="field"><span>Adresse e-mail</span><input class="input" type="email" name="email" value="${user.email}" autocomplete="email" autocapitalize="off"><small>Pour recevoir un lien « Mot de passe oublié ».</small></label>
+            <label class="field" data-email-pw hidden><span>Mot de passe actuel</span><input class="input" type="password" name="current_password" autocomplete="current-password"><small>Demandé pour changer d'adresse e-mail.</small></label>
             <div class="form-actions"><button class="btn" type="submit">${icon('check')}Enregistrer</button></div></form></section>
           <section class="section">${h2i('key', 'Mot de passe')}<form class="panel form" id="password-form">
             <input type="text" name="username" value="${user.username}" autocomplete="username" hidden>
@@ -1678,6 +1784,12 @@
             <div class="form-actions"><button class="btn" type="submit">${icon('key')}Changer le mot de passe</button></div></form></section>
         </div>
       </div>`);
+    const pf = $('#profile-form');
+    pf.email.addEventListener('input', () => {
+      const changed = pf.email.value.trim().toLowerCase() !== (user.email || '');
+      $('[data-email-pw]', pf).hidden = !changed;
+      pf.current_password.required = changed;
+    });
     $('#profile-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       try { const r = await api('PATCH', '/api/account', formData(e.target)); state.user = r.user; toast('Profil enregistré'); shell(); render(); } catch (err) { fail(err); }
@@ -1729,18 +1841,178 @@
   // ---------------------------------------------------------------------------------------------------------
   // Utilisateurs (administrateur)
   // ---------------------------------------------------------------------------------------------------------
+  // --- Envoi d'e-mails (Réglages, administrateur) ------------------------------------------------------------------
+  const SEC_LABEL = { starttls: 'STARTTLS', tls: 'SSL/TLS', none: 'sans chiffrement' };
+  const SEC_PORT = { starttls: 587, tls: 465, none: 25 };
+  // Réglages usuels de quelques messageries : appliqués quand on choisit le serveur dans la liste.
+  const SMTP_PRESETS = {
+    'smtp.gmail.com': [587, 'starttls', "Gmail : créez un mot de passe d'application (compte Google → Sécurité → Validation en deux étapes) ; l'identifiant est l'adresse Gmail."],
+    'smtp.mail.me.com': [587, 'starttls', "iCloud : mot de passe d'application obligatoire (compte Apple) ; l'identifiant est l'adresse iCloud."],
+    'ssl0.ovh.net': [465, 'tls', "OVHcloud : l'identifiant est l'adresse e-mail complète."],
+    'smtp.free.fr': [465, 'tls', "Free : l'identifiant est l'adresse e-mail complète."],
+    'smtp.orange.fr': [465, 'tls', "Orange : l'identifiant est l'adresse e-mail complète."],
+    'smtp.sfr.fr': [465, 'tls', "SFR : l'identifiant est l'adresse e-mail complète."],
+    'smtp-relay.brevo.com': [587, 'starttls', "Brevo : identifiant et clé SMTP indiqués dans votre compte Brevo ; l'adresse d'expédition doit y être validée."],
+  };
+
+  function mailSection(m) {
+    const s = m.settings || {};
+    return html`<section class="section" id="mail-section"><div class="section-head">${h2i('mail', "Envoi d'e-mails")}<p>Invitations et « Mot de passe oublié »</p></div>
+      <div class="panel form">
+        ${m.settings ? html`<div class="notice info">${icon('check')}<div>Envoi configuré : <b>${s.host}:${s.port}</b> (${SEC_LABEL[s.security]}), expéditeur ${s.from_address}.</div></div>`
+          : html`<div class="notice">${icon('info')}<div>Envoi non configuré : les invitations par e-mail et « Mot de passe oublié » sont indisponibles. Renseignez le serveur SMTP de votre messagerie ou de votre hébergeur.</div></div>`}
+        <form class="form" id="mail-form" autocomplete="off" novalidate>
+          <div class="grid-3 mail-server">
+            <label class="field"><span>Serveur SMTP</span><input class="input" name="host" list="smtp-hosts" required value="${s.host || ''}" placeholder="smtp.exemple.fr" spellcheck="false" autocapitalize="off">
+              <datalist id="smtp-hosts">${Object.keys(SMTP_PRESETS).map((h) => html`<option value="${h}"></option>`)}</datalist></label>
+            <label class="field"><span>Port</span><input class="input" name="port" type="number" inputmode="numeric" min="1" max="65535" required value="${s.port || 587}"></label>
+            <label class="field"><span>Sécurité</span><select class="select" name="security">${[['starttls', 'STARTTLS (port 587)'], ['tls', 'SSL/TLS (port 465)'], ['none', 'Aucune (relais local, port 25)']].map(([k, l]) => html`<option value="${k}" ${(s.security || 'starttls') === k ? 'selected' : ''}>${l}</option>`)}</select></label>
+          </div>
+          <p class="small muted" id="smtp-hint" ${SMTP_PRESETS[s.host] ? '' : raw('hidden')}>${SMTP_PRESETS[s.host] ? SMTP_PRESETS[s.host][2] : ''}</p>
+          <div class="grid-2">
+            <label class="field"><span>Identifiant</span><input class="input" name="username" value="${s.username || ''}" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Souvent l'adresse e-mail complète"></label>
+            <label class="field"><span>Mot de passe</span><input class="input" name="password" type="password" autocomplete="new-password" placeholder="${s.password_set ? 'Enregistré : laisser vide pour le garder' : ''}"><small>Chiffré dans la base de Vigie.</small></label>
+          </div>
+          <div class="grid-2">
+            <label class="field"><span>Adresse d'expédition</span><input class="input" name="from_address" type="email" required value="${s.from_address || ''}" placeholder="vigie@exemple.fr" autocapitalize="off"><small>Souvent la même que l'identifiant.</small></label>
+            <label class="field"><span>Nom de l'expéditeur</span><input class="input" name="from_name" maxlength="80" value="${s.from_name || 'Vigie Patrimoine'}"></label>
+          </div>
+          <label class="field"><span>Adresse de Vigie dans les liens</span><input class="input" name="public_url" required value="${s.public_url || m.suggested_public_url}" spellcheck="false" autocapitalize="off" placeholder="https://patrimoine.exemple.fr">
+            <small>Adresse qu'ouvriront vos invités. Mettez l'adresse Cloudflare (https://…) pour que les liens fonctionnent hors de chez vous.</small></label>
+          <label class="check"><input type="checkbox" name="allow_invalid_cert" ${s.allow_invalid_cert ? 'checked' : ''}><span>Accepter un certificat non vérifié (relais de votre réseau local uniquement)</span></label>
+          <div class="mail-test">
+            <label class="field"><span>Envoyer un test à</span><input class="input" name="test_to" type="email" value="${state.user.email || ''}" placeholder="vous@exemple.fr" autocapitalize="off"></label>
+            <button class="btn" type="button" id="mail-test">${icon('send')}Envoyer un e-mail de test</button>
+          </div>
+          <div id="mail-test-result" aria-live="polite"></div>
+          <p class="error-text" role="alert" hidden></p>
+          <div class="form-actions">${m.settings ? html`<button class="btn danger" type="button" id="mail-disable">${icon('close')}Désactiver l'envoi</button>` : ''}<button class="btn primary" type="submit">${icon('check')}Enregistrer</button></div>
+        </form>
+      </div></section>`;
+  }
+
+  function bindMailForm() {
+    const f = $('#mail-form');
+    const errEl = f.querySelector('.error-text');
+    const values = () => { const v = formData(f); v.port = Number(v.port); const to = v.test_to; delete v.test_to; return { v, to }; };
+    const hint = $('#smtp-hint');
+    f.host.addEventListener('change', () => {
+      const p = SMTP_PRESETS[f.host.value.trim().toLowerCase()];
+      hint.hidden = !p;
+      if (!p) return;
+      hint.textContent = p[2];
+      f.port.value = p[0];
+      f.security.value = p[1];
+      if (!f.from_address.value && /@/.test(f.username.value)) f.from_address.value = f.username.value.trim();
+    });
+    f.security.addEventListener('change', () => { if (['587', '465', '25', ''].includes(f.port.value)) f.port.value = SEC_PORT[f.security.value]; });
+    f.username.addEventListener('change', () => { if (!f.from_address.value && /@/.test(f.username.value)) f.from_address.value = f.username.value.trim(); });
+    const check = () => { errEl.hidden = true; return f.reportValidity(); };
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!check()) return;
+      await withBusy(e.submitter, async () => {
+        try { await api('PUT', '/api/admin/mail', values().v); toast("Envoi d'e-mails enregistré"); state.boot.password_reset = true; await render(); }
+        catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
+      });
+    });
+    $('#mail-test').addEventListener('click', async (e) => {
+      if (!check()) return;
+      const { v, to } = values();
+      const out = $('#mail-test-result');
+      if (!to) { f.test_to.focus(); out.innerHTML = part(html`<p class="error-text">Indiquez l'adresse qui doit recevoir le test.</p>`); return; }
+      out.innerHTML = part(html`<p class="small muted">${il('clock', 'Connexion au serveur…')}</p>`);
+      await withBusy(e.currentTarget, async () => {
+        try {
+          await api('POST', '/api/admin/mail/test', { ...v, to });
+          out.innerHTML = part(html`<div class="notice info">${icon('check')}<div>E-mail de test envoyé à <b>${to}</b>. Vérifiez la boîte de réception, et les courriers indésirables. ${values().v.host && !$('#mail-disable') ? 'Pensez à enregistrer.' : ''}</div></div>`);
+        } catch (err) {
+          out.innerHTML = part(html`<div class="notice bad">${icon('alert')}<div><b>Échec de l'envoi${err.data && err.data.stage ? ` (${err.data.stage})` : ''}.</b> ${err.message}</div></div>`);
+        }
+      });
+    });
+    const off = $('#mail-disable');
+    if (off) off.addEventListener('click', async () => {
+      if (!(await confirmDialog({ title: "Désactiver l'envoi d'e-mails ?", message: "Les réglages SMTP sont effacés. Les invitations par e-mail et « Mot de passe oublié » ne seront plus disponibles. Les comptes existants ne changent pas.", confirm: 'Désactiver', danger: true }))) return;
+      try { await api('DELETE', '/api/admin/mail'); state.boot.password_reset = false; toast("Envoi d'e-mails désactivé"); render(); } catch (err) { fail(err); }
+    });
+  }
+
+  // --- Invitations (Utilisateurs) ----------------------------------------------------------------------------------
+  async function copyText(value, input) {
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(value); return true; } } catch { /* repli ci-dessous */ }
+    if (!input) return false;
+    input.focus();
+    input.select();
+    try { return document.execCommand('copy'); } catch { return false; }
+  }
+
+  function inviteResult(r) {
+    const name = [r.invitation.first_name, r.invitation.last_name].filter(Boolean).join(' ') || r.invitation.email;
+    openDialog(html`<div class="dialog-body">
+      ${dialogHead(r.sent ? 'Invitation envoyée' : "Lien d'invitation prêt", r.sent ? `Un e-mail a été envoyé à ${r.invitation.email}.` : `Transmettez ce lien à ${name} par le moyen de votre choix.`, pict(r.sent ? 'send' : 'link', 'lg'))}
+      <p>${name} choisira son nom d'utilisateur et son mot de passe, avec le rôle <b>${ROLE[r.invitation.role]}</b>. Le lien est valable jusqu'au ${dateTime(r.invitation.expires_at)} et ne sert qu'une fois.</p>
+      <div class="field"><label for="invite-link">Lien d'invitation</label><div class="copy-row"><input class="input" id="invite-link" readonly value="${r.link}"><button class="btn" type="button" id="copy-invite">${icon('copy')}Copier</button></div>
+        <small>Ne le publiez pas : toute personne qui l'ouvre peut créer ce compte.</small></div>
+      <div class="form-actions"><button class="btn primary" type="button" data-action="close-dialog">Terminé</button></div>
+    </div>`, { onClose: () => render() });
+    $('#copy-invite').addEventListener('click', async () => toast((await copyText(r.link, $('#invite-link'))) ? 'Lien copié' : 'Sélectionnez le lien et copiez-le', 'ok'));
+  }
+
+  function inviteForm() {
+    const ready = Boolean($('#page')._mailReady);
+    const d = openDialog(html`<form class="dialog-body form" id="invite-form">
+      ${dialogHead('Inviter par e-mail', "La personne reçoit un lien pour créer son compte : elle choisit elle-même son nom d'utilisateur et son mot de passe.", pict('mail', 'lg'))}
+      ${ready ? '' : html`<div class="notice">${icon('info')}<div>L'envoi d'e-mails n'est pas configuré (Réglages → Envoi d'e-mails). Vous pouvez quand même créer un lien et le transmettre vous-même.</div></div>`}
+      <label class="field"><span>Adresse e-mail</span><input class="input" type="email" name="email" required autocomplete="off" autocapitalize="off" autofocus></label>
+      <div class="grid-2">
+        <label class="field"><span>Prénom <span class="muted">(facultatif)</span></span><input class="input" name="first_name" maxlength="60" autocomplete="off"></label>
+        <label class="field"><span>Nom <span class="muted">(facultatif)</span></span><input class="input" name="last_name" maxlength="60" autocomplete="off"></label>
+      </div>
+      <label class="field"><span>Rôle</span><select class="select" name="role">${Object.entries(ROLE).map(([k, l]) => html`<option value="${k}" ${k === 'viewer' ? 'selected' : ''}>${l}</option>`)}</select><small data-role-hint>${ROLE_HINT.viewer}</small></label>
+      <p class="error-text" role="alert" hidden></p>
+      <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button>
+        ${ready ? html`<button class="btn" type="submit" value="link">${icon('link')}Lien sans e-mail</button><button class="btn primary" type="submit" value="send">${icon('send')}Envoyer l'invitation</button>`
+          : html`<button class="btn primary" type="submit" value="link">${icon('link')}Créer le lien</button>`}</div>
+    </form>`);
+    const form = $('#invite-form', d);
+    form.role.addEventListener('change', () => { $('[data-role-hint]', form).textContent = ROLE_HINT[form.role.value]; });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const send = ready && (!e.submitter || e.submitter.value === 'send');
+      await withBusy(e.submitter, async () => {
+        try { inviteResult(await api('POST', '/api/admin/invitations', { ...formData(form), send })); }
+        catch (err) { const p = form.querySelector('.error-text'); p.textContent = err.message; p.hidden = false; }
+      });
+    });
+  }
+
   async function pageUsers(el, route, current) {
-    const { users } = await api('GET', '/api/users');
+    const [{ users }, inv] = await Promise.all([api('GET', '/api/users'), api('GET', '/api/admin/invitations')]);
     if (!current()) return;
-    setHeader('Utilisateurs', 'Qui peut consulter ou modifier le patrimoine', html`<button class="btn primary" data-action="new-user">${icon('plus')}Ajouter un utilisateur</button>`);
-    el.innerHTML = part(html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Double authentification</th><th>Dernière connexion</th><th>État</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
-      ${users.map((u) => html`<tr><td><div class="cell-lead">${avatar(u.display_name, 'sm')}<div><b style="font-weight:500">${u.display_name}</b><br><span class="small muted">${u.username}</span></div></div></td><td>${il(ROLE_ICON[u.role], ROLE[u.role])}</td>
+    setHeader('Utilisateurs', 'Qui peut consulter ou modifier le patrimoine', html`<button class="btn" data-action="new-user">${icon('plus')}Ajouter directement</button><button class="btn primary" data-action="invite-user">${icon('mail')}Inviter par e-mail</button>`);
+    el.innerHTML = part(html`
+      ${inv.invitations.length ? html`<section class="section"><div class="section-head">${h2i('mail', 'Invitations en attente')}<p>Le compte est créé quand la personne ouvre le lien</p></div>
+        <div class="panel flush table-wrap"><table class="table invites"><thead><tr><th>Invité</th><th>Rôle</th><th>Envoi</th><th>Validité</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+        ${inv.invitations.map((i) => html`<tr><td><div class="cell-lead">${avatar([i.first_name, i.last_name].filter(Boolean).join(' ') || i.email, 'sm')}<div><b style="font-weight:500">${[i.first_name, i.last_name].filter(Boolean).join(' ') || i.email}</b><br><span class="small muted">${i.email}</span></div></div></td>
+          <td>${il(ROLE_ICON[i.role], ROLE[i.role])}</td>
+          <td>${i.sent_at ? il('mail', `E-mail du ${dateTime(i.sent_at)}`) : il('link', 'Lien à transmettre')}<br><span class="small muted">par ${i.invited_by || 'un administrateur'}</span></td>
+          <td>${i.status === 'expired' ? html`<span class="tag stale">${icon('clock')}Expirée</span>` : html`jusqu'au ${dateTime(i.expires_at)}`}</td>
+          <td class="num"><div class="row-actions">
+            ${inv.mail_ready ? html`<button class="btn small" type="button" data-action="invite-resend" data-id="${i.id}" data-email="${i.email}">${icon('send')}Renvoyer</button>` : ''}
+            <button class="btn small" type="button" data-action="invite-link" data-id="${i.id}">${icon('link')}Nouveau lien</button>
+            <button class="btn small danger" type="button" data-action="invite-cancel" data-id="${i.id}" data-email="${i.email}">${icon('trash')}Annuler</button>
+          </div></td></tr>`)}
+        </tbody></table></div></section>` : ''}
+      <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Double authentification</th><th>Dernière connexion</th><th>État</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+      ${users.map((u) => html`<tr><td><div class="cell-lead">${avatar(u.display_name, 'sm')}<div><b style="font-weight:500">${u.display_name}</b><br><span class="small muted">${u.username}${u.email ? ` · ${u.email}` : ''}</span></div></div></td><td>${il(ROLE_ICON[u.role], ROLE[u.role])}</td>
         <td>${u.totp_enabled ? html`<span class="tag brand">${icon('shield')}Active</span>` : html`<span class="tag">${icon('unlock')}Inactive</span>`}</td><td>${dateTime(u.last_login_at)}</td>
         <td>${u.disabled ? html`<span class="tag bad">${icon('close')}Désactivé</span>` : u.locked ? html`<span class="tag stale">${icon('lock')}Bloqué</span>` : il('check', 'Actif')}</td>
         <td class="num"><button class="btn small" data-action="edit-user" data-id="${u.id}">${icon('settings')}Gérer</button></td></tr>`)}
       </tbody></table></div>
       <section class="section">${h2i('users', 'Les rôles')}<div class="panel"><dl class="kv">${Object.entries(ROLE).map(([k, l]) => html`<dt>${icon(ROLE_ICON[k])}${l}</dt><dd>${ROLE_HINT[k]}</dd>`)}</dl></div></section>`);
     el._users = users;
+    el._mailReady = inv.mail_ready;
   }
 
   function userForm(u = null) {
@@ -1751,6 +2023,7 @@
       <form class="form" id="user-form">
         ${u ? '' : html`<label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" required minlength="3" maxlength="40" autocomplete="off" autofocus></label>`}
         ${nameFields(u || {}, Boolean(u))}
+        <label class="field"><span>Adresse e-mail <span class="muted">(facultative)</span></span><input class="input" type="email" name="email" value="${u ? u.email : ''}" autocomplete="off" autocapitalize="off"><small>Permet d'utiliser « Mot de passe oublié ».</small></label>
         <label class="field"><span>Rôle</span><select class="select" name="role" ${self ? 'disabled' : ''}>${roles}</select></label>
         ${u ? (self ? '' : html`<label class="check"><input type="checkbox" name="disabled" ${u.disabled ? 'checked' : ''}><span>Compte désactivé (connexion impossible)</span></label>`)
           : html`<label class="field"><span>Mot de passe provisoire</span><input class="input" name="password" type="text" required minlength="10" autocomplete="off"><small>10 caractères minimum.</small></label>`}
@@ -1759,6 +2032,7 @@
       </form>
       ${u ? html`<section class="section">${h3i('settings', 'Autres actions')}<div class="toolbar">
         <button class="btn small" data-action="user-password" data-id="${u.id}">${icon('key')}Définir un nouveau mot de passe</button>
+        ${u.email && $('#page')._mailReady && !u.disabled ? html`<button class="btn small" data-action="user-reset-link" data-id="${u.id}" data-email="${u.email}">${icon('send')}Envoyer un lien de réinitialisation</button>` : ''}
         ${u.totp_enabled ? html`<button class="btn small" data-action="user-reset-2fa" data-id="${u.id}">${icon('shield')}Réinitialiser la double authentification</button>` : ''}
         ${u.locked ? html`<button class="btn small" data-action="user-unlock" data-id="${u.id}">${icon('unlock')}Débloquer</button>` : ''}
         ${self ? '' : html`<button class="btn small danger" data-action="user-delete" data-id="${u.id}" data-name="${u.username}">${icon('trash')}Supprimer</button>`}
@@ -1789,10 +2063,13 @@
     valeur_enregistree: 'Valeur enregistrée', valeur_supprimee: 'Valeur supprimée', mise_a_jour_rapide: 'Mise à jour rapide', taux_modifies: 'Taux modifiés',
     taux_supprime: 'Taux supprimé', taux_bce: 'Taux BCE récupérés', reglages_modifies: 'Réglages modifiés', utilisateur_cree: 'Utilisateur ajouté',
     utilisateur_modifie: 'Utilisateur modifié', mot_de_passe_reinitialise: 'Mot de passe redéfini', double_auth_reinitialisee: 'Double authentification réinitialisée',
-    utilisateur_supprime: 'Utilisateur supprimé', logos_reessai: 'Logos réessayés', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
+    utilisateur_supprime: 'Utilisateur supprimé', email_reglages: "Envoi d'e-mails configuré", email_desactive: "Envoi d'e-mails désactivé", email_test: "Test d'envoi d'e-mail",
+    email_modifie: 'Adresse e-mail modifiée', invitation_envoyee: 'Invitation envoyée', invitation_creee: "Lien d'invitation créé", invitation_renvoyee: 'Invitation renvoyée',
+    invitation_lien: "Nouveau lien d'invitation", invitation_annulee: 'Invitation annulée', invitation_acceptee: 'Invitation acceptée', mot_de_passe_oublie: 'Mot de passe oublié',
+    lien_mot_de_passe: 'Lien de réinitialisation envoyé', logo_personnalise: 'Logo personnalisé', logo_retire: 'Logo personnalisé retiré', logo_recherche: 'Logo recherché', logos_recherche: 'Logos recherchés', logos_reessai: 'Logos réessayés', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
   };
   const actionIcon = (a) => (/refusee|bloque/.test(a) ? 'alert' : /^connexion$|installation/.test(a) ? 'login' : a === 'deconnexion' ? 'logout'
-    : /double_auth|code_secours|codes_secours/.test(a) ? 'shield' : /mot_de_passe/.test(a) ? 'key' : /session/.test(a) ? 'devices'
+    : /double_auth|code_secours|codes_secours/.test(a) ? 'shield' : /mot_de_passe/.test(a) ? 'key' : /^email|^invitation|^lien_/.test(a) ? 'mail' : /logo/.test(a) ? 'bank' : /session/.test(a) ? 'devices'
     : /supprim/.test(a) ? 'trash' : /export|telecharg/.test(a) ? 'download' : a === 'import' ? 'upload' : /sauvegarde/.test(a) ? 'database'
     : /taux/.test(a) ? 'exchange' : /titulaire/.test(a) ? 'user' : /utilisateur/.test(a) ? 'users' : /cloture/.test(a) ? 'lock' : /rouvert/.test(a) ? 'unlock'
     : /valeur|mise_a_jour/.test(a) ? 'update' : /categorie/.test(a) ? 'categories' : /reglages/.test(a) ? 'settings' : /cree/.test(a) ? 'plus' : 'edit');
@@ -1934,6 +2211,25 @@
     'revoke-session': async (b) => { try { await api('DELETE', `/api/account/sessions/${b.dataset.id}`); toast('Session fermée'); render(); } catch (err) { fail(err); } },
     'revoke-others': async () => { try { await api('POST', '/api/account/sessions/revoke-others', {}); toast('Les autres sessions sont fermées'); render(); } catch (err) { fail(err); } },
     'new-user': () => userForm(),
+    'invite-user': () => inviteForm(),
+    'invite-resend': async (b) => {
+      await withBusy(b, async () => {
+        try { await api('POST', `/api/admin/invitations/${b.dataset.id}/resend`, {}); toast(`Invitation renvoyée à ${b.dataset.email}`); render(); } catch (err) { fail(err); }
+      });
+    },
+    'invite-link': async (b) => {
+      if (!(await confirmDialog({ title: 'Créer un nouveau lien ?', message: "Le lien envoyé précédemment cessera de fonctionner. Vous pourrez copier le nouveau lien et le transmettre vous-même.", confirm: 'Créer le lien' }))) return;
+      try { inviteResult(await api('POST', `/api/admin/invitations/${b.dataset.id}/resend`, { send: false })); } catch (err) { fail(err); }
+    },
+    'invite-cancel': async (b) => {
+      if (!(await confirmDialog({ title: "Annuler l'invitation ?", message: `Le lien envoyé à ${b.dataset.email} cessera de fonctionner.`, confirm: "Annuler l'invitation", danger: true }))) return;
+      try { await api('DELETE', `/api/admin/invitations/${b.dataset.id}`); toast('Invitation annulée'); render(); } catch (err) { fail(err); }
+    },
+    'user-reset-link': async (b) => {
+      await withBusy(b, async () => {
+        try { await api('POST', `/api/users/${b.dataset.id}/reset-link`, {}); toast(`Lien de réinitialisation envoyé à ${b.dataset.email}`); } catch (err) { fail(err); }
+      });
+    },
     'edit-user': (b) => userForm(($('#page')._users || []).find((u) => u.id === Number(b.dataset.id))),
     'user-password': (b) => {
       const id = b.dataset.id;
@@ -2000,7 +2296,7 @@
 
   let resizeTimer = null;
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => state.charts.forEach((draw) => draw()), 120); });
-  window.addEventListener('hashchange', () => { setMenu(false); if (state.user) render(); });
+  window.addEventListener('hashchange', () => { setMenu(false); if (gateRoute()) { boot(); return; } if (state.user) render(); });
 
   // ---------------------------------------------------------------------------------------------------------
   // Démarrage
@@ -2074,6 +2370,12 @@
       catch { state.inst = indexInstitutions([]); }
     }
     if (state.boot.setup_required) return showSetup();
+    const link = gateRoute();
+    if (link) {
+      history.replaceState(null, '', '#/');
+      state.user = null;
+      return link.kind === 'invitation' ? showInvitation(link.token) : showReset(link.token);
+    }
     if (!state.boot.user) return showLogin();
     state.user = state.boot.user;
     shell();
