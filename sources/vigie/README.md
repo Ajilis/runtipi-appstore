@@ -88,55 +88,56 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
-## Partage d'un bien immobilier entre comptes du même serveur (0.9.8)
+## Biens immobiliers entre comptes Vigie indépendants (0.9.8)
 
-Vigie est aujourd'hui un **registre patrimonial commun au serveur**, pas un
-patrimoine privé par compte : tous les utilisateurs possédant le droit
-*lecteur* peuvent déjà consulter les avoirs. Le nouveau partage ne crée
-pas un second avoir et ne modifie pas les droits généraux d'accès aux
-autres données. Pour gérer les demandes, le compte destinataire voit
-**Partages immobiliers** dans la navigation.
+**Important : changement de modèle par rapport aux versions précédentes.**
+Les anciens comptes utilisateurs de Vigie accédaient tous aux mêmes
+avoirs. Depuis cette version, les biens financiers et immobiliers
+appartiennent au **compte Vigie qui les a créés**, et les tableaux de
+bord, avoirs, historiques et exports courants n'exposent plus les
+patrimoines d'autres comptes. Les avoirs historiques sans propriétaire
+de compte sont attribués **au premier administrateur** par une migration
+SQLite additive. Cette attribution initiale doit être vérifiée si des
+utilisateurs se partageaient auparavant un patrimoine commun.
 
-Depuis la fiche d'un bien immobilier, un **administrateur** peut cliquer
-sur **Partager ce bien** et choisir un **utilisateur actif qui possède
-déjà une adresse e-mail** sur ce serveur. Vigie propose automatiquement
-le complément à 100 % : pour 60 % de quote-part déclarée et aucun autre
-partage actif, elle propose 40 %. Ce nombre peut être réduit. Les
-demandes déjà envoyées réservent le pourcentage, sans l'intégrer à la
-valeur du patrimoine tant qu'elles n'ont pas été acceptées. Le total
-de la quote-part initiale, des demandes en attente et des parts acceptées
-ne peut jamais dépasser **100 %**.
+Le propriétaire d'un bien immobilier (compte administrateur) utilise
+le bouton **Partager ce bien** pour proposer à un **compte Vigie actif
+du même serveur ayant une adresse e-mail** une part de ce bien.
+Le pourcentage proposé vaut par défaut **le complément à 100 %**.
+Ex. bien détenu à 60 %, demande de 40 %. On peut réduire la part
+proposée mais jamais dépasser 100 % en tenant compte des demandes en
+attente et des parts acceptées.
 
-L'envoi requiert **SMTP configuré** et une URL publique enregistrée dans
-**Réglages → Envoi d'e-mails**. Le destinataire reçoit un lien vers
-**Partages immobiliers** sur le même serveur, se connecte avec son
-compte habituel et clique sur **Accepter** ou **Refuser**. Le lien ne
-permet jamais à un autre compte d'accepter à sa place, même s'il est
-transféré. La demande expire après 7 jours. Le destinataire peut ensuite
-renoncer à son partage ; l'administrateur peut également le révoquer.
+Vigie utilise les paramètres **SMTP et URL publique** de
+**Réglages → Envoi d'e-mails**. Le destinataire reçoit un e-mail
+contenant un lien vers **Partages immobiliers** dans son propre compte.
+Une fois connecté à son compte, il peut **Accepter** ou **Refuser**.
+Le lien seul ne permet pas à une autre personne d'accepter. La demande
+expire en 7 jours. L'acceptation est inscrite dans le journal d'audit
+et la part peut être révoquée par le propriétaire ou le destinataire.
 
-**Calcul de la valeur** : la fiche conserve une seule valeur du bien
-entier, comme auparavant, et la valeur patrimoniale commune du serveur
-reflète **la somme de la quote-part initiale et des parts approuvées**.
-Ex. bien estimé à 800 000 €, quote-part initiale 60 %, demande de
-40 % : avant approbation le patrimoine commun retient 480 000 €,
-et après approbation il retient 800 000 € une seule fois.
-Les plus-values latentes et historiques du registre sont recalculés
-avec le total des parts actuellement actives, sans modéliser les
-changements de détention datés. La fiche détaille le pourcentage
-initial et les parts approuvées.
+**Avant l'acceptation**, aucun bien partagé n'est ajouté au patrimoine
+du destinataire. **Après l'acceptation**, le même bien immobilier
+apparaît dans sa liste d'avoirs, en lecture seule, avec **sa propre
+quote-part**, sans accès aux autres avoirs du propriétaire. La valeur
+intégrale de la maison est conservée **une seule fois** dans la base
+de données, mais les tableaux de bord personnels calculent :
+- propriétaire avec 60 % d'une maison valant 800 000 € : **480 000 €** ;
+- destinataire acceptant 40 % : **320 000 €**.
 
-L'export JSON conserve les **parts acceptées** et les restaure si les
-destinataires sont toujours présents sur le même serveur. Les demandes
-en attente ne sont pas exportées. Les sauvegardes SQLite contiennent
-l'état complet des partages et des demandes.
+Les évolutions de valeur du bien se répercutent sur les deux comptes
+selon leurs quote-parts respectives. L'export JSON personnel inclut les
+avoirs dont l'utilisateur est propriétaire et ses parts acceptées sur
+ces avoirs, mais n'exporte pas les autres patrimoines ; les partages
+en attente ne sont pas réémis. Les sauvegardes SQLite administrateur
+conservent tout l'état du serveur. Par précaution, l'import JSON global
+est refusé s'il détruirait les avoirs d'un autre compte.
 
-**Attention :** une approbation dans Vigie consigne un accord de suivi
-patrimonial, **pas un acte notarié ni un transfert légal de propriété**.
-De plus, la fonctionnalité n'isole **pas** les autres avoirs entre les
-comptes : tous les comptes Vigie avec rôle lecteur voient déjà le
-patrimoine commun. Les droits de modification continuent de dépendre
-des rôles administrateur / éditeur / lecteur.
+Le partage représente un **accord de suivi financier dans Vigie**,
+**pas un transfert légal de propriété**. La valeur d'achat et les
+courbes restent fondées sur le bien entier, avec une quote-part
+actuelle appliquée à l'historique : Vigie ne modélise pas encore les
+acquisitions de parts datées.
 
 ## Compatibilité avec le format réel des ventes GeoRegistry (0.9.6)
 
