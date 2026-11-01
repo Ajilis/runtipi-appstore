@@ -82,26 +82,38 @@ export function mergeSchedule(list, schedule, today) {
   return [...list.filter((v) => v.valued_at < schedule.start_date), ...loanValuations(schedule, today)];
 }
 
-export function loadState(db, today = todayIso()) {
+export function loadState(db, today = todayIso(), userId = null) {
   const categories = db.prepare('SELECT * FROM categories ORDER BY sort_order, id').all();
-  const holdings = db.prepare('SELECT * FROM holdings ORDER BY sort_order, id').all();
-  const valuations = db.prepare('SELECT id, holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all();
+  // Le destinataire ne voit que ses biens et les parts explicitement acceptées.
+  const holdings = userId === null
+    ? db.prepare('SELECT * FROM holdings ORDER BY sort_order, id').all()
+    : db.prepare(`SELECT h.* FROM holdings h WHERE h.account_user_id = ?
+        OR EXISTS (SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id
+          AND s.recipient_id = ? AND s.accepted_at IS NOT NULL
+          AND s.revoked_at IS NULL AND s.declined_at IS NULL)
+        ORDER BY h.sort_order,h.id`).all(userId,userId);
+  const visibleIds = new Set(holdings.map((h) => h.id));
+  const valuations = db.prepare('SELECT id, holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at')
+    .all().filter((v) => visibleIds.has(v.holding_id));
   const byHolding = new Map();
   for (const v of valuations) {
     if (!byHolding.has(v.holding_id)) byHolding.set(v.holding_id, []);
     byHolding.get(v.holding_id).push(v);
   }
   const schedules = getSchedules(db);
-  const properties = new Map(db.prepare('SELECT * FROM real_estate').all().map((p) => [p.holding_id, p]));
+  const properties = new Map(db.prepare('SELECT * FROM real_estate').all()
+    .filter((p) => visibleIds.has(p.holding_id)).map((p) => [p.holding_id, p]));
   const shares = db.prepare(`SELECT holding_id, recipient_id, ownership_bp FROM real_estate_shares
-    WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL`).all();
+    WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL`)
+    .all().filter((p) => visibleIds.has(p.holding_id));
   const acceptedByHolding = new Map();
-  for (const share of shares) acceptedByHolding.set(share.holding_id,
-    (acceptedByHolding.get(share.holding_id) || 0) + share.ownership_bp);
+  for (const share of shares) if (share.recipient_id === userId)
+    acceptedByHolding.set(share.holding_id,
+      (acceptedByHolding.get(share.holding_id) || 0) + share.ownership_bp);
   for (const [hid, s] of schedules) byHolding.set(hid, mergeSchedule(byHolding.get(hid) || [], s, today));
   const catById = new Map(categories.map((c) => [c.id, c]));
   const { base, rates } = getRates(db);
-  return { categories, holdings, byHolding, catById, base, rates, schedules, properties, acceptedByHolding, shares, today };
+  return { categories, holdings, byHolding, catById, base, rates, schedules, properties, acceptedByHolding, shares, userId, today };
 }
 
 function lastOnOrBefore(list, date) {
@@ -124,13 +136,15 @@ export function holdingSnapshot(state, h, date = null) {
   const list = state.byHolding.get(h.id) || [];
   const v = date ? lastOnOrBefore(list, date) : list[list.length - 1] || null;
   const cents = v ? v.amount_cents : null;
-  // Patrimoine partagé du serveur : une seule valeur du bien entier et la
-  // somme des parts déclarée + acceptées, jamais des fiches dupliquées.
-  const ownBp = state.properties.get(h.id)?.ownership_bp ?? 10000;
-  const ownershipBp = Math.min(10000, ownBp + (state.acceptedByHolding.get(h.id) || 0));
+  // Pour chacun des comptes Vigie, une seule valeur du bien entier mais
+  // uniquement sa propre quote-part ; aucun transfert des autres avoirs.
+  const ownerBp = state.properties.get(h.id)?.ownership_bp ?? 10000;
+  const ownershipBp = state.userId !== null && h.account_user_id !== state.userId
+    ? (state.acceptedByHolding.get(h.id) || 0) : ownerBp;
   const owned = cents === null ? null : ownedCents(cents, ownershipBp);
   const base = owned === null ? null : toBase(state, owned, h.currency);
-  return { valuation: v, cents, owned, base, ownership_bp: ownershipBp, owner_owned_cents: cents === null ? null : ownedCents(cents, ownBp),
+  return { valuation: v, cents, owned, base, ownership_bp: ownershipBp, owner_owned_cents: owned,
+    shared_with_me: state.userId !== null && h.account_user_id !== state.userId,
     missingRate: cents !== null && base === null };
 }
 
@@ -172,7 +186,7 @@ function groupSum(items) {
 
 export function dashboard(db, options = {}) {
   const today = options.today || todayIso();
-  const state = loadState(db, today);
+  const state = loadState(db, today, options.userId ?? null);
   const staleDays = Number(getSetting(db, 'stale_days', '45'));
   let assets = 0, liabilities = 0;
   const liquidity = { immediate: 0, short: 0, locked: 0 };
@@ -245,7 +259,7 @@ export function dashboard(db, options = {}) {
 // Points de la courbe : chaque date de valorisation de la période, plus ses bornes.
 export function history(db, range = '1y', options = {}) {
   const today = options.today || todayIso();
-  const state = loadState(db, today);
+  const state = loadState(db, today, options.userId ?? null);
   const first = firstValuationDate(state);
   if (!first) return { base_currency: state.base, points: [] };
   const starts = { '3m': addMonths(today, -3), '6m': addMonths(today, -6), '1y': addMonths(today, -12), '3y': addMonths(today, -36), '5y': addMonths(today, -60), all: first };
@@ -258,9 +272,9 @@ export function history(db, range = '1y', options = {}) {
 }
 
 // Liste des avoirs avec leur valeur actuelle et une mini-série pour l'aperçu.
-export function holdingsView(db) {
+export function holdingsView(db, userId = null) {
   const today = todayIso();
-  const state = loadState(db, today);
+  const state = loadState(db, today, userId);
   const staleDays = Number(getSetting(db, 'stale_days', '45'));
   const properties = state.properties;
   return {
@@ -278,6 +292,7 @@ export function holdingsView(db) {
         owned_cents: snap.owned, // part totale détenue par le foyer sur le serveur
         owner_owned_cents: snap.owner_owned_cents,
         total_ownership_bp: snap.ownership_bp,
+        shared_with_me: snap.shared_with_me,
         property: properties.get(h.id) || null,
         latent_gain_cents: properties.has(h.id) ? latentGain(snap.cents, properties.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null : null,
         value_base: snap.base,
