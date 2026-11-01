@@ -163,9 +163,12 @@ export function registerRoutes(router, deps) {
       .catch((err) => log.warn(`Avis de changement de mot de passe non envoyé à ${maskEmail(user.email)} : ${err.message}`));
   }
   // --- Titulaires : liste enregistrée (réglage « owners ») complétée par ceux utilisés dans les avoirs ---
-  function storedOwners() {
+  function storedOwners(userId = null) {
     try {
-      const v = JSON.parse(getSetting(db, 'owners', 'null'));
+      const adminId = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get()?.id ?? null;
+      const legacy = userId === adminId ? getSetting(db, 'owners', 'null') : 'null';
+      const key = userId === null ? 'owners' : 'owners:' + userId;
+      const v = JSON.parse(getSetting(db, key, legacy));
       return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : null;
     } catch { return null; }
   }
@@ -180,20 +183,20 @@ export function registerRoutes(router, deps) {
     return map;
   }
   function ownersList(userId = null) {
-    const list = storedOwners() || [...DEFAULT_OWNERS];
+    const list = storedOwners(userId) || [...DEFAULT_OWNERS];
     const seen = new Set(list.map((x) => x.toLowerCase()));
     const counts = ownerCounts(userId);
     for (const [k, e] of [...counts].sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'))) if (!seen.has(k)) { list.push(e.name); seen.add(k); }
     return list.map((name) => ({ name, count: (counts.get(name.toLowerCase()) || { count: 0 }).count }));
   }
-  const saveOwners = (names) => setSetting(db, 'owners', JSON.stringify(names));
+  const saveOwners = (names,userId=null) => setSetting(db, userId === null ? 'owners' : 'owners:' + userId, JSON.stringify(names));
   // Renvoie le titulaire avec l'orthographe de la liste, et l'ajoute à la liste s'il est nouveau.
-  function canonicalOwner(name) {
+  function canonicalOwner(name,userId=null) {
     if (!name) return '';
-    const list = ownersList().map((o) => o.name);
+    const list = ownersList(userId).map((o) => o.name);
     const found = list.find((x) => x.toLowerCase() === name.toLowerCase());
     if (found) return found;
-    saveOwners([...list, name]);
+    saveOwners([...list, name],userId);
     return name;
   }
   const ownerName = (v) => text(v, 'Titulaire', { required: true, max: 40 });
@@ -632,7 +635,7 @@ export function registerRoutes(router, deps) {
       currencies: CURRENCIES,
       ecb_enabled: cfg.ECB_RATES_ENABLED,
       logos_enabled: cfg.INSTITUTION_LOGOS,
-      owners: ownersList().map((o) => o.name),
+      owners: ownersList(ctx.user.id).map((o) => o.name),
       institutions: [...new Set(loadState(db, todayIso(), ctx.user.id).holdings.map((r) => r.institution).filter(Boolean))].sort(),
     };
     if (ctx.user.role === 'admin') {
@@ -727,11 +730,11 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/owners', { auth: 'editor' }, (ctx) => {
     const name = ownerName(ctx.body.name);
-    const list = ownersList().map((o) => o.name);
+    const list = ownersList(ctx.user.id).map((o) => o.name);
     if (list.some((x) => x.toLowerCase() === name.toLowerCase())) fail(409, 'owner_exists', 'Ce titulaire existe déjà.');
-    saveOwners([...list, name]);
+    saveOwners([...list, name],ctx.user.id);
     audit(ctx, 'titulaire_ajoute', name);
-    return { owners: ownersList() };
+    return { owners: ownersList(ctx.user.id) };
   });
 
   router.post('/api/owners/rename', { auth: 'editor' }, (ctx) => {
@@ -746,7 +749,7 @@ export function registerRoutes(router, deps) {
       const finalName = target || to;
       db.prepare('UPDATE holdings SET owner = ?, updated_at = ? WHERE lower(owner) = lower(?) AND account_user_id = ?').run(finalName, Date.now(), list[idx],ctx.user.id);
       if (target) list.splice(idx, 1); else list[idx] = to;
-      saveOwners(list);
+      saveOwners(list,ctx.user.id);
     });
     audit(ctx, 'titulaire_renomme', `${original} → ${target || to}${target ? ' (fusion)' : ''}`);
     return { owners: ownersList(ctx.user.id), merged: Boolean(target) };
@@ -757,7 +760,7 @@ export function registerRoutes(router, deps) {
     const entry = ownersList(ctx.user.id).find((o) => o.name.toLowerCase() === name.toLowerCase());
     if (!entry) fail(404, 'not_found', 'Titulaire introuvable.');
     if (entry.count > 0) fail(409, 'owner_in_use', `Ce titulaire est indiqué sur ${entry.count} avoir(s) : renommez-le ou modifiez ces avoirs d'abord.`);
-    saveOwners(ownersList(ctx.user.id).map((o) => o.name).filter((x) => x.toLowerCase() !== name.toLowerCase()));
+    saveOwners(ownersList(ctx.user.id).map((o) => o.name).filter((x) => x.toLowerCase() !== name.toLowerCase()),ctx.user.id);
     audit(ctx, 'titulaire_supprime', entry.name);
     return { owners: ownersList(ctx.user.id) };
   });
@@ -825,7 +828,7 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Avoirs -----------------------------------------------------------------------------------------------
-  function holdingFields(b, existing = {}) {
+  function holdingFields(b, existing = {}, userId = null) {
     const categoryId = intId(b.category_id ?? existing.category_id, 'Catégorie');
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(categoryId);
     if (!cat) fail(400, 'invalid_field', 'Catégorie introuvable.');
@@ -833,7 +836,7 @@ export function registerRoutes(router, deps) {
       category_id: categoryId,
       name: text(b.name ?? existing.name, 'Nom', { required: true, max: 80 }),
       institution: text(b.institution ?? existing.institution ?? '', 'Établissement', { max: 80 }),
-      owner: canonicalOwner(text(b.owner ?? existing.owner ?? '', 'Titulaire', { max: 40 })),
+      owner: canonicalOwner(text(b.owner ?? existing.owner ?? '', 'Titulaire', { max: 40 }),userId),
       currency: currency(b.currency ?? existing.currency ?? getSetting(db, 'base_currency', 'EUR')),
       liquidity: oneOf(b.liquidity ?? existing.liquidity ?? cat.default_liquidity, LIQUIDITY, 'Liquidité'),
       notes: longText(b.notes ?? existing.notes ?? '', 'Notes'),
@@ -909,7 +912,7 @@ export function registerRoutes(router, deps) {
     ON CONFLICT(holding_id, valued_at) DO UPDATE SET amount_cents = excluded.amount_cents, note = excluded.note, created_by = excluded.created_by, created_at = excluded.created_at`);
 
   router.post('/api/holdings', { auth: 'editor' }, (ctx) => {
-    const f = holdingFields(ctx.body);
+    const f = holdingFields(ctx.body,{},ctx.user.id);
     const schedule = ctx.body.schedule ? parseSchedule(ctx.body.schedule) : null;
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency);
@@ -934,7 +937,7 @@ export function registerRoutes(router, deps) {
   router.patch('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
     const existing = ownedHolding(id, ctx.user.id);
-    const f = holdingFields(ctx.body, existing);
+    const f = holdingFields(ctx.body, existing,ctx.user.id);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency, id);
     const amountChange = ctx.body.amount !== undefined && ctx.body.amount !== ''
@@ -1506,7 +1509,7 @@ export function registerRoutes(router, deps) {
       version: 1,
       app_version: cfg.VERSION,
       exported_at: new Date().toISOString(),
-      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList().map((o) => o.name) },
+      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList(userId).map((o) => o.name) },
       fx_rates: db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates').all(),
       categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories ORDER BY sort_order, id').all(),
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, account_user_id FROM holdings ORDER BY id').all().filter((h) => owned.has(h.id)),
@@ -1632,7 +1635,7 @@ export function registerRoutes(router, deps) {
       }
       setSetting(db, 'base_currency', base);
       if (Number.isInteger(d.settings?.stale_days)) setSetting(db, 'stale_days', d.settings.stale_days);
-      if (Array.isArray(d.settings?.owners)) saveOwners(d.settings.owners.filter((x) => typeof x === 'string' && x.trim()).map((x) => ownerName(x)));
+      if (Array.isArray(d.settings?.owners)) saveOwners(d.settings.owners.filter((x) => typeof x === 'string' && x.trim()).map((x) => ownerName(x)),ctx.user.id);
     });
     audit(ctx, 'import', `${d.holdings.length} avoir(s), ${d.valuations.length} valeur(s) ; sauvegarde préalable ${backup.name}`);
     return { ok: true, backup: backup.name, holdings: d.holdings.length, valuations: d.valuations.length };
