@@ -908,7 +908,10 @@
       $('#closed-toggle').hidden = closedCount === 0;
       $('#closed-count').textContent = closedCount;
     };
-    el.innerHTML = part(html`<div class="toolbar">
+    const gainRows = v.holdings.filter(h => !h.closed_at && h.latent_gain_cents !== null && h.latent_gain_cents !== undefined && h.latent_basis_cents > 0 && h.value_base !== null && (h.owned_cents !== 0 || h.currency === v.base_currency));
+    const gainBase = gainRows.reduce((s,h) => s + Math.round(h.latent_gain_cents * (h.owned_cents === 0 ? 1 : h.value_base / h.owned_cents)), 0);
+    const basisBase = gainRows.reduce((s,h) => s + Math.round(h.latent_basis_cents * (h.owned_cents === 0 ? 1 : h.value_base / h.owned_cents)), 0);
+    el.innerHTML = part(html`<div class="panel"><h2>Plus-values latentes</h2><p class="hero-value ${gainBase >= 0 ? 'pos' : 'neg'}">${money(gainBase, v.base_currency, { sign: true })}</p><p class="muted">${gainRows.length} avoir(s) · ${basisBase ? (gainBase / basisBase * 100).toLocaleString('fr-FR', {maximumFractionDigits:2})+' %' : '—'} · montant brut</p><p class="small muted">Hors fiscalité et mouvements. Les avoirs sans prix de revient ou taux de change sont exclus.</p></div><div class="toolbar">
         <input class="input" type="search" id="holding-search" placeholder="Rechercher un avoir, un établissement…" value="${state.filter}" aria-label="Rechercher">
         <label class="check" id="closed-toggle"><input type="checkbox" id="show-closed" ${state.showClosed ? 'checked' : ''}><span>Afficher les avoirs clôturés (<span id="closed-count"></span>)</span></label>
       </div><div class="stack" id="holdings-list"></div>`);
@@ -1010,6 +1013,7 @@
     const curList = [...new Set([settings.base_currency, ...settings.currencies])];
     const sc = h.schedule || null;
     const property = h.property || null;
+    const acquisition = h.acquisition || null;
     const d = openDialog(html`<form class="dialog-body form" id="holding-form">
       ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter un avoir', existing ? '' : 'Un compte, un placement, un bien ou un crédit. Seule sa valeur compte, pas ses mouvements.')}
       <label class="field"><span>Nom</span><input class="input" name="name" required maxlength="80" value="${h.name || ''}" placeholder="Livret A, PEA, Appartement Lyon…" autofocus></label>
@@ -1082,6 +1086,10 @@
         <p class="small muted">La baguette magique utilise l'adresse, le type et la surface pour chercher des ventes comparables DVF. L'adresse est envoyée à GeoRegistry uniquement sur demande.</p>
         <div data-estimate-result role="status" aria-live="polite"></div>
       </section>
+      <section class="section" data-acquisition hidden>${h3i('chart', 'Plus-value latente (facultatif)')}
+        <div class="grid-2"><label class="field"><span>Prix de revient total</span><input class="input amount" name="acquisition_amount" inputmode="decimal" value="${acquisition ? centsInput(acquisition.purchase_cents) : ''}" placeholder="Ex. 5 000"></label>
+        <label class="field"><span>Date d'acquisition</span><input class="input" type="date" name="acquisition_date" max="${todayIso()}" value="${acquisition?.purchased_at || ''}"></label></div>
+        <p class="small muted">Variation brute sans prise en compte des mouvements, frais et fiscalité.</p></section>
       <label class="field"><span>Notes</span><textarea class="textarea" name="notes" maxlength="1000">${h.notes || ''}</textarea></label>
       <p class="error-text" hidden></p>
       <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon(existing ? 'check' : 'plus')}${existing ? 'Enregistrer' : "Ajouter l'avoir"}</button></div>
@@ -1098,6 +1106,7 @@
     // Échéancier automatique : proposé pour les prêts accordés et les crédits.
     const estateSection = $('[data-real-estate]', form);
     const estimateButtons = $$('[data-estimate]', form);
+    const acquisitionSection = $('[data-acquisition]', form);
     const syncRealEstate = () => {
       const sel = form.category_id.selectedOptions[0];
       const show = sel.dataset.kind === 'asset' && (['house', 'building'].includes(sel.dataset.icon) || /immobilier|maison|appartement|résidence/i.test(sel.textContent));
@@ -1106,6 +1115,7 @@
       estimateButtons.forEach((b) => { b.hidden = !show; });
       form.purchase_amount.required = show;
       form.purchased_at.required = show;
+      acquisitionSection.hidden = sel.dataset.kind !== 'asset' || show || sel.dataset.loan === 'true' || !!sc;
     };
     form.category_id.addEventListener('change', syncRealEstate);
     form.currency.addEventListener('change', syncRealEstate);
@@ -1244,6 +1254,10 @@
       body.owner = body.owner_choice === '__new__' ? body.owner_new.trim() : body.owner_choice;
       const auto = !modeWrap.hidden && mode === 'auto';
       const schedule = { kind: body.sc_kind, principal: body.sc_principal, rate: body.sc_rate, months: Number(body.sc_months.trim()), start_date: body.sc_start };
+      if (!acquisitionSection.hidden) {
+        if (body.acquisition_amount.trim() || body.acquisition_date) body.acquisition = { purchase_amount: body.acquisition_amount, purchased_at: body.acquisition_date };
+        else if (acquisition) body.acquisition = null;
+      }
       if (!estateSection.hidden) body.property = {
         purchase_amount: body.purchase_amount, purchased_at: body.purchased_at,
         property_type: body.property_type, address: body.property_address,
@@ -1251,7 +1265,7 @@
         ownership_pct: body.ownership_pct,
       };
       for (const k of ['owner_choice', 'owner_new', 'mode', 'sc_kind', 'sc_principal', 'sc_rate', 'sc_months', 'sc_start',
-        'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition', 'ownership_pct']) delete body[k];
+        'acquisition_amount', 'acquisition_date', 'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition', 'ownership_pct']) delete body[k];
       if (auto) { body.schedule = schedule; delete body.amount; delete body.date; } else if (sc) body.schedule = null;
       await withBusy(e.submitter, async () => {
         try {
@@ -1368,7 +1382,7 @@
   async function openHolding(id) {
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
-    const { holding: h, valuations, schedule: sc, base_currency: base, property, latent_gain: latent } = data;
+    const { holding: h, valuations, schedule: sc, base_currency: base, property, acquisition, latent_gain: latent } = data;
     const mayEdit = canEdit() && !h.shared_with_me;
     const cats = holdingsCache ? holdingsCache.categories : (await api('GET', '/api/categories')).categories;
     const cat = cats.find((c) => c.id === h.category_id) || {};
@@ -1393,6 +1407,7 @@
         <dt>Valeur de votre part</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
         <dt>Plus-value latente de votre quote-part</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
       </dl><p class="small muted">Gain brut théorique, hors frais, travaux, crédit restant dû et fiscalité.</p></div>` : ''}
+      ${acquisition ? html`<div class="panel"><dl class="kv"><dt>Prix de revient</dt><dd>${money(acquisition.purchase_cents, h.currency, { digits: 2 })}</dd><dt>Date d'acquisition</dt><dd>${dateFr(acquisition.purchased_at)}</dd><dt>Plus ou moins-value latente</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? `${money(latent.gain_cents, h.currency, { sign: true })} (${String(latent.gain_pct).replace('.', ',')} %)` : 'Valeur non renseignée'}</dd></dl></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${sc ? loanPanel(h, sc, w) : ''}
       ${mayEdit && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">

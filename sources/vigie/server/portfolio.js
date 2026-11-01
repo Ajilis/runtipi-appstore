@@ -101,6 +101,7 @@ export function loadState(db, today = todayIso(), userId = null) {
     byHolding.get(v.holding_id).push(v);
   }
   const schedules = getSchedules(db);
+  const acquisitions = new Map(db.prepare('SELECT * FROM holding_acquisitions').all().filter(p => visibleIds.has(p.holding_id)).map(p => [p.holding_id,p]));
   const properties = new Map(db.prepare('SELECT * FROM real_estate').all()
     .filter((p) => visibleIds.has(p.holding_id)).map((p) => [p.holding_id, p]));
   const shares = db.prepare(`SELECT holding_id, recipient_id, ownership_bp FROM real_estate_shares
@@ -113,7 +114,7 @@ export function loadState(db, today = todayIso(), userId = null) {
   for (const [hid, s] of schedules) byHolding.set(hid, mergeSchedule(byHolding.get(hid) || [], s, today));
   const catById = new Map(categories.map((c) => [c.id, c]));
   const { base, rates } = getRates(db);
-  return { categories, holdings, byHolding, catById, base, rates, schedules, properties, acceptedByHolding, shares, userId, today };
+  return { categories, holdings, byHolding, catById, base, rates, schedules, properties, acquisitions, acceptedByHolding, shares, userId, today };
 }
 
 function lastOnOrBefore(list, date) {
@@ -294,7 +295,9 @@ export function holdingsView(db, userId = null) {
         total_ownership_bp: snap.ownership_bp,
         shared_with_me: snap.shared_with_me,
         property: properties.get(h.id) || null,
-        latent_gain_cents: properties.has(h.id) ? latentGain(snap.cents, properties.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null : null,
+        acquisition: state.acquisitions.get(h.id) || null,
+        latent_basis_cents: properties.has(h.id) ? Math.round(properties.get(h.id).purchase_cents * snap.ownership_bp / 10000) : state.acquisitions.get(h.id)?.purchase_cents ?? null,
+        latent_gain_cents: properties.has(h.id) ? latentGain(snap.cents, properties.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null : state.acquisitions.has(h.id) && snap.cents !== null && !h.closed_at ? snap.cents - state.acquisitions.get(h.id).purchase_cents : null,
         value_base: snap.base,
         missing_rate: snap.missingRate,
         last_date: last,
