@@ -163,15 +163,18 @@ export function registerRoutes(router, deps) {
       .catch((err) => log.warn(`Avis de changement de mot de passe non envoyé à ${maskEmail(user.email)} : ${err.message}`));
   }
   // --- Titulaires : liste enregistrée (réglage « owners ») complétée par ceux utilisés dans les avoirs ---
-  function storedOwners() {
+  function storedOwners(userId = null) {
     try {
-      const v = JSON.parse(getSetting(db, 'owners', 'null'));
+      const adminId = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get()?.id ?? null;
+      const legacy = userId === adminId ? getSetting(db, 'owners', 'null') : 'null';
+      const key = userId === null ? 'owners' : 'owners:' + userId;
+      const v = JSON.parse(getSetting(db, key, legacy));
       return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : null;
     } catch { return null; }
   }
-  function ownerCounts() {
+  function ownerCounts(userId = null) {
     const map = new Map();
-    for (const r of db.prepare("SELECT owner, COUNT(*) AS n FROM holdings WHERE owner IS NOT NULL AND owner <> '' GROUP BY owner").all()) {
+    for (const r of db.prepare("SELECT owner, COUNT(*) AS n FROM holdings WHERE owner IS NOT NULL AND owner <> '' AND (? IS NULL OR account_user_id = ?) GROUP BY owner").all(userId,userId)) {
       const k = r.owner.toLowerCase();
       const e = map.get(k) || { name: r.owner, count: 0 };
       e.count += r.n;
@@ -179,21 +182,21 @@ export function registerRoutes(router, deps) {
     }
     return map;
   }
-  function ownersList() {
-    const list = storedOwners() || [...DEFAULT_OWNERS];
+  function ownersList(userId = null) {
+    const list = storedOwners(userId) || [...DEFAULT_OWNERS];
     const seen = new Set(list.map((x) => x.toLowerCase()));
-    const counts = ownerCounts();
+    const counts = ownerCounts(userId);
     for (const [k, e] of [...counts].sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'))) if (!seen.has(k)) { list.push(e.name); seen.add(k); }
     return list.map((name) => ({ name, count: (counts.get(name.toLowerCase()) || { count: 0 }).count }));
   }
-  const saveOwners = (names) => setSetting(db, 'owners', JSON.stringify(names));
+  const saveOwners = (names,userId=null) => setSetting(db, userId === null ? 'owners' : 'owners:' + userId, JSON.stringify(names));
   // Renvoie le titulaire avec l'orthographe de la liste, et l'ajoute à la liste s'il est nouveau.
-  function canonicalOwner(name) {
+  function canonicalOwner(name,userId=null) {
     if (!name) return '';
-    const list = ownersList().map((o) => o.name);
+    const list = ownersList(userId).map((o) => o.name);
     const found = list.find((x) => x.toLowerCase() === name.toLowerCase());
     if (found) return found;
-    saveOwners([...list, name]);
+    saveOwners([...list, name],userId);
     return name;
   }
   const ownerName = (v) => text(v, 'Titulaire', { required: true, max: 40 });
@@ -419,22 +422,180 @@ export function registerRoutes(router, deps) {
     return { ok: true };
   });
 
+  // Confidentialité : tous les comptes ont leurs propres avoirs.
+  // Une part immobilière acceptée donne lecture seule de CE bien, pas du reste.
+  function canReadHolding(id, userId) {
+    return Boolean(db.prepare(`SELECT 1 FROM holdings h WHERE h.id = ? AND
+      (h.account_user_id = ? OR EXISTS (
+        SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id AND
+        s.recipient_id = ? AND s.accepted_at IS NOT NULL AND
+        s.revoked_at IS NULL AND s.declined_at IS NULL))`).get(id,userId,userId));
+  }
+  function ownedHolding(id, userId) {
+    const h = db.prepare('SELECT * FROM holdings WHERE id = ? AND account_user_id = ?').get(id,userId);
+    if (!h) fail(404, 'not_found', 'Avoir introuvable dans votre compte Vigie.');
+    return h;
+  }
+  function readableHolding(id, userId) {
+    if (!canReadHolding(id,userId)) fail(404,'not_found','Avoir introuvable dans votre compte Vigie.');
+    return db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
+  }
+  // --- Partage immobilier entre comptes du même serveur --------------------------------------------
+  // Le patrimoine est un registre partagé par les comptes, pas un espace privé
+  // par utilisateur. Une seule fiche, des droits distincts, consentement exprès.
+  const SHARE_TTL = 7 * 86400_000;
+  const shareRow = db.prepare(`SELECT s.*, h.name AS property_name, u.display_name AS sender_name,
+    r.display_name AS recipient_name, r.email AS recipient_email
+    FROM real_estate_shares s JOIN holdings h ON h.id = s.holding_id
+    LEFT JOIN users u ON u.id = s.sender_id
+    JOIN users r ON r.id = s.recipient_id WHERE s.id = ?`);
+  const sumReserved = db.prepare(`SELECT COALESCE(SUM(ownership_bp),0) AS bp FROM real_estate_shares
+    WHERE holding_id = ? AND declined_at IS NULL AND revoked_at IS NULL
+    AND (accepted_at IS NOT NULL OR expires_at > ?)`);
+  const sumAccepted = db.prepare(`SELECT COALESCE(SUM(ownership_bp),0) AS bp FROM real_estate_shares
+    WHERE holding_id = ? AND accepted_at IS NOT NULL AND declined_at IS NULL AND revoked_at IS NULL`);
+  const shareStatus = (r, now = Date.now()) => r.revoked_at ? 'revoked' : r.declined_at ? 'declined'
+    : r.accepted_at ? 'accepted' : r.expires_at <= now ? 'expired' : 'pending';
+  function shareView(row) {
+    return { id: row.id, holding_id: row.holding_id, property_name: row.property_name,
+      sender_name: row.sender_name, recipient_id: row.recipient_id, recipient_name: row.recipient_name,
+      ownership_bp: row.ownership_bp, status: shareStatus(row), created_at: row.created_at,
+      expires_at: row.expires_at, accepted_at: row.accepted_at, sent_at: row.sent_at };
+  }
+  function shareProperty(holdingId, ownerId = null) {
+    const h = db.prepare(`SELECT h.id, h.name, h.account_user_id, p.ownership_bp FROM holdings h
+      JOIN real_estate p ON p.holding_id = h.id WHERE h.id = ?`).get(holdingId);
+    if (!h || (ownerId !== null && h.account_user_id !== ownerId)) fail(404, 'not_found', 'Bien immobilier introuvable dans votre compte.');
+    return h;
+  }
+  router.get('/api/property-shares/recipients', { auth: 'editor' }, (ctx) => ({
+    recipients: db.prepare(`SELECT id, display_name, email FROM users
+      WHERE id <> ? AND disabled = 0 AND email IS NOT NULL AND email <> '' ORDER BY display_name`).all(ctx.user.id),
+    mail_ready: Boolean(mailReady() && mailConf()),
+  }));
+  router.get('/api/property-shares/inbox', { auth: 'viewer' }, (ctx) => ({
+    invitations: db.prepare(`SELECT s.id FROM real_estate_shares s
+      WHERE s.recipient_id = ? AND s.declined_at IS NULL AND s.revoked_at IS NULL
+      AND s.accepted_at IS NULL AND s.expires_at > ? ORDER BY s.created_at DESC`)
+      .all(ctx.user.id, Date.now()).map((r) => shareView(shareRow.get(r.id))),
+    accepted: db.prepare(`SELECT s.id FROM real_estate_shares s
+      WHERE s.recipient_id = ? AND s.accepted_at IS NOT NULL AND s.revoked_at IS NULL
+      ORDER BY s.accepted_at DESC`).all(ctx.user.id).map((r) => shareView(shareRow.get(r.id))),
+  }));
+  router.get('/api/holdings/:id/shares', { auth: 'viewer' }, (ctx) => {
+    const id = intId(ctx.params.id);
+    const property = shareProperty(id, ctx.user.id);
+    const list = db.prepare('SELECT id FROM real_estate_shares WHERE holding_id = ? ORDER BY created_at DESC').all(id);
+    const reserved = sumReserved.get(id, Date.now()).bp;
+    return { holding_id: id, ownership_bp: property.ownership_bp,
+      available_bp: Math.max(0, 10000 - property.ownership_bp - reserved),
+      accepted_bp: sumAccepted.get(id).bp, shares: list.map((r) => shareView(shareRow.get(r.id))) };
+  });
+
+  router.post('/api/holdings/:id/shares', { auth: 'editor' }, async (ctx) => {
+    const id = intId(ctx.params.id);
+    const property = shareProperty(id, ctx.user.id);
+    const targetId = intId(ctx.body.recipient_id, 'Destinataire');
+    if (targetId === ctx.user.id) fail(400, 'invalid_field', 'Choisissez un autre utilisateur.');
+    const recipient = getUser(targetId);
+    if (!recipient || recipient.disabled || !recipient.email)
+      fail(400, 'invalid_field', 'Choisissez un compte actif possédant une adresse e-mail.');
+    if (!mailReady() || !mailConf()) fail(409, 'mail_not_configured',
+      'Configurez le serveur SMTP et une URL publique dans Réglages → Envoi d’e-mails avant le partage.');
+    // Permet la proposition automatique du complément à 100 %, mais ne
+    // transmet pas une quote-part nulle ou supérieure aux parts disponibles.
+    const reserved = sumReserved.get(id, Date.now()).bp;
+    const complement = 10000 - property.ownership_bp - reserved;
+    const pct = ctx.body.ownership_pct === undefined || ctx.body.ownership_pct === null || ctx.body.ownership_pct === ''
+      ? complement : ownershipBasisPoints(ctx.body.ownership_pct);
+    if (pct === null || pct < 1 || pct > complement)
+      fail(400, 'invalid_field', 'Quote-part proposée invalide ou supérieure au complément disponible (' + (complement / 100) + ' %).');
+    const now = Date.now();
+    const invitationId = transaction(db, () => {
+      // Libérer les invitations expirées avant l'index d'unicité.
+      db.prepare(`UPDATE real_estate_shares SET revoked_at = ?
+        WHERE holding_id = ? AND accepted_at IS NULL AND declined_at IS NULL
+        AND revoked_at IS NULL AND expires_at <= ?`).run(now, id, now);
+      const fresh = shareProperty(id,ctx.user.id);
+      const left = 10000 - fresh.ownership_bp - sumReserved.get(id, now).bp;
+      if (pct > left) fail(409, 'share_capacity', 'La quote-part disponible a changé. Rechargez la fiche.');
+      if (db.prepare(`SELECT 1 FROM real_estate_shares WHERE holding_id = ? AND recipient_id = ?
+          AND declined_at IS NULL AND revoked_at IS NULL`).get(id, targetId))
+        fail(409, 'already_shared', 'Ce compte a déjà un partage en attente ou accepté sur ce bien.');
+      const r = db.prepare(`INSERT INTO real_estate_shares
+        (holding_id, sender_id, recipient_id, ownership_bp, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(id, ctx.user.id, targetId, pct, now, now + SHARE_TTL);
+      return Number(r.lastInsertRowid);
+    });
+    const url = String(mailSettings().public_url).replace(/\/$/, '') + '/#/partages';
+    try {
+      await deliver(recipient.email, 'propertyShare', {
+        firstName: recipient.first_name, inviter: ctx.user.display_name,
+        propertyName: property.name, ownershipPct: pct / 100, url, expiresAt: now + SHARE_TTL,
+      });
+    } catch (err) {
+      db.prepare('DELETE FROM real_estate_shares WHERE id = ? AND accepted_at IS NULL').run(invitationId);
+      if (err instanceof SmtpError) fail(502, 'smtp_error', 'Demande non envoyée : ' + err.message);
+      throw err;
+    }
+    db.prepare('UPDATE real_estate_shares SET sent_at = ? WHERE id = ?').run(Date.now(), invitationId);
+    audit(ctx, 'partage_immobilier_envoye', property.name + ' : ' + (pct / 100) + ' % à ' + recipient.display_name);
+    return { invitation: shareView(shareRow.get(invitationId)), sent: true };
+  });
+
+  router.post('/api/property-shares/:id/decision', { auth: 'viewer' }, (ctx) => {
+    const id = intId(ctx.params.id);
+    const decision = oneOf(ctx.body.decision, ['accept', 'decline'], 'Décision');
+    const data = transaction(db, () => {
+      const row = shareRow.get(id);
+      if (!row || row.recipient_id !== ctx.user.id) fail(404, 'not_found', 'Proposition de partage introuvable.');
+      if (shareStatus(row) !== 'pending') fail(409, 'share_inactive', 'Cette proposition est déjà traitée ou a expiré.');
+      const now = Date.now();
+      if (decision === 'accept') {
+        const property = shareProperty(row.holding_id);
+        const total = sumAccepted.get(row.holding_id).bp;
+        if (property.ownership_bp + total + row.ownership_bp > 10000)
+          fail(409, 'share_capacity', 'Les quote-parts dépasseraient 100 %. Contactez l’administrateur.');
+        db.prepare('UPDATE real_estate_shares SET accepted_at = ? WHERE id = ?').run(now, id);
+      } else db.prepare('UPDATE real_estate_shares SET declined_at = ? WHERE id = ?').run(now, id);
+      return shareView(shareRow.get(id));
+    });
+    audit(ctx, decision === 'accept' ? 'partage_immobilier_accepte' : 'partage_immobilier_refuse',
+      data.property_name + ' : ' + (data.ownership_bp / 100) + ' %');
+    return { invitation: data, ok: true };
+  });
+
+  router.delete('/api/property-shares/:id', { auth: 'viewer' }, (ctx) => {
+    const id = intId(ctx.params.id);
+    const data = transaction(db, () => {
+      const row = shareRow.get(id);
+      if (!row || (row.recipient_id !== ctx.user.id &&
+          !db.prepare('SELECT 1 FROM holdings WHERE id = ? AND account_user_id = ?').get(row.holding_id, ctx.user.id)))
+        fail(404, 'not_found', 'Partage introuvable.');
+      if (shareStatus(row) !== 'accepted' && shareStatus(row) !== 'pending')
+        fail(409, 'share_inactive', 'Ce partage n’est plus actif.');
+      db.prepare('UPDATE real_estate_shares SET revoked_at = ? WHERE id = ?').run(Date.now(), id);
+      return shareView(shareRow.get(id));
+    });
+    audit(ctx, 'partage_immobilier_revoque', data.property_name + ' : ' + (data.ownership_bp / 100) + ' %');
+    return { ok: true };
+  });
+
   // --- Lecture du patrimoine -----------------------------------------------------------------------------
-  router.get('/api/dashboard', { auth: 'viewer' }, () => dashboard(db));
+  router.get('/api/dashboard', { auth: 'viewer' }, (ctx) => dashboard(db, { userId: ctx.user.id }));
 
   router.get('/api/history', { auth: 'viewer' }, (ctx) => {
     const range = ctx.query.get('range') || '1y';
-    return history(db, ['3m', '6m', '1y', '3y', '5y', 'all'].includes(range) ? range : '1y');
+    return history(db, ['3m', '6m', '1y', '3y', '5y', 'all'].includes(range) ? range : '1y', { userId: ctx.user.id });
   });
 
-  router.get('/api/holdings', { auth: 'viewer' }, () => holdingsView(db));
+  router.get('/api/holdings', { auth: 'viewer' }, (ctx) => holdingsView(db, ctx.user.id));
 
   router.get('/api/holdings/:id', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const h = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!h) fail(404, 'not_found', 'Avoir introuvable.');
+    const h = readableHolding(id, ctx.user.id);
     const today = todayIso();
-    const state = loadState(db, today);
+    const state = loadState(db, today, ctx.user.id);
     const snap = holdingSnapshot(state, h);
     let valuations = db.prepare(`SELECT v.id, v.valued_at, v.amount_cents, v.note, v.created_at, u.display_name AS created_by
       FROM valuations v LEFT JOIN users u ON u.id = v.created_by WHERE v.holding_id = ? ORDER BY v.valued_at DESC`).all(id);
@@ -446,19 +607,24 @@ export function registerRoutes(router, deps) {
       schedule = { ...loanSummary(sched, today), rows: amortization(sched) };
     }
     const property = db.prepare('SELECT * FROM real_estate WHERE holding_id = ?').get(id) || null;
-    return { holding: { ...h, value_cents: snap.cents, owned_cents: snap.owned, value_base: snap.base, missing_rate: snap.missingRate },
-      property, latent_gain: property ? latentGain(snap.cents, property.purchase_cents, property.ownership_bp) : null,
+    return { holding: { ...h, value_cents: snap.cents, owned_cents: snap.owned, owner_owned_cents: snap.owner_owned_cents,
+      total_ownership_bp: snap.ownership_bp, shared_with_me: snap.shared_with_me,
+      value_base: snap.base, missing_rate: snap.missingRate },
+      property, latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp) : null,
       valuations, schedule, base_currency: state.base };
   });
 
-  router.get('/api/categories', { auth: 'viewer' }, () => {
-    const rows = db.prepare('SELECT c.*, (SELECT COUNT(*) FROM holdings h WHERE h.category_id = c.id) AS holding_count FROM categories c ORDER BY sort_order, id').all();
+  router.get('/api/categories', { auth: 'viewer' }, (ctx) => {
+    const rows = db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM holdings h WHERE h.category_id = c.id AND
+      (h.account_user_id = ? OR EXISTS (SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id
+        AND s.recipient_id = ? AND s.accepted_at IS NOT NULL AND s.revoked_at IS NULL AND s.declined_at IS NULL)))
+      AS holding_count FROM categories c ORDER BY sort_order, id`).all(ctx.user.id,ctx.user.id);
     return { categories: rows };
   });
 
   router.get('/api/settings', { auth: 'viewer' }, (ctx) => {
     const base = getSetting(db, 'base_currency', 'EUR');
-    const used = db.prepare('SELECT DISTINCT currency FROM holdings').all().map((r) => r.currency);
+    const used = loadState(db, todayIso(), ctx.user.id).holdings.map((r) => r.currency);
     const rates = db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates ORDER BY currency').all();
     const out = {
       base_currency: base,
@@ -469,8 +635,8 @@ export function registerRoutes(router, deps) {
       currencies: CURRENCIES,
       ecb_enabled: cfg.ECB_RATES_ENABLED,
       logos_enabled: cfg.INSTITUTION_LOGOS,
-      owners: ownersList().map((o) => o.name),
-      institutions: db.prepare("SELECT DISTINCT institution FROM holdings WHERE institution IS NOT NULL AND institution <> '' ORDER BY institution").all().map((r) => r.institution),
+      owners: ownersList(ctx.user.id).map((o) => o.name),
+      institutions: [...new Set(loadState(db, todayIso(), ctx.user.id).holdings.map((r) => r.institution).filter(Boolean))].sort(),
     };
     if (ctx.user.role === 'admin') {
       out.security = { ...securitySettings.view(),
@@ -560,43 +726,43 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Titulaires -----------------------------------------------------------------------------------------------
-  router.get('/api/owners', { auth: 'viewer' }, () => ({ owners: ownersList() }));
+  router.get('/api/owners', { auth: 'viewer' }, (ctx) => ({ owners: ownersList(ctx.user.id) }));
 
   router.post('/api/owners', { auth: 'editor' }, (ctx) => {
     const name = ownerName(ctx.body.name);
-    const list = ownersList().map((o) => o.name);
+    const list = ownersList(ctx.user.id).map((o) => o.name);
     if (list.some((x) => x.toLowerCase() === name.toLowerCase())) fail(409, 'owner_exists', 'Ce titulaire existe déjà.');
-    saveOwners([...list, name]);
+    saveOwners([...list, name],ctx.user.id);
     audit(ctx, 'titulaire_ajoute', name);
-    return { owners: ownersList() };
+    return { owners: ownersList(ctx.user.id) };
   });
 
   router.post('/api/owners/rename', { auth: 'editor' }, (ctx) => {
     const from = ownerName(ctx.body.from);
     const to = ownerName(ctx.body.to);
-    const list = ownersList().map((o) => o.name);
+    const list = ownersList(ctx.user.id).map((o) => o.name);
     const idx = list.findIndex((x) => x.toLowerCase() === from.toLowerCase());
     if (idx < 0) fail(404, 'not_found', 'Titulaire introuvable.');
     const target = list.find((x, i) => i !== idx && x.toLowerCase() === to.toLowerCase());
     const original = list[idx];
     transaction(db, () => {
       const finalName = target || to;
-      db.prepare('UPDATE holdings SET owner = ?, updated_at = ? WHERE lower(owner) = lower(?)').run(finalName, Date.now(), list[idx]);
+      db.prepare('UPDATE holdings SET owner = ?, updated_at = ? WHERE lower(owner) = lower(?) AND account_user_id = ?').run(finalName, Date.now(), list[idx],ctx.user.id);
       if (target) list.splice(idx, 1); else list[idx] = to;
-      saveOwners(list);
+      saveOwners(list,ctx.user.id);
     });
     audit(ctx, 'titulaire_renomme', `${original} → ${target || to}${target ? ' (fusion)' : ''}`);
-    return { owners: ownersList(), merged: Boolean(target) };
+    return { owners: ownersList(ctx.user.id), merged: Boolean(target) };
   });
 
   router.post('/api/owners/delete', { auth: 'editor' }, (ctx) => {
     const name = ownerName(ctx.body.name);
-    const entry = ownersList().find((o) => o.name.toLowerCase() === name.toLowerCase());
+    const entry = ownersList(ctx.user.id).find((o) => o.name.toLowerCase() === name.toLowerCase());
     if (!entry) fail(404, 'not_found', 'Titulaire introuvable.');
     if (entry.count > 0) fail(409, 'owner_in_use', `Ce titulaire est indiqué sur ${entry.count} avoir(s) : renommez-le ou modifiez ces avoirs d'abord.`);
-    saveOwners(ownersList().map((o) => o.name).filter((x) => x.toLowerCase() !== name.toLowerCase()));
+    saveOwners(ownersList(ctx.user.id).map((o) => o.name).filter((x) => x.toLowerCase() !== name.toLowerCase()),ctx.user.id);
     audit(ctx, 'titulaire_supprime', entry.name);
-    return { owners: ownersList() };
+    return { owners: ownersList(ctx.user.id) };
   });
 
   // --- Catégories ---------------------------------------------------------------------------------------------
@@ -662,7 +828,7 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Avoirs -----------------------------------------------------------------------------------------------
-  function holdingFields(b, existing = {}) {
+  function holdingFields(b, existing = {}, userId = null) {
     const categoryId = intId(b.category_id ?? existing.category_id, 'Catégorie');
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(categoryId);
     if (!cat) fail(400, 'invalid_field', 'Catégorie introuvable.');
@@ -670,7 +836,7 @@ export function registerRoutes(router, deps) {
       category_id: categoryId,
       name: text(b.name ?? existing.name, 'Nom', { required: true, max: 80 }),
       institution: text(b.institution ?? existing.institution ?? '', 'Établissement', { max: 80 }),
-      owner: canonicalOwner(text(b.owner ?? existing.owner ?? '', 'Titulaire', { max: 40 })),
+      owner: canonicalOwner(text(b.owner ?? existing.owner ?? '', 'Titulaire', { max: 40 }),userId),
       currency: currency(b.currency ?? existing.currency ?? getSetting(db, 'base_currency', 'EUR')),
       liquidity: oneOf(b.liquidity ?? existing.liquidity ?? cat.default_liquidity, LIQUIDITY, 'Liquidité'),
       notes: longText(b.notes ?? existing.notes ?? '', 'Notes'),
@@ -703,6 +869,8 @@ export function registerRoutes(router, deps) {
     const old = holdingId ? db.prepare('SELECT ownership_bp FROM real_estate WHERE holding_id = ?').get(holdingId)?.ownership_bp : null;
     const ownership = ownershipBasisPoints(p.ownership_pct ?? (old === null || old === undefined ? 100 : old / 100));
     if (ownership === null) fail(400, 'invalid_field', 'Quote-part de propriété : pourcentage de 0,01 à 100, avec 2 décimales maximum.');
+    if (holdingId && ownership + sumReserved.get(holdingId, Date.now()).bp > 10000)
+      fail(409, 'share_capacity', 'La nouvelle quote-part dépasserait 100 % avec les partages en attente ou acceptés. Révoquez un partage avant de modifier ce pourcentage.');
     return { purchase, date, type, condition, address, surface, ownership };
   }
   function writeProperty(id, p) {
@@ -744,7 +912,7 @@ export function registerRoutes(router, deps) {
     ON CONFLICT(holding_id, valued_at) DO UPDATE SET amount_cents = excluded.amount_cents, note = excluded.note, created_by = excluded.created_by, created_at = excluded.created_at`);
 
   router.post('/api/holdings', { auth: 'editor' }, (ctx) => {
-    const f = holdingFields(ctx.body);
+    const f = holdingFields(ctx.body,{},ctx.user.id);
     const schedule = ctx.body.schedule ? parseSchedule(ctx.body.schedule) : null;
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency);
@@ -753,9 +921,9 @@ export function registerRoutes(router, deps) {
     const date = valuationDate(ctx.body.date);
     const id = transaction(db, () => {
       const now = Date.now();
-      const order = (db.prepare('SELECT MAX(sort_order) AS m FROM holdings WHERE category_id = ?').get(f.category_id).m || 0) + 10;
-      const r = db.prepare(`INSERT INTO holdings (category_id, name, institution, owner, currency, liquidity, notes, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(f.category_id, f.name, f.institution, f.owner, f.currency, f.liquidity, f.notes, order, now, now);
+      const order = (db.prepare('SELECT MAX(sort_order) AS m FROM holdings WHERE category_id = ? AND account_user_id = ?').get(f.category_id,ctx.user.id).m || 0) + 10;
+      const r = db.prepare(`INSERT INTO holdings (category_id, name, institution, owner, currency, liquidity, notes, sort_order, created_at, updated_at, account_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(f.category_id, f.name, f.institution, f.owner, f.currency, f.liquidity, f.notes, order, now, now, ctx.user.id);
       const newId = Number(r.lastInsertRowid);
       if (cents !== null) upsertValuation.run(newId, date, cents, '', ctx.user.id, now);
       if (schedule) saveSchedule(newId, schedule);
@@ -768,9 +936,8 @@ export function registerRoutes(router, deps) {
 
   router.patch('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
-    const f = holdingFields(ctx.body, existing);
+    const existing = ownedHolding(id, ctx.user.id);
+    const f = holdingFields(ctx.body, existing,ctx.user.id);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency, id);
     const amountChange = ctx.body.amount !== undefined && ctx.body.amount !== ''
@@ -806,8 +973,7 @@ export function registerRoutes(router, deps) {
 
   router.delete('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     db.prepare('DELETE FROM holdings WHERE id = ?').run(id);
     audit(ctx, 'avoir_supprime', `${existing.name} et son historique`);
     return { ok: true };
@@ -815,8 +981,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/holdings/:id/close', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     const date = valuationDate(ctx.body.date);
     transaction(db, () => {
       materializeSchedule(id, ctx.user.id, date);
@@ -829,8 +994,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/holdings/:id/reopen', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     db.prepare('UPDATE holdings SET closed_at = NULL, updated_at = ? WHERE id = ?').run(Date.now(), id);
     audit(ctx, 'avoir_rouvert', existing.name);
     return { ok: true };
@@ -838,8 +1002,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/holdings/:id/valuations', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     if (getSchedule(id)) fail(409, 'scheduled', "Cet avoir suit un échéancier automatique : modifiez l'échéancier ou repassez en saisie manuelle.");
     const cents = amount(ctx.body.amount, 'Valeur');
     const date = valuationDate(ctx.body.date);
@@ -852,7 +1015,7 @@ export function registerRoutes(router, deps) {
 
   router.delete('/api/valuations/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const v = db.prepare('SELECT v.*, h.name, h.currency FROM valuations v JOIN holdings h ON h.id = v.holding_id WHERE v.id = ?').get(id);
+    const v = db.prepare('SELECT v.*, h.name, h.currency, h.account_user_id FROM valuations v JOIN holdings h ON h.id = v.holding_id WHERE v.id = ? AND h.account_user_id = ?').get(id,ctx.user.id);
     if (!v) fail(404, 'not_found', 'Valeur introuvable.');
     db.prepare('DELETE FROM valuations WHERE id = ?').run(id);
     audit(ctx, 'valeur_supprimee', `${v.name} : ${frNumber(v.amount_cents)} ${v.currency} au ${v.valued_at}`);
@@ -866,7 +1029,7 @@ export function registerRoutes(router, deps) {
     if (items.length > 1000) fail(400, 'invalid_field', '1000 valeurs au maximum par envoi.');
     const parsed = items.map((it, i) => {
       const hid = intId(it.holding_id, `Ligne ${i + 1}`);
-      if (!db.prepare('SELECT 1 FROM holdings WHERE id = ?').get(hid)) fail(400, 'invalid_field', `Ligne ${i + 1} : avoir introuvable.`);
+      if (!db.prepare('SELECT 1 FROM holdings WHERE id = ? AND account_user_id = ?').get(hid,ctx.user.id)) fail(400, 'invalid_field', `Ligne ${i + 1} : avoir introuvable dans votre compte.`);
       if (getSchedule(hid)) fail(400, 'scheduled', `Ligne ${i + 1} : cet avoir suit un échéancier automatique.`);
       return { hid, cents: amount(it.amount, `Ligne ${i + 1}`) };
     });
@@ -1044,6 +1207,8 @@ export function registerRoutes(router, deps) {
     if (!u) fail(404, 'not_found', 'Utilisateur introuvable.');
     if (id === ctx.user.id) fail(400, 'self_protection', 'Vous ne pouvez pas supprimer votre propre compte.');
     if (u.role === 'admin' && !u.disabled && activeAdmins(id) === 0) fail(400, 'last_admin', 'Il doit rester au moins un administrateur actif.');
+    if (db.prepare('SELECT 1 FROM holdings WHERE account_user_id = ? LIMIT 1').get(id))
+      fail(409,'account_has_holdings','Ce compte possède encore des avoirs. Supprimez ou transférez ses biens avant de supprimer le compte : aucun patrimoine ne sera effacé automatiquement.');
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
     audit(ctx, 'utilisateur_supprime', u.username);
     return { ok: true };
@@ -1335,19 +1500,26 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Export, import, sauvegardes -------------------------------------------------------------------------------
-  function exportObject() {
+  function exportObject(userId) {
+    // Export personnel uniquement, jamais les autres avoirs du serveur.
+    // Un bien reçu en partage est référencé dans le compte mais appartient
+    // au donneur : il ne doit pas être exporté comme un avoir possédé.
+    const mine = db.prepare('SELECT id FROM holdings WHERE account_user_id = ?').all(userId);
+    const owned = new Set(mine.map((h) => h.id));
     return {
       format: 'vigie-export',
       version: 1,
       app_version: cfg.VERSION,
       exported_at: new Date().toISOString(),
-      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList().map((o) => o.name) },
+      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList(userId).map((o) => o.name) },
       fx_rates: db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates').all(),
       categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories ORDER BY sort_order, id').all(),
-      holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
-      valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
-      loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all(),
-      real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all(),
+      holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, account_user_id FROM holdings ORDER BY id').all().filter((h) => owned.has(h.id)),
+      valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all().filter((v) => owned.has(v.holding_id)),
+      loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
+      real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
+      real_estate_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp FROM real_estate_shares
+        WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all().filter((p) => owned.has(p.holding_id)),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
     };
   }
@@ -1356,23 +1528,23 @@ export function registerRoutes(router, deps) {
 
   router.get('/api/export.json', { auth: 'viewer' }, (ctx) => {
     audit(ctx, 'export', 'JSON complet');
-    ctx.sendRaw(200, Buffer.from(JSON.stringify(exportObject(), null, 2)), 'application/json; charset=utf-8', `vigie-export-${stampName()}.json`);
+    ctx.sendRaw(200, Buffer.from(JSON.stringify(exportObject(ctx.user.id), null, 2)), 'application/json; charset=utf-8', `vigie-export-${stampName()}.json`);
   });
 
   router.get('/api/export/holdings.csv', { auth: 'viewer' }, (ctx) => {
-    const v = holdingsView(db);
+    const v = holdingsView(db,ctx.user.id);
     const cats = new Map(v.categories.map((c) => [c.id, c]));
-    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur de ma part en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente de ma part', 'Quote-part (%)', 'Valeur de ma part (devise du bien)', "Prix d'achat de ma part"]];
+    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur de votre part en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente de votre part', 'Quote-part (%)', 'Valeur de votre part', "Prix d'achat de votre part", 'Part reçue par partage (%)', 'Votre quote-part totale (%)']];
     for (const h of v.holdings) {
       const c = cats.get(h.category_id) || {};
-      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.property.ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.property.ownership_bp)) : '']);
+      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.total_ownership_bp)) : '', h.property ? String(h.shared_with_me ? h.total_ownership_bp / 100 : 0).replace('.', ',') : '', h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '']);
     }
     audit(ctx, 'export', 'CSV des avoirs');
     ctx.sendRaw(200, Buffer.from('﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-avoirs-${stampName()}.csv`);
   });
 
   router.get('/api/export/history.csv', { auth: 'viewer' }, (ctx) => {
-    const st = loadState(db);
+    const st = loadState(db,todayIso(),ctx.user.id);
     const rows = [['Date', 'Avoir', 'Catégorie', 'Devise', 'Valeur', 'Note']];
     const data = [];
     for (const h of st.holdings) {
@@ -1390,6 +1562,10 @@ export function registerRoutes(router, deps) {
     if (d.format !== 'vigie-export' || d.version !== 1) fail(400, 'invalid_import', "Ce fichier n'est pas un export Vigie (format vigie-export, version 1).");
     for (const k of ['categories', 'holdings', 'valuations', 'fx_rates']) if (!Array.isArray(d[k])) fail(400, 'invalid_import', `Section ${k} manquante.`);
     const base = currency(d.settings?.base_currency || 'EUR');
+    // Les exports personnels ne doivent pas détruire silencieusement les
+    // avoirs détenus par d'autres comptes lors d'une importation globale.
+    if (db.prepare('SELECT 1 FROM holdings WHERE account_user_id <> ? LIMIT 1').get(ctx.user.id))
+      fail(409,'multi_account_import','L’import global risquerait d’effacer les biens des autres comptes. Utilisez une sauvegarde serveur ou contactez l’administrateur.');
     const backup = createBackup(db, paths.backups, 'avantimport');
     transaction(db, () => {
       db.exec('DELETE FROM valuations; DELETE FROM holdings; DELETE FROM categories; DELETE FROM fx_rates;');
@@ -1402,9 +1578,10 @@ export function registerRoutes(router, deps) {
       }
       for (const h of d.holdings) {
         if (h.closed_at && !isIsoDate(h.closed_at)) fail(400, 'invalid_import', `Date de clôture invalide pour ${h.name}.`);
-        db.prepare('INSERT INTO holdings (id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        db.prepare('INSERT INTO holdings (id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at, account_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .run(intId(h.id), intId(h.category_id), text(h.name, 'Avoir', { required: true, max: 80 }), text(h.institution || '', 'Établissement', { max: 80 }), text(h.owner || '', 'Titulaire', { max: 40 }),
-            currency(h.currency), oneOf(h.liquidity, LIQUIDITY, 'Liquidité'), longText(h.notes || '', 'Notes'), h.closed_at || null, Number(h.sort_order) || 0, now, now);
+            currency(h.currency), oneOf(h.liquidity, LIQUIDITY, 'Liquidité'), longText(h.notes || '', 'Notes'), h.closed_at || null, Number(h.sort_order) || 0, now, now,
+            getUser(h.account_user_id)?.id ?? ctx.user.id);
       }
       for (const v of d.valuations) {
         if (!isIsoDate(v.valued_at) || !Number.isInteger(v.amount_cents)) fail(400, 'invalid_import', 'Valeur historique invalide.');
@@ -1426,6 +1603,20 @@ export function registerRoutes(router, deps) {
         } }, cat, holding.currency);
         writeProperty(id, validated);
       }
+      // Export JSON : seuls les partages déjà approuvés sont restaurés ;
+      // les invitations non acceptées ne sont pas réémises silencieusement.
+      for (const share of Array.isArray(d.real_estate_shares) ? d.real_estate_shares : []) {
+        const hid = intId(share.holding_id), target = intId(share.recipient_id);
+        const property = db.prepare('SELECT ownership_bp FROM real_estate WHERE holding_id = ?').get(hid);
+        if (!property || !getUser(target) || target === ctx.user.id)
+          fail(400, 'invalid_import', 'Partage immobilier invalide ou destinataire absent sur ce serveur.');
+        if (!Number.isInteger(share.ownership_bp) || share.ownership_bp < 1 ||
+            property.ownership_bp + sumAccepted.get(hid).bp + share.ownership_bp > 10000)
+          fail(400, 'invalid_import', 'Quote-parts immobilières supérieures à 100 %.');
+        db.prepare(`INSERT INTO real_estate_shares
+          (holding_id,sender_id,recipient_id,ownership_bp,created_at,expires_at,accepted_at,sent_at)
+          VALUES (?,?,?,?,?,?,?,?)`).run(hid,ctx.user.id,target,share.ownership_bp,now,now,now,now);
+      }
       for (const sc of Array.isArray(d.loan_schedules) ? d.loan_schedules : []) {
         if (!LOAN_KINDS.includes(sc.kind) || !Number.isInteger(sc.principal_cents) || sc.principal_cents <= 0 || !Number.isInteger(sc.months) || sc.months < 1 || sc.months > 600
           || typeof sc.annual_rate !== 'number' || !(sc.annual_rate >= 0 && sc.annual_rate <= 50) || !isIsoDate(sc.start_date)) fail(400, 'invalid_import', 'Échéancier invalide.');
@@ -1446,7 +1637,7 @@ export function registerRoutes(router, deps) {
       }
       setSetting(db, 'base_currency', base);
       if (Number.isInteger(d.settings?.stale_days)) setSetting(db, 'stale_days', d.settings.stale_days);
-      if (Array.isArray(d.settings?.owners)) saveOwners(d.settings.owners.filter((x) => typeof x === 'string' && x.trim()).map((x) => ownerName(x)));
+      if (Array.isArray(d.settings?.owners)) saveOwners(d.settings.owners.filter((x) => typeof x === 'string' && x.trim()).map((x) => ownerName(x)),ctx.user.id);
     });
     audit(ctx, 'import', `${d.holdings.length} avoir(s), ${d.valuations.length} valeur(s) ; sauvegarde préalable ${backup.name}`);
     return { ok: true, backup: backup.name, holdings: d.holdings.length, valuations: d.valuations.length };

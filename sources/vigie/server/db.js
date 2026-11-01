@@ -243,6 +243,38 @@ export const MIGRATIONS = [
   ALTER TABLE real_estate ADD COLUMN ownership_bp INTEGER NOT NULL DEFAULT 10000
     CHECK (ownership_bp BETWEEN 1 AND 10000);
   `,
+  // 0.9.8 : partage entre comptes du même serveur avec acceptation préalable.
+  // Une invitation en attente n'attribue aucune quote-part patrimoniale.
+  `
+  CREATE TABLE real_estate_shares (
+    id INTEGER PRIMARY KEY,
+    holding_id INTEGER NOT NULL REFERENCES real_estate(holding_id) ON DELETE CASCADE,
+    sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ownership_bp INTEGER NOT NULL CHECK (ownership_bp BETWEEN 1 AND 10000),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    sent_at INTEGER,
+    accepted_at INTEGER,
+    declined_at INTEGER,
+    revoked_at INTEGER,
+    CHECK (accepted_at IS NULL OR declined_at IS NULL)
+  );
+  CREATE INDEX idx_real_estate_shares_holding ON real_estate_shares(holding_id);
+  CREATE INDEX idx_real_estate_shares_recipient ON real_estate_shares(recipient_id, accepted_at);
+  CREATE UNIQUE INDEX idx_real_estate_shares_active ON real_estate_shares(holding_id, recipient_id)
+    WHERE declined_at IS NULL AND revoked_at IS NULL;
+  `,
+  // 0.9.8 : chaque avoir est lié au compte Vigie de son créateur.
+  // Les avoirs historiques partagés sont rattachés au premier administrateur.
+  `
+  ALTER TABLE holdings ADD COLUMN account_user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT;
+  UPDATE holdings SET account_user_id = COALESCE(
+    (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1),
+    (SELECT id FROM users ORDER BY id LIMIT 1)
+  );
+  CREATE INDEX idx_holdings_account ON holdings(account_user_id);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

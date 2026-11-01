@@ -696,6 +696,7 @@
   const PAGES = {
     '': { title: 'Tableau de bord', icon: 'dashboard', render: pageDashboard },
     avoirs: { title: 'Avoirs', icon: 'holdings', render: pageHoldings },
+    partages: { title: 'Partages immobiliers', icon: 'users', render: pagePropertyShares },
     actualiser: { title: 'Mise à jour rapide', icon: 'update', render: pageQuick, edit: true },
     categories: { title: 'Catégories', icon: 'categories', render: pageCategories },
     reglages: { title: 'Réglages', icon: 'settings', render: pageSettings },
@@ -720,7 +721,7 @@
         <button class="btn icon ghost menu-toggle" type="button" data-action="toggle-menu" aria-expanded="false" aria-controls="rail-menu" aria-label="Ouvrir le menu"><span class="when-closed">${icon('menu')}</span><span class="when-open">${icon('close')}</span></button>
         <div class="rail-menu" id="rail-menu">
           <nav class="nav" aria-label="Navigation principale">
-            ${link('')}${link('avoirs')}${link('actualiser')}${link('categories')}${link('reglages')}
+            ${link('')}${link('avoirs')}${link('partages')}${link('actualiser')}${link('categories')}${link('reglages')}
             <div class="sep" role="presentation"></div>
             ${link('compte')}${link('utilisateurs')}${link('journal')}
           </nav>
@@ -883,8 +884,8 @@
           ${items.map((h) => {
             const stale = !h.closed_at && !h.schedule && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             const diff = h.previous_cents !== null && h.value_cents !== null
-              ? Math.round(h.value_cents * (h.property?.ownership_bp ?? 10000) / 10000)
-                - Math.round(h.previous_cents * (h.property?.ownership_bp ?? 10000) / 10000)
+              ? Math.round(h.value_cents * (h.total_ownership_bp ?? h.property?.ownership_bp ?? 10000) / 10000)
+                - Math.round(h.previous_cents * (h.total_ownership_bp ?? h.property?.ownership_bp ?? 10000) / 10000)
               : null;
             const when = h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>`
               : h.schedule ? (h.schedule.done ? html`<span class="tag brand">${icon('check')}Remboursé</span>` : html`<span class="tag brand">${icon('calendar')}Échéancier</span><br>prochaine le ${dateFr(h.schedule.next_date)}`)
@@ -894,7 +895,7 @@
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${when}</span>
               <span class="amount"><b>${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency)}</b>
-                ${h.property && h.property.ownership_bp < 10000 ? html`<span class="muted">Votre part : ${h.property.ownership_bp / 100} % du bien (${money(h.value_cents, h.currency)})</span>` : ''}
+                ${h.property && h.total_ownership_bp < 10000 ? html`<span class="muted">Votre quote-part : ${h.total_ownership_bp / 100} % du bien (${money(h.value_cents, h.currency)})</span>` : ''}
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
                 ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
                 ${h.latent_gain_cents !== null && h.latent_gain_cents !== undefined ? html`<span class="${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}">Plus-value latente : ${money(h.latent_gain_cents, h.currency, { sign: true })}</span>` : ''}
@@ -915,6 +916,79 @@
     $('#show-closed').addEventListener('change', (e) => { state.showClosed = e.target.checked; draw(); });
     draw();
     if (route.arg) openHolding(Number(route.arg));
+  }
+
+  // Invitations immobilières : visibles uniquement par le compte destinataire.
+  async function pagePropertyShares(el, route, current) {
+    const inbox = await api('GET', '/api/property-shares/inbox');
+    if (!current()) return;
+    setHeader('Partages immobiliers', 'Demandes à approuver et quote-parts reçues sur ce serveur');
+    el.innerHTML = part(html`
+      <section class="section"><div class="section-head">${h2i('mail', 'Demandes reçues')}</div>
+        ${inbox.invitations.length ? inbox.invitations.map((p) => html`<div class="panel form" style="margin-bottom:12px">
+          <h3>${p.property_name}</h3>
+          <p>${p.sender_name || 'Un administrateur'} vous propose <b>${(p.ownership_bp / 100).toLocaleString('fr-FR')} %</b> de ce bien immobilier. Après acceptation, votre quote-part apparaîtra dans vos avoirs Vigie.</p>
+          <p class="small muted">Valable jusqu'au ${dateTime(p.expires_at)}. Aucune quote-part n'est ajoutée avant votre approbation.</p>
+          <div class="form-actions" style="justify-content:flex-start">
+            <button class="btn primary" data-action="share-decision" data-id="${p.id}" data-decision="accept">${icon('check')}Accepter</button>
+            <button class="btn" data-action="share-decision" data-id="${p.id}" data-decision="decline">${icon('close')}Refuser</button>
+          </div></div>`) : html`<div class="panel"><p class="muted">Aucune demande de partage en attente pour votre compte.</p></div>`}
+      </section>
+      <section class="section"><div class="section-head">${h2i('users', 'Quote-parts approuvées')}</div>
+        ${inbox.accepted.length ? inbox.accepted.map((p) => html`<div class="panel">
+          <b>${p.property_name} — ${(p.ownership_bp / 100).toLocaleString('fr-FR')} %</b>
+          <p class="small muted">Cette quote-part figure dans votre compte Vigie avec sa propre valeur patrimoniale. La source reste la fiche et l’estimation du propriétaire initial.</p>
+          <div class="form-actions" style="justify-content:flex-start">
+            <button class="btn" data-action="open-holding" data-id="${p.holding_id}">${icon('house')}Consulter le bien</button>
+            <button class="btn danger" data-action="share-revoke" data-id="${p.id}" data-no-dialog="1">${icon('close')}Renoncer à ma part</button>
+          </div></div>`) : html`<div class="panel"><p class="muted">Aucun partage accepté.</p></div>`}
+      </section>
+      <p class="small muted">Chaque compte Vigie conserve ses propres avoirs. Le bien partagé apparaît ici uniquement après acceptation, à hauteur de votre part. L’accord n’est pas un transfert juridique de propriété.</p>
+    `);
+  }
+
+  async function sharePropertyForm(holdingId) {
+    const [recipients, data] = await Promise.all([
+      api('GET', '/api/property-shares/recipients'),
+      api('GET', `/api/holdings/${holdingId}/shares`),
+    ]);
+    const percent = (x) => (x / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+    const dialog = openDialog(html`<div class="dialog-body form">
+      ${dialogHead('Partager le bien immobilier', 'Le bien apparaîtra dans les avoirs du compte destinataire après son accord, sans lui ouvrir l’accès à vos autres biens.')}
+      <p class="muted">Quote-part initiale : <b>${percent(data.ownership_bp)} %</b> · Déjà acceptée : <b>${percent(data.accepted_bp)} %</b> · Complément disponible : <b>${percent(data.available_bp)} %</b>.</p>
+      ${data.shares.length ? html`<div class="panel"><h3>Demandes et approbations</h3>
+        ${data.shares.map((share) => html`<div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap">
+          <span>${share.recipient_name} : <b>${percent(share.ownership_bp)} %</b> — ${({ pending: 'En attente', accepted: 'Accepté', declined: 'Refusé', revoked: 'Révoqué', expired: 'Expiré' })[share.status]}</span>
+          ${['pending', 'accepted'].includes(share.status) ? html`<button class="btn small danger" data-action="share-revoke" data-id="${share.id}">${icon('close')}Révoquer</button>` : ''}
+        </div>`)}
+      </div>` : ''}
+      ${data.available_bp === 0 ? html`<p class="notice">Aucun complément disponible. Pour proposer une quote-part, réduisez d'abord votre propre pourcentage dans la fiche du bien (par exemple 60 % pour proposer 40 %), ou révoquez une proposition existante.</p>` : ''}
+      ${!recipients.mail_ready ? html`<p class="notice">Configurez d'abord le serveur SMTP et l'URL publique dans Réglages → Envoi d'e-mails.</p>` : ''}
+      ${recipients.mail_ready && data.available_bp > 0 && recipients.recipients.length ? html`
+        <form class="form" id="share-request-form">
+          <label class="field"><span>Utilisateur du même serveur</span><select class="select" name="recipient_id" required>
+            ${recipients.recipients.map((u) => html`<option value="${u.id}">${u.display_name} — ${u.email}</option>`)}
+          </select></label>
+          <label class="field"><span>Quote-part proposée (%)</span><input class="input" type="number" name="ownership_pct" min="0.01" max="${data.available_bp / 100}" step="0.01" required value="${data.available_bp / 100}">
+            <small>Le complément à 100 % est proposé automatiquement. Il peut être réduit.</small></label>
+          <div class="form-actions"><button class="btn primary" type="submit">${icon('mail')}Envoyer la demande d'approbation</button></div>
+          <p class="error-text" hidden></p>
+        </form>` : html`<p class="small muted">Aucun complément disponible ou aucun autre compte éligible.</p>`}
+    </div>`);
+    const form = $('#share-request-form', dialog);
+    if (form) form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await withBusy(e.submitter, async () => {
+        try {
+          await api('POST', `/api/holdings/${holdingId}/shares`, formData(form));
+          toast('Demande de partage envoyée par e-mail.');
+          closeDialog();
+          sharePropertyForm(holdingId).catch(fail);
+        } catch (err) {
+          const p = $('.error-text', form); p.textContent = err.message; p.hidden = false;
+        }
+      });
+    });
   }
 
   // Conserver les notes personnelles et remplacer seulement le précédent bilan automatique.
@@ -1295,6 +1369,7 @@
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
     const { holding: h, valuations, schedule: sc, base_currency: base, property, latent_gain: latent } = data;
+    const mayEdit = canEdit() && !h.shared_with_me;
     const cats = holdingsCache ? holdingsCache.categories : (await api('GET', '/api/categories')).categories;
     const cat = cats.find((c) => c.id === h.category_id) || {};
     const asc = [...valuations].reverse();
@@ -1307,19 +1382,20 @@
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
-        <p class="muted">${property ? 'Valeur de votre part dans le patrimoine' : ''}${property ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
+        <p class="muted">${property ? 'Valeur de votre quote-part sur votre compte Vigie' : ''}${property ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${property ? html`<div class="panel"><dl class="kv">
-        <dt>Quote-part possédée</dt><dd>${(property.ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
+        <dt>Votre quote-part</dt><dd>${(h.total_ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
+        <dt>Origine du bien</dt><dd>${h.shared_with_me ? 'Bien reçu par partage approuvé' : 'Bien enregistré sur votre compte'}</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
-        <dt>Prix d'achat de votre part</dt><dd>${money(Math.round(property.purchase_cents * property.ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
+        <dt>Prix d'achat de votre part</dt><dd>${money(Math.round(property.purchase_cents * h.total_ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
         <dt>Date d'achat</dt><dd>${dateFr(property.purchased_at)}</dd>
         <dt>Valeur actuelle (bien entier)</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
         <dt>Valeur de votre part</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
-        <dt>Plus-value latente sur votre part</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
+        <dt>Plus-value latente de votre quote-part</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
       </dl><p class="small muted">Gain brut théorique, hors frais, travaux, crédit restant dû et fiscalité.</p></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${sc ? loanPanel(h, sc, w) : ''}
-      ${canEdit() && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
+      ${mayEdit && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
         ${h3i('plus', 'Nouvelle valeur')}
         <div class="grid-2"><label class="field"><span>${property ? 'Valeur du bien entier' : 'Valeur'} en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
@@ -1335,16 +1411,17 @@
         ${h.notes ? html`<dt>${icon('journal')}Notes</dt><dd style="white-space:pre-wrap">${h.notes}</dd>` : ''}
       </dl>
       ${sc && !shown.length ? '' : html`<section class="section">${h3i('clock', sc ? "Valeurs saisies avant l'échéancier" : 'Historique des valeurs')}
-        ${shown.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
+        ${shown.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${mayEdit ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${shown.map((v, i) => {
             const prev = shown[i + 1];
             const diff = prev ? v.amount_cents - prev.amount_cents : null;
             return html`<tr><td>${dateFr(v.valued_at)}${v.note ? html`<br><span class="small muted">${v.note}</span>` : ''}</td><td class="num">${exact(v.amount_cents, h.currency)}</td>
               <td class="num ${!diff ? 'muted' : (diff > 0) !== (cat.kind === 'liability') ? 'pos' : 'neg'}">${diff === null ? '' : money(diff, h.currency, { sign: true })}</td>
-              ${canEdit() ? html`<td class="num"><button class="btn icon ghost small" type="button" data-action="delete-valuation" data-id="${v.id}" data-holding="${h.id}" aria-label="Supprimer la valeur du ${dateFr(v.valued_at)}">${icon('trash')}</button></td>` : ''}</tr>`;
+              ${mayEdit ? html`<td class="num"><button class="btn icon ghost small" type="button" data-action="delete-valuation" data-id="${v.id}" data-holding="${h.id}" aria-label="Supprimer la valeur du ${dateFr(v.valued_at)}">${icon('trash')}</button></td>` : ''}</tr>`;
           })}</tbody></table></div>` : html`<p class="muted">Aucune valeur.</p>`}
       </section>`}
-      ${canEdit() ? html`<div class="form-actions" style="justify-content:flex-start">
+      ${property && mayEdit ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-property" data-id="${h.id}">${icon('users')}Partager ce bien</button></div>` : ''}
+      ${mayEdit ? html`<div class="form-actions" style="justify-content:flex-start">
         <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier</button>
         ${h.closed_at ? html`<button class="btn" type="button" data-action="reopen-holding" data-id="${h.id}">${icon('unlock')}Rouvrir</button>` : html`<button class="btn" type="button" data-action="close-holding" data-id="${h.id}">${icon('lock')}Clôturer</button>`}
         <button class="btn danger" type="button" data-action="delete-holding" data-id="${h.id}" data-name="${h.name}">${icon('trash')}Supprimer</button></div>` : ''}
@@ -1417,7 +1494,7 @@
     if (!current()) return;
     state.base = v.base_currency;
     setHeader('Mise à jour rapide', 'Saisissez les nouvelles valeurs, les autres restent inchangées', discretButton());
-    const open = v.holdings.filter((h) => !h.closed_at);
+    const open = v.holdings.filter((h) => !h.closed_at && !h.shared_with_me); // bien reçu en partage : lecture seule
     const manualOpen = open.filter((h) => !h.schedule);
     if (!open.length) { el.innerHTML = part(html`<div class="panel empty">${pict('update', 'lg')}<h2>Aucun avoir à mettre à jour</h2><p>Ajoutez d'abord vos avoirs.</p><a class="btn primary" href="#/avoirs">Voir les avoirs</a></div>`); return; }
     const rate = (cur) => (cur === v.base_currency ? 1 : (s.rates.find((r) => r.currency === cur) || {}).rate);
@@ -1465,7 +1542,7 @@
         count++;
         const r = rate(h.currency);
         if (r === undefined) { missing = true; return; }
-        const owned = Math.round(cents * (h.property?.ownership_bp ?? 10000) / 10000);
+        const owned = Math.round(cents * (h.total_ownership_bp ?? h.property?.ownership_bp ?? 10000) / 10000);
         net += (Math.round(owned * r) - (h.value_base || 0)) * signFor(h);
       });
       $('#quick-count').textContent = invalid ? `${invalid} montant(s) illisible(s)` : count ? `${count} valeur${count > 1 ? 's' : ''} à enregistrer` : 'Aucune valeur saisie';
@@ -2359,6 +2436,23 @@
     range: (b) => { state.range = b.dataset.range; store.set('range', state.range); render(); },
     breakdown: (b) => { state.breakdown = b.dataset.key; store.set('breakdown', state.breakdown); render(); },
     logout: async () => { try { await api('POST', '/api/auth/logout'); } catch { /* déjà déconnecté */ } state.user = null; state.logoVersions = null; location.hash = '#/'; showLogin('Vous êtes déconnecté.'); },
+    'share-property': (b) => sharePropertyForm(Number(b.dataset.id)).catch(fail),
+    'share-decision': async (b) => withBusy(b, async () => {
+      try {
+        await api('POST', `/api/property-shares/${b.dataset.id}/decision`, { decision: b.dataset.decision });
+        toast(b.dataset.decision === 'accept' ? 'Quote-part approuvée dans le patrimoine commun.' : 'Demande refusée.');
+        render();
+      } catch (err) { fail(err); }
+    }),
+    'share-revoke': async (b) => {
+      if (!(await confirmDialog({ title: 'Retirer cette quote-part ?', message: 'La quote-part ne sera plus comptabilisée dans le patrimoine commun. Le bien et ses valeurs restent enregistrés.', confirm: 'Retirer', danger: true }))) return;
+      try {
+        await api('DELETE', `/api/property-shares/${b.dataset.id}`);
+        toast('Partage retiré.');
+        if (b.dataset.noDialog) render();
+        else { const h = modal()?._holding; closeDialog(); if (h) sharePropertyForm(h.id).catch(fail); }
+      } catch (err) { fail(err); }
+    },
     'new-holding': () => holdingForm().catch(fail),
     'open-holding': (b) => { history.replaceState(null, '', `#/avoirs/${b.dataset.id}`); openHolding(Number(b.dataset.id)); },
     'edit-holding': () => { const h = modal()._holding; holdingForm(h).catch(fail); },
