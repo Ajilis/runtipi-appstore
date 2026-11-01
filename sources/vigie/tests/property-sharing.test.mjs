@@ -107,7 +107,7 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
     assert.equal(listing.latent_gain_cents,22500000,'plus-value de la quote-part du compte original');
     assert.equal((await admin.get('/api/holdings/'+id+'/shares')).data.accepted_bp,4000);
     const csv = (await admin.get('/api/export/holdings.csv')).data.toString('utf8');
-    assert.match(csv,/Quote-part approuvée des autres/);
+    assert.match(csv,/Votre quote-part totale/);
     const exported = (await admin.get('/api/export.json')).data;
     assert.equal(exported.real_estate_shares.length,1);
     assert.equal(exported.real_estate_shares[0].recipient_id,lea.id);
