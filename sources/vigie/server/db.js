@@ -275,6 +275,12 @@ export const MIGRATIONS = [
   );
   CREATE INDEX idx_holdings_account ON holdings(account_user_id);
   `,
+  `CREATE TABLE holding_acquisitions (
+    holding_id INTEGER PRIMARY KEY REFERENCES holdings(id) ON DELETE CASCADE,
+    purchase_cents INTEGER NOT NULL CHECK (purchase_cents > 0),
+    purchased_at TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );`,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).
