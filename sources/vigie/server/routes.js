@@ -1491,6 +1491,8 @@ export function registerRoutes(router, deps) {
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all(),
       real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all(),
+      real_estate_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp FROM real_estate_shares
+        WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all(),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
     };
   }
@@ -1505,10 +1507,10 @@ export function registerRoutes(router, deps) {
   router.get('/api/export/holdings.csv', { auth: 'viewer' }, (ctx) => {
     const v = holdingsView(db);
     const cats = new Map(v.categories.map((c) => [c.id, c]));
-    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur de ma part en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente de ma part', 'Quote-part (%)', 'Valeur de ma part (devise du bien)', "Prix d'achat de ma part"]];
+    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur du patrimoine commun en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente du patrimoine commun', 'Quote-part initiale (%)', 'Valeur de la part commune', "Prix d'achat de la part commune", 'Quote-part approuvée des autres (%)', 'Quote-part commune totale (%)']];
     for (const h of v.holdings) {
       const c = cats.get(h.category_id) || {};
-      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.property.ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.property.ownership_bp)) : '']);
+      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.property.ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.total_ownership_bp)) : '', h.property ? String((h.total_ownership_bp - h.property.ownership_bp) / 100).replace('.', ',') : '', h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '']);
     }
     audit(ctx, 'export', 'CSV des avoirs');
     ctx.sendRaw(200, Buffer.from('﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-avoirs-${stampName()}.csv`);
@@ -1568,6 +1570,20 @@ export function registerRoutes(router, deps) {
           ownership_pct: p.ownership_bp === undefined ? 100 : p.ownership_bp / 100,
         } }, cat, holding.currency);
         writeProperty(id, validated);
+      }
+      // Export JSON : seuls les partages déjà approuvés sont restaurés ;
+      // les invitations non acceptées ne sont pas réémises silencieusement.
+      for (const share of Array.isArray(d.real_estate_shares) ? d.real_estate_shares : []) {
+        const hid = intId(share.holding_id), target = intId(share.recipient_id);
+        const property = db.prepare('SELECT ownership_bp FROM real_estate WHERE holding_id = ?').get(hid);
+        if (!property || !getUser(target) || target === ctx.user.id)
+          fail(400, 'invalid_import', 'Partage immobilier invalide ou destinataire absent sur ce serveur.');
+        if (!Number.isInteger(share.ownership_bp) || share.ownership_bp < 1 ||
+            property.ownership_bp + sumAccepted.get(hid).bp + share.ownership_bp > 10000)
+          fail(400, 'invalid_import', 'Quote-parts immobilières supérieures à 100 %.');
+        db.prepare(`INSERT INTO real_estate_shares
+          (holding_id,sender_id,recipient_id,ownership_bp,created_at,expires_at,accepted_at,sent_at)
+          VALUES (?,?,?,?,?,?,?,?)`).run(hid,ctx.user.id,target,share.ownership_bp,now,now,now,now);
       }
       for (const sc of Array.isArray(d.loan_schedules) ? d.loan_schedules : []) {
         if (!LOAN_KINDS.includes(sc.kind) || !Number.isInteger(sc.principal_cents) || sc.principal_cents <= 0 || !Number.isInteger(sc.months) || sc.months < 1 || sc.months > 600
