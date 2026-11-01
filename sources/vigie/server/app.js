@@ -9,6 +9,7 @@ import { registerRoutes } from './routes.js';
 import { startBackupScheduler } from './backup.js';
 import { LogoService } from './logos.js';
 import { InstitutionDirectory } from './institutions.js';
+import { RealEstateEstimator } from './real-estate.js';
 
 const WEB_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 
@@ -38,12 +39,13 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
   const ipLimiter = new IpLimiter(cfg.IP_MAX_FAILURES);
   const challenges = new PendingChallenges();
   const router = new Router();
+  const estimator = new RealEstateEstimator({ fetcher, log });
   const institutions = new InstitutionDirectory(db, { enabled: cfg.INSTITUTION_CATALOGUE !== false, fetcher, log });
   const logos = new LogoService(db, { enabled: cfg.INSTITUTION_LOGOS, fallback: cfg.INSTITUTION_LOGOS_FALLBACK, fetcher, log });
   logos.catalogue = institutions.catalogue;
   logos.directory = institutions;
   institutions.onUpdated = () => logos.prefetchAll();
-  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions });
+  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator });
   const serveStatic = createStatic(WEB_DIR, cfg.VERSION);
 
   async function handleApi(req, res, url) {
