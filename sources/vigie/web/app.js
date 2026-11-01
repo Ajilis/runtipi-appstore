@@ -229,7 +229,7 @@
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.5 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7c1.9 0 3.5-.6 4.9-1.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
-    magic: '<path d="M4 20L20 4M13 4l1 3M19 10l-3 1M6 8L3 7M8 3L7 6M18 17l-1-3M21 20l-3-1"/>',
+    magic: '<path d="m4 20 12-12"/><path d="m15 6 3 3"/><path d="M18 2v3M22 6h-3M3 8l2 1M8 2l1 3M18 15l1 2M22 19l-2-1"/>',
     up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
     alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.5"/>',
@@ -913,6 +913,16 @@
     if (route.arg) openHolding(Number(route.arg));
   }
 
+  // Conserver les notes personnelles et remplacer seulement le précédent bilan automatique.
+  // Ne jamais tronquer silencieusement le texte fourni par l'utilisateur.
+  function mergeEstimationNote(current, report, max = 1000) {
+    if (typeof report !== 'string' || !report.startsWith('[Estimation Vigie]\n') ||
+        !report.endsWith('[/Estimation Vigie]')) return null;
+    const personal = String(current || '').replace(/\n{0,2}\[Estimation Vigie\][\s\S]*?\[\/Estimation Vigie\]/g, '');
+    const combined = personal + (personal ? (personal.endsWith('\n') ? '\n' : '\n\n') : '') + report;
+    return combined.length <= max ? combined : null;
+  }
+
   async function holdingForm(existing = null) {
     const [cats, settings] = await Promise.all([api('GET', '/api/categories'), api('GET', '/api/settings')]);
     const h = existing || {};
@@ -968,11 +978,11 @@
       </div>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
         : html`<div class="grid-3 value-row">
-        <label class="field" data-manual><span>Valeur actuelle</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn icon" type="button" data-estimate hidden title="Estimer la valeur actuelle" aria-label="Estimer la valeur actuelle">${icon('magic')}</button></span></label>
+        <label class="field" data-manual><span>Valeur actuelle</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>
         <label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${c === settings.base_currency ? 'selected' : ''}>${c}</option>`)}</select></label>
         <label class="field" data-manual><span>Date de la valeur</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}"></label>
       </div><small class="muted" data-manual data-credit-hint hidden>Pour un crédit, indiquez le capital restant dû, en positif.</small>`}
-      ${existing ? html`<label class="field" data-real-current hidden><span>Valeur actuelle (${h.currency || 'EUR'})</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off" value="${h.value_cents !== null && h.value_cents !== undefined ? centsInput(h.value_cents) : ''}"><button class="btn icon" type="button" data-estimate hidden title="Estimer la valeur actuelle" aria-label="Estimer la valeur actuelle">${icon('magic')}</button></span></label>` : ''}
+      ${existing ? html`<label class="field" data-real-current hidden><span>Valeur actuelle (${h.currency || 'EUR'})</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off" value="${h.value_cents !== null && h.value_cents !== undefined ? centsInput(h.value_cents) : ''}"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>` : ''}
       <section class="section real-estate-fields" data-real-estate hidden>
         ${h3i('house', 'Informations immobilières')}
         <div class="grid-2">
@@ -1021,25 +1031,58 @@
     syncRealEstate();
     estimateButtons.forEach((button) => button.addEventListener('click', async () => {
       const amountInput = $('[name="amount"]', button.closest('.field'));
+      const noteInput = form.querySelector('[name="notes"]');
       if (form.currency.value !== 'EUR') return toast('Estimation disponible uniquement pour les biens en euros.');
       if (!form.property_address.value.trim() || !form.surface_m2.value.trim()) return toast('Indiquez une adresse et une surface pour estimer le bien.');
+      const request = {
+        property_type: form.property_type.value, surface_m2: Number(form.surface_m2.value),
+        address: form.property_address.value, condition: form.property_condition.value,
+      };
       button.disabled = true;
       const output = $('[data-estimate-result]', form);
       output.textContent = 'Recherche des ventes comparables…';
       try {
-        const result = await api('POST', '/api/real-estate/estimate', {
-          property_type: form.property_type.value, surface_m2: Number(form.surface_m2.value),
-          address: form.property_address.value, condition: form.property_condition.value,
-        });
+        const result = await api('POST', '/api/real-estate/estimate', request);
+        if (estateSection.hidden || form.currency.value !== 'EUR' ||
+            form.property_type.value !== request.property_type || Number(form.surface_m2.value) !== request.surface_m2 ||
+            form.property_address.value !== request.address || form.property_condition.value !== request.condition) {
+          output.textContent = 'Les caractéristiques ont changé pendant la recherche. Relancez l’estimation.';
+          return;
+        }
         const sampleText = result.comparables + ' ventes comparables, fiabilité ' + (result.confidence === 'high' ? 'élevée' : result.confidence === 'medium' ? 'moyenne' : 'faible');
         const methodText = result.method === 'dvf_local_price_m2'
-          ? 'Estimation approximative : ' + Number(result.price_per_m2).toLocaleString('fr-FR') + ' €/m² × ' + Number(form.surface_m2.value).toLocaleString('fr-FR') + ' m². Médiane des ventes locales du même type de bien dans un rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km, même si leurs surfaces diffèrent. Forte incertitude ; ce n’est pas une expertise.'
+          ? 'Prix médian local : ' + Number(result.price_per_m2).toLocaleString('fr-FR') + ' €/m² × ' + Number(form.surface_m2.value).toLocaleString('fr-FR') + ' m² ; les autres maisons peuvent être de taille différente.'
           : result.method === 'dvf_median_nearby'
-            ? 'Calcul de secours : médiane des ventes DVF de surface comparable (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km). Ce n’est pas une seconde source indépendante.'
-            : 'Moteur GeoRegistry sur ventes DVF.';
-        output.textContent = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
-        const accepted = await confirmDialog({ title: 'Appliquer cette estimation ?', message: output.textContent + ' La valeur d’achat restera inchangée. Vous devrez enregistrer le formulaire pour sauvegarder la nouvelle valeur.', confirm: 'Remplir la valeur actuelle' });
-        if (accepted) { amountInput.value = centsInput(result.estimate_cents); amountInput.dispatchEvent(new Event('input', { bubbles: true })); }
+            ? 'Médiane des ventes DVF de surface comparable (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km).'
+            : 'Estimation par le moteur GeoRegistry sur ventes DVF.';
+        const summary = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
+        output.textContent = summary + ' Le détail de la méthode et des incertitudes sera ajouté aux notes.';
+        const apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 'btn primary';
+        apply.textContent = 'Appliquer à la valeur actuelle et aux notes';
+        output.appendChild(apply);
+        // Confirmation à l'intérieur du formulaire : une seconde fenêtre modale
+        // détruisait le formulaire et empêchait de sauvegarder la valeur estimée.
+        apply.addEventListener('click', () => {
+          if (estateSection.hidden || form.currency.value !== 'EUR' ||
+              form.property_type.value !== request.property_type || Number(form.surface_m2.value) !== request.surface_m2 ||
+              form.property_address.value !== request.address || form.property_condition.value !== request.condition) {
+            output.textContent = 'Les caractéristiques ont changé : relancez l’estimation avant de l’appliquer.';
+            return;
+          }
+          const notes = mergeEstimationNote(noteInput.value, result.estimation_note, noteInput.maxLength);
+          if (notes === null) {
+            output.textContent = 'Pas assez de place dans les notes pour conserver le bilan complet sans effacer vos notes. Raccourcissez vos notes personnelles puis relancez l’estimation.';
+            return;
+          }
+          noteInput.value = notes;
+          amountInput.value = centsInput(result.estimate_cents);
+          amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+          noteInput.dispatchEvent(new Event('input', { bubbles: true }));
+          output.textContent = summary + ' Valeur actuelle et notes complétées. Enregistrez le bien pour les sauvegarder. La valeur d’achat est inchangée.';
+          toast('Valeur actuelle et bilan d’estimation ajoutés aux notes. Enregistrez le bien.');
+        });
       } catch (err) { output.textContent = err.message; }
       finally { button.disabled = false; }
     }));
