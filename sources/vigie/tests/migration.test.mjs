@@ -118,3 +118,24 @@ test('base 0.7.0 : adresse e-mail facultative et unique, tables des invitations 
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+
+test('migration plus-values : ajout non destructif, prix de revient lié à un avoir', () => {
+  const dir = legacyDatabase(MIGRATIONS.length - 1, (raw) => {
+    const u = raw.prepare("INSERT INTO users (username, display_name, password_hash, role, created_at) VALUES ('alex', 'Alex', 'x', 'admin', 0)").run();
+    const c = raw.prepare("INSERT INTO categories (name, kind, icon, created_at) VALUES ('Métaux précieux', 'asset', 'gold', 0)").run();
+    raw.prepare("INSERT INTO holdings (category_id,name,currency,liquidity,created_at,updated_at,account_user_id) VALUES (?, 'Or physique', 'EUR', 'short', 0, 0, ?)").run(Number(c.lastInsertRowid), Number(u.lastInsertRowid));
+  });
+  const db = openDatabase(dir);
+  const original = db.prepare("SELECT id, name FROM holdings WHERE name = 'Or physique'").get();
+  assert.ok(original, 'les avoirs anciens sont conservés');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='holding_acquisitions'").get().n, 1);
+  db.prepare('INSERT INTO holding_acquisitions (holding_id,purchase_cents,purchased_at,updated_at) VALUES (?,?,?,?)').run(original.id, 200000, '2024-01-01', 0);
+  db.close();
+  const reopened = openDatabase(dir);
+  assert.equal(reopened.prepare('SELECT purchase_cents FROM holding_acquisitions WHERE holding_id = ?').get(original.id).purchase_cents, 200000);
+  reopened.prepare('DELETE FROM holdings WHERE id = ?').run(original.id);
+  assert.equal(reopened.prepare('SELECT COUNT(*) AS n FROM holding_acquisitions').get().n, 0, 'suppression en cascade');
+  reopened.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
