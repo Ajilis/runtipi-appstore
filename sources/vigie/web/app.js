@@ -1465,11 +1465,24 @@
       isAdmin() ? api('GET', '/api/admin/logos') : null, isAdmin() ? api('GET', '/api/admin/mail') : null]);
     if (!current()) return;
     state.base = s.base_currency;
-    setHeader('Réglages', 'Devise, taux de change, exports et sauvegardes');
+    setHeader('Réglages', 'Paramètres organisés par thème');
+    const settingsTabs = [
+      ['general', 'Général', 'settings'],
+      ['titulaires', 'Titulaires', 'users'],
+      ['devises', 'Devises', 'exchange'],
+      ...(logoSt ? [['etablissements', 'Établissements', 'bank']] : []),
+      ['donnees', 'Données', 'database'],
+      ...(mail ? [['emails', 'E-mails', 'mail']] : []),
+      ...(isAdmin() ? [['securite', 'Sécurité', 'shield']] : []),
+    ];
     const curOptions = (sel) => [...new Set([s.base_currency, ...s.currencies])].map((c) => html`<option ${c === sel ? 'selected' : ''}>${c}</option>`);
     const addable = [...new Set([...s.currencies_in_use, ...s.currencies])].filter((c) => c !== s.base_currency);
     el.innerHTML = part(html`
-      <section class="section">${h2i('bell', 'Devise et rappels')}<div class="panel">
+      <nav class="settings-tabs" id="settings-tabs" role="tablist" aria-label="Rubriques des réglages">
+        ${settingsTabs.map(([key, label, pictogram]) => html`<button type="button" role="tab" id="settings-tab-${key}"
+          aria-controls="settings-panel-${key}" aria-selected="false" tabindex="-1" data-settings-tab="${key}">${icon(pictogram)}<span>${label}</span></button>`)}
+      </nav>
+      <section class="section" data-settings-group="general">${h2i('bell', 'Devise et rappels')}<div class="panel">
         ${isAdmin() ? html`<form class="form" id="settings-form"><div class="grid-2">
           <label class="field"><span>Devise de référence</span><select class="select" name="base_currency">${curOptions(s.base_currency)}</select><small>Changer de devise efface les taux de change saisis.</small></label>
           <label class="field"><span>Rappel d'actualisation (jours)</span><input class="input" type="number" name="stale_days" min="0" max="3650" value="${s.stale_days}"><small>Un avoir est signalé « à actualiser » au-delà de ce délai. 0 désactive le rappel.</small></label>
@@ -1477,7 +1490,7 @@
         : html`<dl class="kv"><dt>Devise de référence</dt><dd>${s.base_currency}</dd><dt>Rappel d'actualisation</dt><dd>${s.stale_days ? `${s.stale_days} jours` : 'désactivé'}</dd></dl>`}
       </div></section>
 
-      <section class="section"><div class="section-head">${h2i('users', 'Titulaires')}<p>Personnes à qui appartiennent les avoirs</p></div>
+      <section class="section" data-settings-group="titulaires"><div class="section-head">${h2i('users', 'Titulaires')}<p>Personnes à qui appartiennent les avoirs</p></div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Titulaire</th><th class="num">Avoirs</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${owners.map((o) => html`<tr><td><span class="cell-lead">${avatar(o.name, 'sm')}<span>${o.name}</span></span></td><td class="num">${o.count}</td>
             ${canEdit() ? html`<td class="num nowrap"><button class="btn small" data-action="rename-owner" data-name="${o.name}">${icon('edit')}Renommer</button>
@@ -1486,7 +1499,7 @@
         ${canEdit() ? html`<form class="toolbar" id="owner-form"><input class="input" name="name" required maxlength="40" placeholder="Nouveau titulaire" aria-label="Nouveau titulaire" style="max-width:240px"><button class="btn" type="submit">${icon('plus')}Ajouter le titulaire</button></form>` : ''}
       </section>
 
-      <section class="section"><div class="section-head">${h2i('exchange', 'Taux de change')}<p>1 unité de la devise vaut x ${s.base_currency}</p></div>
+      <section class="section" data-settings-group="devises"><div class="section-head">${h2i('exchange', 'Taux de change')}<p>1 unité de la devise vaut x ${s.base_currency}</p></div>
         ${s.missing_rates.length ? html`<div class="notice">${icon('alert')}<div>Taux manquant pour ${s.missing_rates.join(', ')}.</div></div>` : ''}
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Devise</th><th class="num">Taux</th><th>Source</th><th>Mis à jour</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${s.rates.length ? s.rates.map((r) => html`<tr><td>${r.currency}</td><td class="num">1 ${r.currency} = ${r.rate.toLocaleString('fr-FR', { maximumFractionDigits: 6 })} ${s.base_currency}</td><td>${r.source}</td><td>${dateTime(r.updated_at)}</td>
@@ -1501,19 +1514,19 @@
         </form>` : ''}
       </section>
 
-      <section class="section">${h2i('download', 'Exporter mes données')}<div class="panel"><div class="toolbar">
+      <section class="section" data-settings-group="donnees">${h2i('download', 'Exporter mes données')}<div class="panel"><div class="toolbar">
         <a class="btn" href="/api/export.json" download>${icon('download')}Export complet (JSON)</a>
         <a class="btn" href="/api/export/holdings.csv" download>${icon('download')}Avoirs (CSV)</a>
         <a class="btn" href="/api/export/history.csv" download>${icon('download')}Historique des valeurs (CSV)</a>
       </div><p class="small muted" style="margin-top:10px">Les fichiers CSV utilisent le point-virgule et la virgule décimale, pour s'ouvrir directement dans Excel ou LibreOffice.</p></div></section>
 
       ${isAdmin() ? html`
-      <section class="section">${h2i('upload', 'Restaurer un export')}<div class="panel form">
+      <section class="section" data-settings-group="donnees">${h2i('upload', 'Restaurer un export')}<div class="panel form">
         <p class="muted">Remplace toutes les catégories, tous les avoirs, l'historique et les taux par ceux d'un export JSON de Vigie. Les comptes utilisateurs ne changent pas. Une sauvegarde de la base est créée juste avant.</p>
         <div class="toolbar"><input type="file" id="import-file" accept="application/json,.json" class="input" style="max-width:360px"><button class="btn" type="button" data-action="import">${icon('upload')}Restaurer cet export</button></div>
       </div></section>
 
-      <section class="section"><div class="section-head">${h2i('database', 'Sauvegardes de la base')}<p>${backups.keep_days ? `Automatique chaque jour vers ${backups.hour} h, conservée ${backups.keep_days} jours` : 'Sauvegarde automatique désactivée'}</p></div>
+      <section class="section" data-settings-group="donnees"><div class="section-head">${h2i('database', 'Sauvegardes de la base')}<p>${backups.keep_days ? `Automatique chaque jour vers ${backups.hour} h, conservée ${backups.keep_days} jours` : 'Sauvegarde automatique désactivée'}</p></div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Fichier</th><th>Date</th><th class="num">Taille</th><th><span class="sr-only">Télécharger</span></th></tr></thead><tbody>
         ${backups.backups.length ? backups.backups.slice(0, 15).map((b) => html`<tr><td>${b.name}</td><td>${dateTime(b.created_at)}</td><td class="num">${(b.size / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko</td>
           <td class="num"><a class="btn icon ghost small" href="/api/admin/backups/${encodeURIComponent(b.name)}" download aria-label="Télécharger ${b.name}">${icon('download')}</a></td></tr>`)
@@ -1527,7 +1540,7 @@
 
       ${logoSt ? logoSummarySection(logoSt) : ''}
 
-      <section class="section">${h2i('shield', 'Sécurité du serveur')}<div class="panel">
+      <section class="section" data-settings-group="securite">${h2i('shield', 'Sécurité du serveur')}<div class="panel">
         <dl class="kv">
           <dt>${icon('clock')}Déconnexion après inactivité</dt><dd>${s.security.session_idle_minutes} min</dd>
           <dt>${icon('devices')}Durée maximale d'une session</dt><dd>${s.security.session_max_hours} h</dd>
@@ -1537,6 +1550,50 @@
         </dl>
         <p class="small muted" style="margin-top:12px">Ces réglages se modifient dans le fichier <b>data/config/vigie.env</b> de l'application, puis en redémarrant Vigie dans Runtipi.</p>
       </div></section>` : ''}`);
+
+    // Les formulaires restent montés et fonctionnent comme avant ; seul le panneau
+    // actif est affiché. Déplacer les sections préserve les écouteurs et leurs identifiants.
+    const nav = $('#settings-tabs', el);
+    const panels = new Map();
+    for (const [key] of settingsTabs) {
+      const panel = document.createElement('div');
+      panel.className = 'settings-tab-panel';
+      panel.id = 'settings-panel-' + key;
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', 'settings-tab-' + key);
+      panel.setAttribute('tabindex', '0');
+      for (const section of $('[data-settings-group="' + key + '"]', el)) panel.appendChild(section);
+      el.appendChild(panel);
+      panels.set(key, panel);
+    }
+    const buttons = $('[data-settings-tab]', nav);
+    const activate = (key, focus = false) => {
+      if (!panels.has(key)) return;
+      for (const btn of buttons) {
+        const selected = btn.dataset.settingsTab === key;
+        btn.setAttribute('aria-selected', String(selected));
+        btn.tabIndex = selected ? 0 : -1;
+        if (selected && focus) btn.focus();
+      }
+      for (const [id, panel] of panels) panel.hidden = id !== key;
+      store.set('settingsTab', key);
+    };
+    nav.addEventListener('click', (event) => {
+      const btn = event.target.closest('[data-settings-tab]');
+      if (btn && nav.contains(btn)) activate(btn.dataset.settingsTab);
+    });
+    nav.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const focused = event.target.closest('[data-settings-tab]');
+      if (!focused || !nav.contains(focused)) return;
+      event.preventDefault();
+      const index = buttons.indexOf(focused);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+      activate(buttons[next].dataset.settingsTab, true);
+    });
+    const previous = store.get('settingsTab', 'general');
+    activate(panels.has(previous) ? previous : 'general');
 
     if (mail) bindMailForm(mail);
     const sf = $('#settings-form');
@@ -1590,7 +1647,7 @@
     const n = (k) => rows.filter((r) => r.state === k).length;
     const mine = rows.filter((r) => r.used);
     const sample = (mine.length ? mine : rows.filter((r) => r.state !== 'none')).slice(0, 14);
-    return html`<section class="section"><div class="section-head">${h2i('bank', 'Logos des établissements')}<p>${st.enabled ? 'Récupérés sur OpenFinTech, Wikidata et les sites officiels, ou vos propres images' : 'Récupération désactivée : vos images, sinon monogrammes'}</p></div>
+    return html`<section class="section" data-settings-group="etablissements"><div class="section-head">${h2i('bank', 'Logos des établissements')}<p>${st.enabled ? 'Récupérés sur OpenFinTech, Wikidata et les sites officiels, ou vos propres images' : 'Récupération désactivée : vos images, sinon monogrammes'}</p></div>
       <div class="panel logo-summary">
         ${sample.length ? html`<div class="logo-strip" aria-hidden="true">${sample.map((r) => instLogo(r.name, 's36'))}</div>` : ''}
         <p>${plural(n('ok'), 'logo officiel', 'logos officiels')} · ${plural(n('custom'), 'image personnelle', 'images personnelles')} · ${plural(n('none'), 'monogramme', 'monogrammes')}${mine.length ? html`<br><span class="small muted">Vos établissements : ${mine.filter((r) => r.state !== 'none').length} sur ${mine.length} avec un logo</span>` : ''}</p>
@@ -1876,7 +1933,7 @@
 
   function mailSection(m) {
     const s = m.settings || {};
-    return html`<section class="section" id="mail-section"><div class="section-head">${h2i('mail', "Envoi d'e-mails")}<p>Invitations et « Mot de passe oublié »</p></div>
+    return html`<section class="section" id="mail-section" data-settings-group="emails"><div class="section-head">${h2i('mail', "Envoi d'e-mails")}<p>Invitations et « Mot de passe oublié »</p></div>
       <div class="panel form">
         ${m.settings ? html`<div class="notice info">${icon('check')}<div>Envoi configuré : <b>${s.host}:${s.port}</b> (${SEC_LABEL[s.security]}), expéditeur ${s.from_address}.</div></div>`
           : html`<div class="notice">${icon('info')}<div>Envoi non configuré : les invitations par e-mail et « Mot de passe oublié » sont indisponibles. Renseignez le serveur SMTP de votre messagerie ou de votre hébergeur.</div></div>`}
