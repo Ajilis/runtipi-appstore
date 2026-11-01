@@ -87,13 +87,16 @@ test('API : acquisition et valeur actuelle dans deux champs et historique indép
     current = (await admin.get('/api/holdings/' + id)).data;
     assert.equal(current.holding.value_cents, 28000000, 'l’estimation ne modifie pas la valeur sans validation');
 
+    const savedNotes = 'Patio aménagé.\n\n' + suggested.data.estimation_note;
     const changed = await admin.patch('/api/holdings/' + id, {
-      category_id: cat.id, name: 'Maison principale', amount: '306000', date: '2026-11-01', property,
+      category_id: cat.id, name: 'Maison principale', amount: '306000', date: '2026-11-01',
+      property, notes: savedNotes,
     });
     assert.equal(changed.status, 200, JSON.stringify(changed.data));
     current = (await admin.get('/api/holdings/' + id)).data;
     assert.equal(current.holding.value_cents, 30600000);
     assert.equal(current.property.purchase_cents, 25000000);
+    assert.equal(current.holding.notes, savedNotes, 'notes personnelles et rapport conservés dans SQLite');
     assert.equal(current.latent_gain.gain_cents, 5600000);
     assert.equal(current.valuations.length, 2);
     const noUpdate = await admin.patch('/api/holdings/' + id, {
