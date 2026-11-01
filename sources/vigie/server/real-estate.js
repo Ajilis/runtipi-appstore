@@ -44,7 +44,8 @@ export function buildEstimateNote(result, params) {
       ' ; ' + n(result.price_per_m2) + ' €/m² × ' + n(params.surface_bati) + ' m².');
     if (result.sale_first && result.sale_last)
       lines.push('Ventes retenues : ' + result.sale_first + ' à ' + result.sale_last +
-        ', surfaces ' + n(result.sale_surface_min) + ' à ' + n(result.sale_surface_max) + ' m².');
+        ', surfaces ' + n(result.sale_surface_min) + ' à ' + n(result.sale_surface_max) + ' m² ; prix retenus ' +
+        n(result.sale_price_m2_min) + ' à ' + n(result.sale_price_m2_max) + ' €/m².');
     lines.push('Limites : fourchette de précaution ±' +
       (local ? '35' : result.comparables < 7 ? '20' : '15') +
       ' % fixée par Vigie (pas un intervalle statistique). Ventes anciennes ou atypiques, doublons et prix/m² invalides exclus.');
@@ -141,6 +142,8 @@ export class RealEstateEstimator {
         sale_last: records.map((r) => r.date).sort().at(-1),
         sale_surface_min: Math.min(...records.map((r) => r.size)),
         sale_surface_max: Math.max(...records.map((r) => r.size)),
+        sale_price_m2_min: Math.round(Math.min(...prices)),
+        sale_price_m2_max: Math.round(Math.max(...prices)),
         as_of: today,
         disclaimer: areaPriceOnly
           ? 'Prix médian au m² des ventes locales du même type, appliqué à la surface du bien. Les surfaces des ventes peuvent différer fortement. Estimation très approximative, hors terrain, travaux, frais et fiscalité.'
