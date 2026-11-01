@@ -283,7 +283,7 @@ export class InstitutionDirectory {
   startScheduler() {
     if (!this.enabled) return [];
     const run = () => this.syncOpenFinTech().catch((e) => this.log.warn?.('Annuaire OpenFinTech : ' + e.message));
-    const first = setTimeout(run, 20_000);
+    const first = setTimeout(run, 1_000);
     const daily = setInterval(run, DAY);
     first.unref?.(); daily.unref?.();
     return [first, daily];
