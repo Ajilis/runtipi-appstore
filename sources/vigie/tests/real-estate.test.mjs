@@ -142,7 +142,7 @@ test('DVF : si l’estimation principale ne trouve pas assez de ventes, médiane
     assert.ok(!JSON.stringify(call).includes('220000'), 'ne transmet jamais la valeur d’achat');
     assert.ok(!JSON.stringify(call).includes('2018-01-01'), 'ne transmet jamais la date d’acquisition');
   }
-  await estimator.estimate({ address: '15 rue de Paris, Angers', property_type: 'appartement', surface_m2: 85 });
+  await estimator.estimate({ address: '15 rue de Paris, Angers', property_type: 'appartement', surface_m2: 85, condition: 'bon' });
   assert.equal(calls.length, 2, 'cache de la proposition, y compris après bascule en DVF');
 });
 
