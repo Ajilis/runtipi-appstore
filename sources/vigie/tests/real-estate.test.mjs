@@ -353,7 +353,90 @@ test('DVF : sans ventes exploitables, explique quelle étape a rejeté les résu
     : new Response(JSON.stringify({ data: sales, meta: { address: { label: 'Lyon' } } })) });
   await assert.rejects(estimator.estimate({ property_type: 'maison', surface_m2: 180,
     address: '128 avenue des Frères Lumière 69008 Lyon' }), (e) => e.status === 422 &&
-      e.message.includes('3 transaction(s) retournée(s)') &&
+      e.message.includes('3 ligne(s) retournée(s)') &&
       e.message.includes('2 du bon type') &&
       e.message.includes('1 vente(s) exploitable(s)'));
+});
+
+
+test('GeoRegistry réel : les dates et la nature proviennent de mutation imbriquée, distance_meters', async () => {
+  // Champs effectivement observés sur /dvf/ventes/address le 1er novembre 2026
+  // (le contrat documenté montrait historiquement mutation_date/distance_m).
+  const sales = [
+    { id: 1101, type_local: 1, type_local_label: 'Maison', surface_bati: 175,
+      prix_m2: 4000, distance_meters: 125.3, lots: null,
+      mutation: { mutation_uid: '2025-01-X', date: '2025-07-02', nature: 'Vente', valeur_fonciere: 700000 } },
+    { id: 1102, type_local: 1, type_local_label: 'Maison', surface_bati: 185,
+      prix_m2: 4400, distance_meters: 600.2, lots: null,
+      mutation: { mutation_uid: '2025-02-Y', date: '2025-07-14', nature: 'Vente', valeur_fonciere: 814000 } },
+    { id: 1103, type_local: 1, type_local_label: 'Maison', surface_bati: 160,
+      prix_m2: 4200, distance_meters: 1300.8, lots: null,
+      mutation: { mutation_uid: '2024-03-Z', date: '2024-10-15', nature: 'Vente', valeur_fonciere: 672000 } },
+    { id: 1104, type_local: 1, type_local_label: 'Maison', surface_bati: 170,
+      prix_m2: 9000, distance_meters: 2100, lots: null,
+      mutation: { mutation_uid: '2025-04-FAR', date: '2025-06-01', nature: 'Vente', valeur_fonciere: 1530000 } },
+    { id: 1105, type_local: 1, surface_bati: 188, prix_m2: 3800, distance_meters: 120,
+      mutation: { mutation_uid: '2025-01-X', date: '2025-07-02', nature: 'Vente' } }, // same mutation
+    { id: 1106, type_local: 1, surface_bati: 170, prix_m2: 4000, distance_meters: 110,
+      mutation: { mutation_uid: '2025-06-VEFA', date: '2025-09-22', nature: "Vente en l'état futur d'achèvement" } },
+    { id: 1107, type_local: 1, surface_bati: 150, prix_m2: 4200, distance_meters: 180,
+      mutation: { mutation_uid: '2021-07-OLD', date: '2021-07-02', nature: 'Vente' } },
+  ];
+  const calls = [];
+  const estimator = new RealEstateEstimator({ fetcher: async (url, req) => {
+    calls.push({ url:String(url), method:req.method });
+    if (req.method === 'POST')
+      return new Response(JSON.stringify({ data: { estimate: null } }));
+    return new Response(JSON.stringify({ meta: { address: { label: 'Test géocodé' } }, data: sales }));
+  } });
+  const result = await estimator.estimate({ property_type: 'maison', surface_m2: 180,
+    address: '12 rue de la Roë, Angers', condition: 'bon' });
+  assert.equal(result.method, 'dvf_median_nearby');
+  assert.equal(result.comparables, 3, 'mutations uniques, ventes simples et moins de 5 ans');
+  assert.equal(result.price_per_m2, 4200);
+  assert.equal(result.estimate_cents, 75600000);
+  assert.equal(result.radius_m, 1500);
+  assert.equal(result.sale_first, '2024-10-15');
+  assert.equal(result.sale_last, '2025-07-14');
+  assert.equal(calls.length, 2, 'une recherche DVF suffisante à 1,5 km');
+});
+
+test('DVF : 100 maisons avec champs imbriqués deviennent exploitables, pas zéro', async () => {
+  const prices = [4100, 4200, 4300];
+  const sales = Array.from({ length: 100 }, (_, i) => ({
+    id: 5000 + i, type_local: 1,
+    surface_bati: 100 + i, prix_m2: i < 3 ? prices[i] : null, distance_meters: 900,
+    mutation: { mutation_uid: '2025-mutation-' + i, date: '2025-01-20', nature: 'Vente' },
+  }));
+  const estimator = new RealEstateEstimator({ fetcher: async (_url, opt) => opt.method === 'POST'
+    ? new Response(JSON.stringify({ data: {} }))
+    : new Response(JSON.stringify({ meta: { address: { label: 'Angers' } }, data: sales })) });
+  const val = await estimator.estimate({ property_type: 'maison', surface_m2: 180,
+    address: '12 rue de la Roë, Angers' });
+  assert.equal(val.method, 'dvf_median_nearby');
+  assert.equal(val.comparables, 3);
+  assert.equal(val.price_per_m2, 4200);
+});
+
+test('DVF : diagnostic distingue la date absente, la date ancienne et la nature mutation', async () => {
+  const rows = [
+    { id: 1, type_local: 1, surface_bati: 95, prix_m2: 4000,
+      mutation: { date: null, nature: 'Vente' } },
+    { id: 2, type_local: 1, surface_bati: 95, prix_m2: 4000,
+      mutation: { date: '2018-05-01', nature: 'Vente' } },
+    { id: 3, type_local: 1, surface_bati: 95, prix_m2: 4000,
+      mutation: { date: '2025-03-04', nature: 'Donation' } },
+    { id: 4, type_local: 1, surface_bati: 95, prix_m2: null,
+      mutation: { date: '2025-03-05', nature: 'Vente' } },
+  ];
+  const estimator = new RealEstateEstimator({ fetcher: async (_url, opt) => opt.method === 'POST'
+    ? new Response(JSON.stringify({ data: {} }))
+    : new Response(JSON.stringify({ meta: { address: { label: 'Angers' } }, data: rows })) });
+  await assert.rejects(estimator.estimate({ property_type: 'maison',
+    surface_m2: 180, address: '12 rue de la Roë, Angers' }),
+  (err) => err instanceof EstimateError && err.status === 422 &&
+    err.message.includes('1 date(s) absente(s)') &&
+    err.message.includes('1 date(s) hors période') &&
+    err.message.includes('1 mutation(s) hors vente simple') &&
+    err.message.includes('1 prix/m², surface ou distance invalide(s)'));
 });

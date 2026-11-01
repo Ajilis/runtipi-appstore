@@ -88,6 +88,38 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Compatibilité avec le format réel des ventes GeoRegistry (0.9.6)
+
+**Anomalie identifiée grâce à la version 0.9.5** : l'API renvoyait
+100 ventes de maisons au bon type dans chaque rayon autour du bien,
+mais Vigie en retenait zéro. Ce n'était pas une preuve d'absence de
+transactions ; toutes les lignes échouaient au contrôle de leur date.
+
+**Cause vérifiée contre une réponse JSON réelle du fournisseur** le
+1er novembre 2026 (sur une adresse publique de test) : les ventes
+par adresse comportent un objet `mutation` imbriqué avec
+`mutation.date`, `mutation.nature` et `mutation.mutation_uid`. La
+distance se trouve dans `distance_meters`. Les exemples abrégés de
+la documentation publique montraient plutôt des champs aplatis
+`mutation_date`, `nature` et `distance_m`.
+
+Vigie 0.9.6 prend désormais en charge **les deux formats** et utilise
+`mutation.mutation_uid` pour éviter les doublons de dispositions
+d'une même vente. Il continue à exclure les mutations autres que
+des ventes simples, les transactions hors des cinq dernières années,
+les valeurs de prix au m² absentes ou incohérentes et les ventes
+trop éloignées du rayon demandé. Les messages d'échec détaillent
+dorénavant chaque catégorie de rejet (date manquante, date ancienne,
+nature de mutation, prix/surface/distance, doublons).
+
+**Contrôle qualité** : des tests utilisent le schéma exact observé dans
+la réponse en production de GeoRegistry, ainsi que l'ancien schéma,
+sans aucun appel Internet lors de la suite de tests habituelle.
+Cela corrige le rejet systématique observé sans promettre qu'un
+nombre minimal de ventes représentatives existe pour toute adresse.
+Le calcul conserve sa fourchette de prudence et reste soumis à
+validation explicite de l'utilisateur avant enregistrement.
+
 ## Diagnostiquer les échecs d'estimation DVF (0.9.5)
 
 La version 0.9.4 pouvait afficher « moins de trois ventes locales »
