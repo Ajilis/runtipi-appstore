@@ -610,7 +610,8 @@ export function registerRoutes(router, deps) {
     return { holding: { ...h, value_cents: snap.cents, owned_cents: snap.owned, owner_owned_cents: snap.owner_owned_cents,
       total_ownership_bp: snap.ownership_bp, shared_with_me: snap.shared_with_me,
       value_base: snap.base, missing_rate: snap.missingRate },
-      property, latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp) : null,
+      property, acquisition: !property ? state.acquisitions.get(id) || null : null,
+      latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp) : state.acquisitions.has(id) && snap.cents !== null ? { gain_cents: snap.cents - state.acquisitions.get(id).purchase_cents, gain_pct: Math.round((snap.cents / state.acquisitions.get(id).purchase_cents - 1) * 10000) / 100 } : null,
       valuations, schedule, base_currency: state.base };
   });
 
@@ -877,6 +878,19 @@ export function registerRoutes(router, deps) {
     saveProperty.run(id, p.purchase, p.date, p.type, p.address, p.surface, p.condition, p.ownership, Date.now());
   }
 
+  function parseAcquisition(body, cat, prop, schedule) {
+    if (!Object.hasOwn(body, 'acquisition')) return undefined;
+    if (body.acquisition === null) return null;
+    if (cat.kind !== 'asset' || prop || isRealEstateCategory(cat) || schedule) fail(400, 'invalid_field', 'Prix de revient indisponible pour cet avoir.');
+    const a = body.acquisition;
+    if (!a || typeof a !== 'object' || Array.isArray(a)) fail(400, 'invalid_field', 'Acquisition invalide.');
+    const price = amount(a.purchase_amount, 'Prix de revient');
+    if (price <= 0 || !a.purchased_at) fail(400, 'invalid_field', 'Prix de revient positif et date obligatoires.');
+    return { price, date: valuationDate(a.purchased_at) };
+  }
+  function saveAcquisition(id, a) {
+    db.prepare(`INSERT INTO holding_acquisitions (holding_id,purchase_cents,purchased_at,updated_at) VALUES (?,?,?,?) ON CONFLICT(holding_id) DO UPDATE SET purchase_cents=excluded.purchase_cents,purchased_at=excluded.purchased_at,updated_at=excluded.updated_at`).run(id,a.price,a.date,Date.now());
+  }
   // --- Échéancier de prêt ---------------------------------------------------------------------------------------
   function parseSchedule(v) {
     if (v === null) return null;
@@ -916,6 +930,7 @@ export function registerRoutes(router, deps) {
     const schedule = ctx.body.schedule ? parseSchedule(ctx.body.schedule) : null;
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency);
+    const acquisition = parseAcquisition(ctx.body, cat, prop, schedule);
     const hasInitial = !schedule && ctx.body.amount !== undefined && ctx.body.amount !== null && ctx.body.amount !== '';
     const cents = hasInitial ? amount(ctx.body.amount, 'Valeur actuelle') : null;
     const date = valuationDate(ctx.body.date);
@@ -928,6 +943,7 @@ export function registerRoutes(router, deps) {
       if (cents !== null) upsertValuation.run(newId, date, cents, '', ctx.user.id, now);
       if (schedule) saveSchedule(newId, schedule);
       if (prop) writeProperty(newId, prop);
+      if (acquisition) saveAcquisition(newId, acquisition);
       return newId;
     });
     audit(ctx, 'avoir_cree', schedule ? `${f.name}, échéancier ${scheduleText(schedule)}` : f.name);
@@ -945,6 +961,7 @@ export function registerRoutes(router, deps) {
     const valuationOn = amountChange !== null ? valuationDate(ctx.body.date) : null;
     const scheduleChange = 'schedule' in ctx.body ? parseSchedule(ctx.body.schedule) : undefined;
     const had = getSchedule(id);
+    const acquisition = parseAcquisition(ctx.body, cat, prop, scheduleChange || (scheduleChange === undefined && had));
     if (scheduleChange && existing.closed_at) fail(409, 'closed', "Rouvrez l'avoir avant de lui associer un échéancier.");
     transaction(db, () => {
       db.prepare('UPDATE holdings SET category_id = ?, name = ?, institution = ?, owner = ?, currency = ?, liquidity = ?, notes = ?, updated_at = ? WHERE id = ?')
@@ -957,6 +974,8 @@ export function registerRoutes(router, deps) {
       }
       if (prop) writeProperty(id, prop);
       else if (!isRealEstateCategory(cat)) db.prepare('DELETE FROM real_estate WHERE holding_id = ?').run(id);
+      if (acquisition === null || cat.kind !== 'asset' || isRealEstateCategory(cat) || scheduleChange || (had && scheduleChange !== null)) db.prepare('DELETE FROM holding_acquisitions WHERE holding_id = ?').run(id);
+      if (acquisition) saveAcquisition(id, acquisition);
       if (amountChange !== null) {
         if (had || scheduleChange) fail(409, 'invalid_field', 'Retirez d’abord l’échéancier avant de saisir une valeur manuelle.');
         // Une modification de la valeur actuelle crée une nouvelle entrée de suivi.
