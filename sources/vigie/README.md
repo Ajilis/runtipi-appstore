@@ -118,6 +118,29 @@ ne changent sans validation explicite de l'utilisateur.
 L'estimation reste indicative, particulièrement en zone rurale ou lorsque
 des biens très différents se trouvent à moins de 5 km.
 
+### Baguette magique et compte rendu dans les notes
+
+Le bouton **« 🪄 Estimer »**, accolé à **Valeur actuelle**, affiche une
+proposition avec son nombre de ventes et sa fourchette. L'utilisateur clique
+ensuite sur **« Appliquer à la valeur actuelle et aux notes »** (dans le même
+formulaire) et enfin sur **Enregistrer**. Sans ces actions, rien n'est modifié.
+
+Vigie ajoute automatiquement un bilan encadré `[Estimation Vigie]` dans les
+**notes du bien** : date, source, montant, fourchette, méthode réellement
+utilisée, nombre de ventes, rayon et médiane au m² pour les calculs DVF locaux,
+période et dispersion des surfaces/prix observés, limites et incertitudes.
+Pour la méthode principale de GeoRegistry, Vigie précise au contraire quels
+paramètres (dates, rayons, coefficients) **ne sont pas communiqués** ; elle ne
+prétend pas les connaître. Les fourchettes forfaitaires des méthodes de secours
+sont présentées comme des précautions **et non des intervalles de confiance
+statistiques**. L'effet du terrain, du DPE, des travaux et de l'état réel est
+expressément signalé comme non contrôlé pour les calculs de secours.
+
+Les notes personnelles **ne sont jamais effacées** ; un nouveau bilan remplace
+uniquement le précédent bloc automatique. Si le texte dépasserait 1 000
+caractères, Vigie refuse l'application et demande de libérer de l'espace :
+aucune note n'est tronquée, aucune valeur n'est modifiée.
+
 ## Biens immobiliers : achat et valeur actuelle (0.9.3)
 
 Dans le formulaire **Avoirs → Immobilier**, Vigie distingue **Valeur d'achat** et
