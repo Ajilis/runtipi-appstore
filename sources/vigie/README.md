@@ -88,6 +88,56 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Partage d'un bien immobilier entre comptes du même serveur (0.9.8)
+
+Vigie est aujourd'hui un **registre patrimonial commun au serveur**, pas un
+patrimoine privé par compte : tous les utilisateurs possédant le droit
+*lecteur* peuvent déjà consulter les avoirs. Le nouveau partage ne crée
+pas un second avoir et ne modifie pas les droits généraux d'accès aux
+autres données. Pour gérer les demandes, le compte destinataire voit
+**Partages immobiliers** dans la navigation.
+
+Depuis la fiche d'un bien immobilier, un **administrateur** peut cliquer
+sur **Partager ce bien** et choisir un **utilisateur actif qui possède
+déjà une adresse e-mail** sur ce serveur. Vigie propose automatiquement
+le complément à 100 % : pour 60 % de quote-part déclarée et aucun autre
+partage actif, elle propose 40 %. Ce nombre peut être réduit. Les
+demandes déjà envoyées réservent le pourcentage, sans l'intégrer à la
+valeur du patrimoine tant qu'elles n'ont pas été acceptées. Le total
+de la quote-part initiale, des demandes en attente et des parts acceptées
+ne peut jamais dépasser **100 %**.
+
+L'envoi requiert **SMTP configuré** et une URL publique enregistrée dans
+**Réglages → Envoi d'e-mails**. Le destinataire reçoit un lien vers
+**Partages immobiliers** sur le même serveur, se connecte avec son
+compte habituel et clique sur **Accepter** ou **Refuser**. Le lien ne
+permet jamais à un autre compte d'accepter à sa place, même s'il est
+transféré. La demande expire après 7 jours. Le destinataire peut ensuite
+renoncer à son partage ; l'administrateur peut également le révoquer.
+
+**Calcul de la valeur** : la fiche conserve une seule valeur du bien
+entier, comme auparavant, et la valeur patrimoniale commune du serveur
+reflète **la somme de la quote-part initiale et des parts approuvées**.
+Ex. bien estimé à 800 000 €, quote-part initiale 60 %, demande de
+40 % : avant approbation le patrimoine commun retient 480 000 €,
+et après approbation il retient 800 000 € une seule fois.
+Les plus-values latentes et historiques du registre sont recalculés
+avec le total des parts actuellement actives, sans modéliser les
+changements de détention datés. La fiche détaille le pourcentage
+initial et les parts approuvées.
+
+L'export JSON conserve les **parts acceptées** et les restaure si les
+destinataires sont toujours présents sur le même serveur. Les demandes
+en attente ne sont pas exportées. Les sauvegardes SQLite contiennent
+l'état complet des partages et des demandes.
+
+**Attention :** une approbation dans Vigie consigne un accord de suivi
+patrimonial, **pas un acte notarié ni un transfert légal de propriété**.
+De plus, la fonctionnalité n'isole **pas** les autres avoirs entre les
+comptes : tous les comptes Vigie avec rôle lecteur voient déjà le
+patrimoine commun. Les droits de modification continuent de dépendre
+des rôles administrateur / éditeur / lecteur.
+
 ## Compatibilité avec le format réel des ventes GeoRegistry (0.9.6)
 
 **Anomalie identifiée grâce à la version 0.9.5** : l'API renvoyait
