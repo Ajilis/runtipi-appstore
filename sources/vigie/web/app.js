@@ -1655,16 +1655,25 @@
 
       ${logoSt ? logoSummarySection(logoSt) : ''}
 
-      <section class="section" data-settings-group="securite">${h2i('shield', 'Sécurité du serveur')}<div class="panel">
-        <dl class="kv">
-          <dt>${icon('clock')}Déconnexion après inactivité</dt><dd>${s.security.session_idle_minutes} min</dd>
-          <dt>${icon('devices')}Durée maximale d'une session</dt><dd>${s.security.session_max_hours} h</dd>
-          <dt>${icon('lock')}Blocage du compte</dt><dd>après ${s.security.login_max_attempts} échecs, pendant ${s.security.login_lock_minutes} min</dd>
-          <dt>${icon('key')}Double authentification</dt><dd>${s.security.require_2fa ? 'obligatoire pour tous' : 'facultative'}</dd>
-          <dt>${icon('bank')}Logos des établissements</dt><dd>${s.security.institution_logos ? `récupérés sur les sites officiels${s.security.institution_logos_fallback ? ", sinon par le service d'icônes de Google" : ''}` : 'récupération désactivée (images personnelles et monogrammes)'}</dd>
-        </dl>
-        <p class="small muted" style="margin-top:12px">Ces réglages se modifient dans le fichier <b>data/config/vigie.env</b> de l'application, puis en redémarrant Vigie dans Runtipi.</p>
-      </div></section>` : ''}`);
+      <section class="section" data-settings-group="securite">
+        <div class="section-head">${h2i('shield', 'Sécurité du serveur')}<p>Paramètres modifiables par l'administrateur</p></div>
+        <form class="panel form" id="security-settings-form">
+          <div class="grid-2">
+            <label class="field"><span>Déconnexion après inactivité (minutes)</span><input class="input" type="number" name="session_idle_minutes" min="5" max="10080" step="1" required value="${s.security.session_idle_minutes}"><small>De 5 à 10 080 minutes. Applicable aux sessions ouvertes.</small></label>
+            <label class="field"><span>Durée maximale d'une session (heures)</span><input class="input" type="number" name="session_max_hours" min="1" max="2160" step="1" required value="${s.security.session_max_hours}"><small>De 1 à 2 160 heures. Applicable aux nouvelles sessions.</small></label>
+            <label class="field"><span>Échecs avant blocage du compte</span><input class="input" type="number" name="login_max_attempts" min="3" max="50" step="1" required value="${s.security.login_max_attempts}"><small>De 3 à 50 échecs consécutifs.</small></label>
+            <label class="field"><span>Durée du blocage (minutes)</span><input class="input" type="number" name="login_lock_minutes" min="1" max="1440" step="1" required value="${s.security.login_lock_minutes}"><small>De 1 à 1 440 minutes.</small></label>
+          </div>
+          <label class="check"><input type="checkbox" name="require_2fa" ${s.security.require_2fa ? 'checked' : ''} ${s.security.require_2fa_forced ? raw('disabled') : ''}><span><b>Double authentification obligatoire pour tous</b><span class="small muted" style="display:block">${s.security.require_2fa_forced ? 'Imposée par Runtipi ou vigie.env : impossible à désactiver ici.' : 'Les utilisateurs sans 2FA devront l’activer avant d’accéder à leurs données.'}</span></span></label>
+          <div class="section-head">${h3i('bank', 'Services externes : logos')}</div>
+          <label class="check"><input type="checkbox" name="institution_logos" ${s.security.institution_logos ? 'checked' : ''}><span><b>Récupérer les logos des établissements</b><span class="small muted" style="display:block">Autorise les requêtes externes sur les sites des établissements.</span></span></label>
+          <label class="check"><input type="checkbox" name="institution_logos_fallback" ${s.security.institution_logos_fallback ? 'checked' : ''}><span><b>Utiliser le service d'icônes de secours</b><span class="small muted" style="display:block">Si nécessaire, le domaine de l'établissement peut être transmis à Google.</span></span></label>
+          <label class="field"><span>Mot de passe administrateur pour confirmer</span><input class="input" name="current_password" type="password" required autocomplete="current-password" placeholder="Mot de passe actuel"></label>
+          <p class="error-text" role="alert" hidden></p>
+          <div class="form-actions"><button class="btn primary" type="submit">${icon('shield')}Enregistrer la sécurité</button></div>
+          <p class="small muted">Appliqué sans redémarrage et conservé dans SQLite. L'obligation 2FA imposée par Runtipi reste prioritaire. Le secret de l'application n'est pas modifiable ici.</p>
+        </form>
+      </section>` : ''}`);
 
     // Les formulaires restent montés et fonctionnent comme avant ; seul le panneau
     // actif est affiché. Déplacer les sections préserve les écouteurs et leurs identifiants.
@@ -1713,6 +1722,37 @@
     activate(requested || (panels.has(previous) ? previous : 'general'));
 
     if (mail) bindMailForm(mail);
+    const securityForm = $('#security-settings-form');
+    if (securityForm) securityForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const values = formData(securityForm);
+      const error = $('.error-text', securityForm);
+      error.hidden = true;
+      const policy = {
+        session_idle_minutes: Number(values.session_idle_minutes),
+        session_max_hours: Number(values.session_max_hours),
+        login_max_attempts: Number(values.login_max_attempts),
+        login_lock_minutes: Number(values.login_lock_minutes),
+        institution_logos: values.institution_logos,
+        institution_logos_fallback: values.institution_logos_fallback,
+        current_password: values.current_password,
+      };
+      if (!securityForm.elements.namedItem('require_2fa').disabled) policy.require_2fa = values.require_2fa;
+      await withBusy(e.submitter, async () => {
+        try {
+          const response = await api('PUT', '/api/admin/security', policy);
+          securityForm.elements.namedItem('current_password').value = '';
+          toast('Sécurité du serveur enregistrée');
+          if (response.needs_2fa_setup) {
+            state.boot.needs_2fa_setup = true;
+            location.hash = '#/compte';
+          } else await render();
+        } catch (err) {
+          error.textContent = err.message;
+          error.hidden = false;
+        }
+      });
+    });
     const sf = $('#settings-form');
     if (sf) sf.addEventListener('submit', async (e) => {
       e.preventDefault();
