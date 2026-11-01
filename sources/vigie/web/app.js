@@ -1493,7 +1493,7 @@
     if (!current()) return;
     state.base = v.base_currency;
     setHeader('Mise à jour rapide', 'Saisissez les nouvelles valeurs, les autres restent inchangées', discretButton());
-    const open = v.holdings.filter((h) => !h.closed_at);
+    const open = v.holdings.filter((h) => !h.closed_at && !h.shared_with_me); // bien reçu en partage : lecture seule
     const manualOpen = open.filter((h) => !h.schedule);
     if (!open.length) { el.innerHTML = part(html`<div class="panel empty">${pict('update', 'lg')}<h2>Aucun avoir à mettre à jour</h2><p>Ajoutez d'abord vos avoirs.</p><a class="btn primary" href="#/avoirs">Voir les avoirs</a></div>`); return; }
     const rate = (cur) => (cur === v.base_currency ? 1 : (s.rates.find((r) => r.currency === cur) || {}).rate);
