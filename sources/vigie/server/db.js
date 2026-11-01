@@ -147,6 +147,24 @@ export const MIGRATIONS = [
   WHERE EXISTS (SELECT 1 FROM categories)
     AND NOT EXISTS (SELECT 1 FROM categories WHERE icon = 'handshake' OR lower(name) LIKE '%prêt%accord%' OR lower(name) LIKE '%pret%accord%' OR lower(name) LIKE '%créance%' OR lower(name) LIKE '%creance%');
   `,
+  // 0.7.0 : dimensions et provenance des logos récupérés, images déposées par l'administrateur.
+  // Les échecs passés sont oubliés pour être réessayés avec la nouvelle recherche d'icônes.
+  `
+  ALTER TABLE logo_cache ADD COLUMN width INTEGER;
+  ALTER TABLE logo_cache ADD COLUMN height INTEGER;
+  ALTER TABLE logo_cache ADD COLUMN source TEXT;
+  DELETE FROM logo_cache WHERE ok = 0;
+  CREATE TABLE institution_logos (
+    key TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    data BLOB NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    updated_at INTEGER NOT NULL,
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

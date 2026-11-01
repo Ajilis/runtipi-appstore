@@ -13,7 +13,7 @@ import {
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
-import { TRANSPARENT_PNG } from './logos.js';
+import { TRANSPARENT_PNG, CUSTOM_KEY, sniffImage, imageSize } from './logos.js';
 import { LOAN_KINDS, amortization, loanSummary, loanValuations } from './loans.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP', 'CAD', 'JPY', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'CNY', 'HKD', 'SGD', 'NZD', 'ZAR', 'BRL', 'MXN', 'INR', 'KRW', 'TRY', 'ILS', 'THB', 'IDR', 'MYR', 'PHP', 'ISK'];
@@ -419,24 +419,80 @@ export function registerRoutes(router, deps) {
         session_idle_minutes: cfg.SESSION_IDLE_MINUTES, session_max_hours: cfg.SESSION_MAX_HOURS, login_max_attempts: cfg.LOGIN_MAX_ATTEMPTS,
         login_lock_minutes: cfg.LOGIN_LOCK_MINUTES, require_2fa: cfg.REQUIRE_2FA, backup_hour: cfg.BACKUP_HOUR, backup_keep_days: cfg.BACKUP_KEEP_DAYS,
         institution_logos: cfg.INSTITUTION_LOGOS,
+        institution_logos_fallback: cfg.INSTITUTION_LOGOS && cfg.INSTITUTION_LOGOS_FALLBACK,
       };
     }
     return out;
   });
 
   // --- Logos des établissements ----------------------------------------------------------------------------------
+  router.get('/api/institutions/logos', { auth: 'viewer' }, () => ({ enabled: cfg.INSTITUTION_LOGOS, versions: logos.versions() }));
+
   router.get('/api/institutions/logo/:id', { auth: 'viewer' }, async (ctx) => {
-    if (!/^[a-z0-9-]{1,40}$/.test(ctx.params.id)) fail(404, 'not_found', 'Établissement inconnu.');
+    if (!/^[a-z0-9-]{1,90}$/.test(ctx.params.id)) fail(404, 'not_found', 'Établissement inconnu.');
     const logo = await logos.get(ctx.params.id);
     if (logo === undefined) fail(404, 'not_found', 'Établissement inconnu.');
     if (logo) ctx.sendBody(200, Buffer.from(logo.data), logo.type, { 'Cache-Control': 'private, max-age=604800' });
     else ctx.sendBody(200, TRANSPARENT_PNG, 'image/png', { 'Cache-Control': 'private, max-age=600' });
   });
 
+  // Clé d'un logo : identifiant du catalogue, ou « perso-nom » pour un établissement hors catalogue.
+  const logoKey = (value) => {
+    const key = String(value || '');
+    if (logos.catalogue.has(key) || CUSTOM_KEY.test(key)) return key;
+    return fail(400, 'invalid_field', 'Établissement inconnu.');
+  };
+
+  router.get('/api/admin/logos', { auth: 'admin' }, () => ({
+    ...logos.status(),
+    in_use: db.prepare("SELECT institution AS name, COUNT(*) AS count FROM holdings WHERE institution <> '' GROUP BY institution ORDER BY institution").all().map((r) => ({ ...r })),
+  }));
+
+  router.post('/api/admin/logos/fetch', { auth: 'admin' }, async (ctx) => {
+    if (!cfg.INSTITUTION_LOGOS) fail(409, 'disabled', 'La récupération des logos est désactivée (INSTITUTION_LOGOS=false dans data/config/vigie.env). Vous pouvez déposer vos propres images.');
+    if (ctx.body.id) {
+      const id = logoKey(ctx.body.id);
+      const host = logos.hostOf(id);
+      if (!host) fail(400, 'no_site', "Aucun site officiel connu pour cet établissement : déposez votre propre image.");
+      const wait = new Promise((r) => { const t = setTimeout(() => r('pending'), 25_000); t.unref?.(); });
+      const logo = await Promise.race([logos.refresh(host), wait]);
+      const name = logos.catalogue.get(id).name;
+      audit(ctx, 'logo_recherche', `${name} : ${logo === 'pending' ? 'en cours' : logo ? `trouvé (${logo.width || '?'} × ${logo.height || '?'} px)` : 'introuvable'}`);
+      return { id, status: logo === 'pending' ? 'fetching' : logo ? 'ok' : 'failed', width: logo && logo !== 'pending' ? logo.width : null, height: logo && logo !== 'pending' ? logo.height : null };
+    }
+    const batch = logos.prefetchAll({ includeFailed: true });
+    audit(ctx, 'logos_recherche', `${batch.total} établissement(s) à rechercher`);
+    return { started: true, total: batch.total, done: batch.done };
+  });
+
   router.post('/api/admin/logos/retry', { auth: 'admin' }, (ctx) => {
     const n = logos.clearFailures();
     audit(ctx, 'logos_reessai', `${n} établissement(s) sans logo seront réessayés`);
     return { cleared: n };
+  });
+
+  router.put('/api/admin/logos/:key', { auth: 'admin', bodyLimit: 1024 * 1024 }, (ctx) => {
+    const key = logoKey(ctx.params.key);
+    const entry = logos.catalogue.get(key);
+    const name = text(entry ? entry.name : ctx.body.name, 'Établissement', { required: true, max: 80 });
+    if (typeof ctx.body.data !== 'string' || !ctx.body.data || ctx.body.data.length > 700_000) fail(400, 'invalid_image', 'Image trop lourde : 500 Ko au maximum.');
+    const buf = Buffer.from(ctx.body.data, 'base64');
+    const type = sniffImage(buf);
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type)) fail(400, 'invalid_image', 'Format refusé : image PNG, JPEG, WebP ou GIF attendue.');
+    const size = imageSize(buf, type);
+    if (!size || size.width < 16 || size.height < 16 || size.width > 1024 || size.height > 1024) fail(400, 'invalid_image', 'Image de 16 à 1024 pixels de côté attendue.');
+    const saved = logos.setCustom(key, name, buf, ctx.user.id);
+    audit(ctx, 'logo_personnalise', `${name} (${size.width} × ${size.height} px)`);
+    return { key, version: `c${saved.updated_at}` };
+  });
+
+  router.delete('/api/admin/logos/:key', { auth: 'admin' }, (ctx) => {
+    const key = logoKey(ctx.params.key);
+    const own = logos.custom(key);
+    if (!own) fail(404, 'not_found', 'Aucune image personnalisée pour cet établissement.');
+    logos.removeCustom(key);
+    audit(ctx, 'logo_retire', own.name);
+    return { ok: true };
   });
 
   // --- Titulaires -----------------------------------------------------------------------------------------------
@@ -869,6 +925,7 @@ export function registerRoutes(router, deps) {
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all(),
+      institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
     };
   }
 
@@ -942,6 +999,12 @@ export function registerRoutes(router, deps) {
         const c = currency(r.currency);
         if (c === base || !(r.rate > 0)) continue;
         db.prepare('INSERT INTO fx_rates (currency, rate, source, updated_at) VALUES (?, ?, ?, ?)').run(c, Number(r.rate), String(r.source || 'import').slice(0, 40), Number(r.updated_at) || now);
+      }
+      for (const l of Array.isArray(d.institution_logos) ? d.institution_logos : []) {
+        const buf = typeof l.data === 'string' ? Buffer.from(l.data, 'base64') : null;
+        const type = buf ? sniffImage(buf) : null;
+        if ((!logos.catalogue.has(l.key) && !CUSTOM_KEY.test(String(l.key))) || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type) || buf.length > 600_000) fail(400, 'invalid_import', 'Image de logo invalide.');
+        logos.setCustom(l.key, text(l.name, 'Établissement', { required: true, max: 80 }), buf, ctx.user.id);
       }
       setSetting(db, 'base_currency', base);
       if (Number.isInteger(d.settings?.stale_days)) setSetting(db, 'stale_days', d.settings.stale_days);

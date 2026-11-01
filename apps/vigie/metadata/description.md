@@ -1,6 +1,16 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 6** · **Version de Vigie : 0.6.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 7** · **Version de Vigie : 0.7.0** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.7.0 : logos des établissements
+
+- **Logos en couleur pour presque tout le catalogue.** Vigie ne fournit toujours aucun logo : votre serveur récupère l'icône publiée par le site officiel de chaque établissement. La recherche est plus complète (icônes d'application déclarées dans le manifeste du site, apple-touch-icon, tuile Windows, icônes intégrées à la page, favicon) et Vigie garde la plus nette d'après ses dimensions réelles.
+- **Dernier recours : service d'icônes de Google.** Certains sites bloquent les serveurs ou n'offrent qu'une icône de 16 px. Dans ce cas, Vigie demande l'icône du site au service d'icônes de Google, qui ne reçoit que le nom de domaine de l'établissement (par exemple `www.revolut.com`), jamais vos données. Pour l'interdire : `INSTITUTION_LOGOS_FALLBACK=false` dans `data/config/vigie.env`.
+- **Préchargement** : les logos des 72 établissements du catalogue sont recherchés peu après le démarrage puis chaque jour, pour s'afficher immédiatement partout, y compris dans les suggestions du champ Établissement. Les logos des versions précédentes sont améliorés automatiquement.
+- **Nouvelle page Réglages → Logos des établissements** (administrateurs) : état de chaque logo (officiel avec sa taille et sa provenance, image personnelle, introuvable), filtres « Mes établissements » et « Sans logo », recherche d'un logo à la demande, et recherche de tous les logos manquants avec progression.
+- **Image personnelle** pour n'importe quel établissement, y compris un établissement absent du catalogue (« Banque du village », une SCI, un notaire) : PNG, JPEG, WebP ou SVG, réduite à 256 px par le navigateur avant l'envoi. Elle remplace le logo récupéré pour tous les utilisateurs et est incluse dans l'export JSON et la restauration.
+
+Mesure faite depuis un serveur GitHub (hors de France) : 71 logos trouvés sur 72, dont 57 d'au moins 96 px. Quelques établissements ne publient qu'une petite icône (16 à 48 px) ; l'image personnelle permet d'en mettre une plus nette.
 
 ## Nouveautés de la version 0.6.0 : prêts et crédits à échéancier
 
@@ -122,7 +132,8 @@ Modifier `APP_DATA_DIR/data/config/vigie.env`, puis redémarrer l'application da
 | `BACKUP_HOUR` | 3 | Heure de la sauvegarde quotidienne |
 | `BACKUP_KEEP_DAYS` | 30 | Durée de conservation (0 désactive) |
 | `ECB_RATES_ENABLED` | true | Bouton de récupération des taux BCE |
-| `INSTITUTION_LOGOS` | true | Logos des établissements récupérés sur leur site officiel (false : monogrammes uniquement) |
+| `INSTITUTION_LOGOS` | true | Logos des établissements récupérés sur leur site officiel (false : aucune connexion sortante, images personnelles ou monogrammes) |
+| `INSTITUTION_LOGOS_FALLBACK` | true | Si le site bloque ou n'offre qu'une petite icône, icône demandée au service d'icônes de Google (seul le nom de domaine de l'établissement est transmis) |
 | `LOG_LEVEL` | info | Détail des journaux du conteneur |
 
 ## Mises à jour et sauvegardes

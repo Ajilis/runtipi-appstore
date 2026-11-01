@@ -90,3 +90,17 @@ test('base 0.5.0 : une catégorie de créances existante est respectée, base vi
   db2.close();
   fs.rmSync(empty, { recursive: true, force: true });
 });
+
+test('base 0.6.0 : logos en échec oubliés pour être recherchés de nouveau, logos trouvés conservés', () => {
+  const dir = legacyDatabase(5, (raw) => {
+    const l = raw.prepare('INSERT INTO logo_cache (host, content_type, data, ok, fetched_at) VALUES (?, ?, ?, ?, 0)');
+    l.run('www.boursobank.com', 'image/png', Buffer.from('png'), 1);
+    l.run('www.fortuneo.fr', null, null, 0);
+  });
+  const db = openDatabase(dir);
+  const rows = db.prepare('SELECT host, ok, width FROM logo_cache').all().map((r) => ({ ...r }));
+  assert.deepEqual(rows, [{ host: 'www.boursobank.com', ok: 1, width: null }], 'dimensions inconnues : le logo sera amélioré au prochain préchargement');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'institution_logos'").get().n, 1);
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

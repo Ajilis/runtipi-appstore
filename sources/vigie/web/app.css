@@ -514,6 +514,30 @@ details.amort > p { margin-top: 8px; }
 .amort-table tr.paid td { color: var(--faint); }
 .amort-table tr.next td { background: var(--brand-soft); color: var(--ink); font-weight: 500; }
 .m-only { display: none; }
+/* --- Logos des établissements ------------------------------------------------------------------------------------ */
+.logo-summary { display: grid; gap: 14px; justify-items: start; }
+.logo-summary p { margin: 0; }
+.logo-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.figures-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.figures-row > div { display: grid; gap: 2px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-m); }
+.figures-row b { font-size: 1.6rem; font-weight: 400; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.figures-row span { color: var(--muted); font-size: 0.875rem; }
+.batch { display: grid; gap: 6px; margin-top: 12px; }
+#logo-summary > p { margin-top: 10px; }
+.logos-table .logo-status { min-width: 0; }
+.logos-table .logo-status .tag { margin-bottom: 3px; }
+.logos-table .sub { display: block; color: var(--muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.logos-table .sub.warn { display: flex; align-items: center; gap: 5px; color: var(--warn-ink); }
+.logos-table .sub.warn svg { width: 13px; height: 13px; flex: none; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .logos-table td.logo-status { display: block; text-align: left; }
+  .logos-table td.logo-status::before { display: block; margin-bottom: 3px; }
+  .figures-row { gap: 8px; }
+  .figures-row > div { padding: 10px 12px; }
+  .figures-row b { font-size: 1.3rem; }
+  .figures-row span { font-size: 0.8125rem; }
+}
 .kind-hint { align-self: center; color: var(--muted); font-size: 0.8125rem; margin: 0; }
 @media (max-width: 860px) {
   .m-only { display: inline; }

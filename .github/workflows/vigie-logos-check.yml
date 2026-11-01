@@ -1,0 +1,29 @@
+name: Vigie logos check
+
+# Contrôle depuis Internet que le serveur Vigie trouve le logo de chaque établissement du catalogue.
+# Aucune image n'est conservée : seul un rapport texte est affiché dans le journal.
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: "Identifiants à vérifier, séparés par des espaces (vide : tout le catalogue)"
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Logos du catalogue
+        env:
+          FALLBACK: 'true'
+          IDS: ${{ github.event.inputs.ids }}
+        run: node .github/vigie/check-logos.mjs $IDS

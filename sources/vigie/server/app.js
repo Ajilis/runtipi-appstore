@@ -37,7 +37,7 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
   const ipLimiter = new IpLimiter(cfg.IP_MAX_FAILURES);
   const challenges = new PendingChallenges();
   const router = new Router();
-  const logos = new LogoService(db, { enabled: cfg.INSTITUTION_LOGOS, fetcher, log });
+  const logos = new LogoService(db, { enabled: cfg.INSTITUTION_LOGOS, fallback: cfg.INSTITUTION_LOGOS_FALLBACK, fetcher, log });
   registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos });
   const serveStatic = createStatic(WEB_DIR, cfg.VERSION);
 
@@ -107,12 +107,17 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
   const purge = setInterval(() => { try { sessions.purgeExpired(); } catch (e) { log.warn(e.message); } }, 15 * 60_000);
   purge.unref();
   timers.push(purge);
-  if (withScheduler) { const t = startBackupScheduler(db, paths.backups, cfg, log); if (t) timers.push(t); }
+  if (withScheduler) {
+    const t = startBackupScheduler(db, paths.backups, cfg, log);
+    if (t) timers.push(t);
+    timers.push(...logos.startScheduler());
+  }
 
   return {
-    server, db,
+    server, db, logos,
     close() {
       timers.forEach(clearInterval);
+      logos.close();
       return new Promise((resolve) => server.close(() => { try { db.close(); } catch { /* déjà fermée */ } resolve(); }));
     },
   };

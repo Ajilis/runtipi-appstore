@@ -25,6 +25,7 @@
     showClosed: false,
     inst: { list: [], map: new Map() },
     logos: false,
+    logoVersions: null,
     filter: '',
     base: 'EUR',
     charts: [],
@@ -180,12 +181,25 @@
   const MONO_HUES = [168, 196, 214, 250, 286, 330, 18, 38, 130];
   const monoHue = (name) => { let h = 0; for (const c of normKey(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return MONO_HUES[h % MONO_HUES.length]; };
   // Pastille d'établissement : monogramme coloré, recouvert par le logo dès qu'il est chargé.
+  // Clé du logo : identifiant du catalogue, ou « perso-nom » pour un établissement saisi librement (image déposée).
+  const logoKeyFor = (name) => {
+    const e = findInstitution(name);
+    if (e) return e.id;
+    const k = normKey(name).replace(/ /g, '-').slice(0, 80).replace(/-+$/, '');
+    return k ? `perso-${k}` : null;
+  };
   function instLogo(name, cls = '') {
     if (!String(name || '').trim()) return pict('bank', `neutral ${cls}`);
     const entry = findInstitution(name);
     const label = entry ? entry.name : name;
     const txt = monoText(label);
-    return html`<span class="inst ${cls} ${txt.length > 2 ? 'm3' : ''}" style="--h:${monoHue(label)}" aria-hidden="true"><span class="mono">${txt}</span>${entry && state.logos ? html`<img class="inst-img" src="/api/institutions/logo/${entry.id}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
+    const key = logoKeyFor(name);
+    const v = key && state.logoVersions ? state.logoVersions[key] : null;
+    const img = key && (v || (entry && state.logos));
+    return html`<span class="inst ${cls} ${txt.length > 2 ? 'm3' : ''}" style="--h:${monoHue(label)}" aria-hidden="true"><span class="mono">${txt}</span>${img ? html`<img class="inst-img" src="/api/institutions/logo/${key}${v ? `?v=${v}` : ''}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
+  }
+  async function loadLogoVersions() {
+    try { const r = await api('GET', '/api/institutions/logos'); state.logoVersions = r.versions || {}; state.logos = Boolean(r.enabled); } catch { state.logoVersions = {}; }
   }
   const initials = (u) => (((u.first_name || u.display_name || u.username || '?').trim().charAt(0)) + ((u.last_name || '').trim().charAt(0))).toUpperCase();
   const nameFields = (u = {}, autofocus = false) => html`<div class="grid-2">
@@ -565,6 +579,7 @@
     lostShown = true;
     closeDialog();
     state.user = null;
+    state.logoVersions = null;
     showLogin('Votre session a expiré. Reconnectez-vous pour continuer.');
   }
 
@@ -580,6 +595,7 @@
     compte: { title: 'Mon compte', icon: 'account', render: pageAccount },
     utilisateurs: { title: 'Utilisateurs', icon: 'users', render: pageUsers, admin: true },
     journal: { title: 'Journal', icon: 'journal', render: pageAudit, admin: true },
+    logos: { title: 'Logos des établissements', icon: 'bank', render: pageLogos, admin: true, parent: 'reglages' },
   };
 
   function shell() {
@@ -639,7 +655,9 @@
     if (state.boot.needs_2fa_setup && route.name !== 'compte') { location.hash = '#/compte'; return; }
     const page = PAGES[route.name];
     if ((page.admin && !isAdmin()) || (page.edit && !canEdit())) { location.hash = '#/'; return; }
-    $$('[data-nav]').forEach((a) => (a.dataset.nav === route.name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+    const navKey = page.parent ?? route.name;
+    $$('[data-nav]').forEach((a) => (a.dataset.nav === navKey ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+    if (!state.logoVersions && !state.boot.needs_2fa_setup) await loadLogoVersions();
     const token = ++renderToken;
     state.charts = [];
     const el = $('#page');
@@ -1325,7 +1343,7 @@
   // Réglages : devise, taux, export, import, sauvegardes
   // ---------------------------------------------------------------------------------------------------------
   async function pageSettings(el, route, current) {
-    const [s, backups, { owners }] = await Promise.all([api('GET', '/api/settings'), isAdmin() ? api('GET', '/api/admin/backups') : null, api('GET', '/api/owners')]);
+    const [s, backups, { owners }, logoSt] = await Promise.all([api('GET', '/api/settings'), isAdmin() ? api('GET', '/api/admin/backups') : null, api('GET', '/api/owners'), isAdmin() ? api('GET', '/api/admin/logos') : null]);
     if (!current()) return;
     state.base = s.base_currency;
     setHeader('Réglages', 'Devise, taux de change, exports et sauvegardes');
@@ -1386,13 +1404,15 @@
           <span class="small muted">Fichiers SQLite dans le dossier data/backups de l'application, inclus dans les sauvegardes Runtipi.</span></div>
       </section>
 
+      ${logoSt ? logoSummarySection(logoSt) : ''}
+
       <section class="section">${h2i('shield', 'Sécurité du serveur')}<div class="panel">
         <dl class="kv">
           <dt>${icon('clock')}Déconnexion après inactivité</dt><dd>${s.security.session_idle_minutes} min</dd>
           <dt>${icon('devices')}Durée maximale d'une session</dt><dd>${s.security.session_max_hours} h</dd>
           <dt>${icon('lock')}Blocage du compte</dt><dd>après ${s.security.login_max_attempts} échecs, pendant ${s.security.login_lock_minutes} min</dd>
           <dt>${icon('key')}Double authentification</dt><dd>${s.security.require_2fa ? 'obligatoire pour tous' : 'facultative'}</dd>
-          <dt>${icon('bank')}Logos des établissements</dt><dd>${s.security.institution_logos ? html`récupérés sur les sites officiels <button class="btn small" type="button" data-action="logos-retry">${icon('update')}Réessayer les logos manquants</button>` : 'désactivés (monogrammes)'}</dd>
+          <dt>${icon('bank')}Logos des établissements</dt><dd>${s.security.institution_logos ? `récupérés sur les sites officiels${s.security.institution_logos_fallback ? ", sinon par le service d'icônes de Google" : ''}` : 'récupération désactivée (images personnelles et monogrammes)'}</dd>
         </dl>
         <p class="small muted" style="margin-top:12px">Ces réglages se modifient dans le fichier <b>data/config/vigie.env</b> de l'application, puis en redémarrant Vigie dans Runtipi.</p>
       </div></section>` : ''}`);
@@ -1420,6 +1440,186 @@
   // ---------------------------------------------------------------------------------------------------------
   // Mon compte : profil, mot de passe, double authentification, sessions
   // ---------------------------------------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------------------------------------
+  // Logos des établissements : état de chaque logo, recherche à la demande, images personnelles
+  // ---------------------------------------------------------------------------------------------------------
+  const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+  const msDate = (ms) => new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  // Une ligne par établissement du catalogue, plus ceux saisis librement dans les avoirs ou dotés d'une image.
+  function logoRows(st) {
+    const usage = new Map();
+    const perso = new Map();
+    for (const u of st.in_use) {
+      const key = logoKeyFor(u.name);
+      if (!key) continue;
+      usage.set(key, (usage.get(key) || 0) + u.count);
+      if (!findInstitution(u.name) && !perso.has(key)) perso.set(key, u.name);
+    }
+    for (const [key, c] of Object.entries(st.custom)) if (key.startsWith('perso-') && !perso.has(key)) perso.set(key, c.name);
+    const rows = state.inst.list.map((e) => ({ key: e.id, name: e.name, kind: e.kind, st: st.catalogue[e.id] || null, custom: st.custom[e.id] || null, used: usage.get(e.id) || 0 }));
+    for (const [key, name] of perso) rows.push({ key, name, kind: 'Hors catalogue', st: null, custom: st.custom[key] || null, used: usage.get(key) || 0 });
+    for (const r of rows) r.state = r.custom ? 'custom' : st.enabled && r.st && r.st.status === 'ok' ? 'ok' : 'none';
+    return rows.sort((a, b) => (b.used > 0) - (a.used > 0) || a.name.localeCompare(b.name, 'fr'));
+  }
+
+  function logoSummarySection(st) {
+    const rows = logoRows(st);
+    const n = (k) => rows.filter((r) => r.state === k).length;
+    const mine = rows.filter((r) => r.used);
+    const sample = (mine.length ? mine : rows.filter((r) => r.state !== 'none')).slice(0, 14);
+    return html`<section class="section"><div class="section-head">${h2i('bank', 'Logos des établissements')}<p>${st.enabled ? 'Récupérés sur les sites officiels, ou vos propres images' : 'Récupération désactivée : vos images, sinon monogrammes'}</p></div>
+      <div class="panel logo-summary">
+        ${sample.length ? html`<div class="logo-strip" aria-hidden="true">${sample.map((r) => instLogo(r.name, 's36'))}</div>` : ''}
+        <p>${plural(n('ok'), 'logo officiel', 'logos officiels')} · ${plural(n('custom'), 'image personnelle', 'images personnelles')} · ${plural(n('none'), 'monogramme', 'monogrammes')}${mine.length ? html`<br><span class="small muted">Vos établissements : ${mine.filter((r) => r.state !== 'none').length} sur ${mine.length} avec un logo</span>` : ''}</p>
+        <a class="btn" href="#/logos">${icon('bank')}Gérer les logos</a>
+      </div></section>`;
+  }
+
+  // Image choisie sur l'appareil : lue par le navigateur (PNG, JPEG, WebP, GIF, SVG…), réduite à 256 px, envoyée en PNG.
+  async function imageFileToPng(file) {
+    if (file.size > 5 * 1024 * 1024) throw new Error('Image trop lourde : 5 Mo au maximum.');
+    const url = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+      r.readAsDataURL(file);
+    });
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error("Ce fichier n'est pas une image que le navigateur sait lire.")); img.src = url; });
+    const w0 = img.naturalWidth || 256, h0 = img.naturalHeight || 256;
+    if (Math.max(w0, h0) < 16) throw new Error('Image trop petite : 16 pixels de côté au minimum.');
+    const scale = Math.min(1, 256 / Math.max(w0, h0));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(16, Math.round(w0 * scale));
+    canvas.height = Math.max(16, Math.round(h0 * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png').split(',')[1];
+  }
+
+  async function pageLogos(el, route, current) {
+    let st = await api('GET', '/api/admin/logos');
+    if (!current()) return;
+    setHeader('Logos des établissements', 'Logos officiels récupérés par votre serveur, ou vos propres images', html`<a class="btn" href="#/reglages">${icon('settings')}Réglages</a>
+      ${st.enabled ? html`<button class="btn primary" type="button" id="logos-fetch-all">${icon('update')}Rechercher les logos manquants</button>` : ''}`);
+    let filter = store.get('logoFilter', 'all');
+    let q = '';
+    let timer = null;
+    el.innerHTML = part(html`<div class="stack" id="logos-page">
+      ${st.enabled ? '' : html`<div class="notice">${icon('info')}<div>La récupération des logos est désactivée (<b>INSTITUTION_LOGOS=false</b> dans data/config/vigie.env) : aucune connexion n'est faite vers les sites des établissements. Vos images personnelles s'affichent, sinon les monogrammes.</div></div>`}
+      <div id="logo-summary"></div>
+      <div class="toolbar">
+        <input class="input" type="search" id="logo-search" placeholder="Rechercher un établissement…" aria-label="Rechercher un établissement">
+        <div class="seg" role="group" aria-label="Établissements affichés">${[['all', 'Tous'], ['mine', 'Mes établissements'], ['none', 'Sans logo']].map(([k, l]) => html`<button type="button" data-filter="${k}" aria-pressed="${filter === k}">${l}</button>`)}</div>
+      </div>
+      <div id="logo-list"></div>
+      <p class="small muted">Vigie cherche l'icône publiée par le site officiel de chaque établissement du catalogue (icône d'application, apple-touch-icon, favicon) et garde la plus nette dans sa base.${st.fallback ? " Si le site bloque la récupération ou n'offre qu'une petite icône, Vigie la demande au service d'icônes de Google, qui ne reçoit que le nom de domaine de l'établissement." : ''} Les logos sont recherchés de nouveau tous les 30 jours, et 3 jours après un échec. Une image personnelle (PNG, JPEG, WebP ou SVG, réduite à 256 pixels) remplace le logo pour tous les utilisateurs et sert aussi pour un établissement hors catalogue.</p>
+      <input type="file" id="logo-file" accept="image/*" hidden></div>`);
+    const root = $('#logos-page');
+
+    const statusCell = (r) => {
+      if (r.custom) return html`<span class="tag brand">${icon('pencil')}Image personnelle</span><span class="sub">${r.custom.width && r.custom.height ? `${r.custom.width} × ${r.custom.height} px, ` : ''}ajoutée le ${msDate(r.custom.updated_at)}</span>`;
+      if (!r.st) return html`<span class="tag">${icon('info')}Monogramme</span><span class="sub">Hors catalogue : ajoutez une image</span>`;
+      if (!st.enabled) return html`<span class="tag">${icon('info')}Monogramme</span><span class="sub">Récupération désactivée</span>`;
+      const s = r.st;
+      if (s.status === 'ok') {
+        const small = s.width && Math.min(s.width, s.height) < 64;
+        let from = '';
+        try { from = new URL(s.source).host; } catch { from = s.source || ''; }
+        return html`<span class="tag brand">${icon('check')}Logo officiel</span><span class="sub">${s.width ? `${s.width} × ${s.height} px` : 'taille inconnue'}${from ? `, ${from}` : ''}, le ${msDate(s.fetched_at)}</span>${small ? html`<span class="sub warn">${icon('alert')}Petite icône : une image plus grande sera plus nette</span>` : ''}`;
+      }
+      if (s.status === 'fetching') return html`<span class="tag">${icon('clock')}Recherche en cours…</span>`;
+      if (s.status === 'failed') return html`<span class="tag stale">${icon('alert')}Introuvable</span><span class="sub">Site inaccessible ou sans icône. Nouvel essai automatique le ${msDate(s.retry_after)}</span>`;
+      if (s.status === 'no_site') return html`<span class="tag">${icon('info')}Monogramme</span><span class="sub">Aucun site officiel connu</span>`;
+      return html`<span class="tag">${icon('clock')}Pas encore recherché</span>`;
+    };
+    const draw = () => {
+      const rows = logoRows(st);
+      const n = (k) => rows.filter((r) => r.state === k).length;
+      const b = st.batch;
+      $('#logo-summary').innerHTML = part(html`<div class="figures-row">
+          <div><b>${n('ok')}</b><span>${n('ok') > 1 ? 'logos officiels' : 'logo officiel'}</span></div>
+          <div><b>${n('custom')}</b><span>${n('custom') > 1 ? 'images personnelles' : 'image personnelle'}</span></div>
+          <div><b>${n('none')}</b><span>${n('none') > 1 ? 'monogrammes' : 'monogramme'}</span></div>
+        </div>
+        ${b ? html`<div class="batch"><div class="progress" role="progressbar" aria-label="Recherche des logos" aria-valuemin="0" aria-valuemax="${b.total}" aria-valuenow="${b.done}"><span style="width:${b.total ? Math.round((b.done / b.total) * 100) : 0}%"></span></div>
+          <p class="small muted">Recherche en cours : ${b.done} sur ${b.total}, ${plural(b.found, 'logo trouvé', 'logos trouvés')}</p></div>`
+          : st.last_batch && st.last_batch.total ? html`<p class="small muted">Dernière recherche le ${dateTime(st.last_batch.finished_at)} : ${plural(st.last_batch.found, 'logo trouvé', 'logos trouvés')} sur ${st.last_batch.total}.</p>` : ''}`);
+      const fq = fold(q.trim());
+      const shown = rows.filter((r) => (filter === 'all' || (filter === 'mine' ? r.used > 0 : r.state === 'none')) && (!fq || fold(r.name).includes(fq) || fold(r.kind).includes(fq)));
+      $('#logo-list').innerHTML = part(shown.length ? html`<div class="panel flush table-wrap"><table class="table logos-table"><thead><tr><th>Établissement</th><th>Logo</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+        ${shown.map((r) => html`<tr>
+          <td><span class="cell-lead">${instLogo(r.name, 's36')}<span><b>${r.name}</b><br><span class="small muted">${r.kind}${r.used ? `, ${plural(r.used, 'avoir', 'avoirs')}` : ''}</span></span></span></td>
+          <td class="logo-status">${statusCell(r)}</td>
+          <td class="num"><div class="row-actions">
+            ${st.enabled && r.st && r.st.host && !r.custom ? html`<button class="btn small" type="button" data-logo="fetch" data-key="${r.key}" data-name="${r.name}" aria-label="${r.state === 'ok' ? 'Actualiser' : 'Rechercher'} le logo de ${r.name}">${icon('update')}<span>${r.state === 'ok' ? 'Actualiser' : 'Rechercher'}</span></button>` : ''}
+            <button class="btn small" type="button" data-logo="upload" data-key="${r.key}" data-name="${r.name}" aria-label="${r.custom ? "Remplacer l'image" : 'Choisir une image'} de ${r.name}">${icon('upload')}<span>${r.custom ? 'Remplacer' : 'Image…'}</span></button>
+            ${r.custom ? html`<button class="btn small danger" type="button" data-logo="remove" data-key="${r.key}" data-name="${r.name}" aria-label="Retirer l'image de ${r.name}">${icon('trash')}<span>Retirer</span></button>` : ''}
+          </div></td></tr>`)}
+        </tbody></table></div>` : html`<div class="panel empty">${pict('search', 'lg')}<p>${filter === 'none' && !fq ? 'Tous les établissements ont un logo.' : 'Aucun établissement ne correspond.'}</p></div>`);
+    };
+    const schedule = () => {
+      clearTimeout(timer);
+      if (st.batch) timer = setTimeout(() => { if (current()) load().catch(() => {}); }, 2000);
+    };
+    const load = async () => {
+      st = await api('GET', '/api/admin/logos');
+      if (!current()) return;
+      await loadLogoVersions();
+      draw();
+      schedule();
+    };
+    draw();
+    schedule();
+
+    $('#logo-search').addEventListener('input', (e) => { q = e.target.value; draw(); });
+    $$('[data-filter]', root).forEach((b) => b.addEventListener('click', () => {
+      filter = b.dataset.filter;
+      store.set('logoFilter', filter);
+      $$('[data-filter]', root).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      draw();
+    }));
+    const all = $('#logos-fetch-all');
+    if (all) all.addEventListener('click', () => withBusy(all, async () => {
+      try {
+        const r = await api('POST', '/api/admin/logos/fetch', {});
+        toast(r.total ? `Recherche de ${plural(r.total, 'logo', 'logos')} lancée` : 'Tous les logos sont à jour');
+        await load();
+      } catch (err) { fail(err); }
+    }));
+    const fileInput = $('#logo-file');
+    let target = null;
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      fileInput.value = '';
+      if (!file || !target) return;
+      try {
+        const data = await imageFileToPng(file);
+        await api('PUT', `/api/admin/logos/${target.key}`, { name: target.name, data });
+        toast(`Image enregistrée pour ${target.name}`);
+        await load();
+      } catch (err) { fail(err); }
+    });
+    root.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-logo]');
+      if (!b) return;
+      const { key, name } = b.dataset;
+      if (b.dataset.logo === 'upload') { target = { key, name }; fileInput.click(); return; }
+      if (b.dataset.logo === 'remove') {
+        if (!(await confirmDialog({ title: `Retirer l'image de ${name} ?`, message: 'Le logo officiel récupéré par Vigie, ou à défaut le monogramme, s\'affichera de nouveau.', confirm: 'Retirer', danger: true }))) return;
+        try { await api('DELETE', `/api/admin/logos/${key}`); toast(`Image retirée pour ${name}`); await load(); } catch (err) { fail(err); }
+        return;
+      }
+      if (b.dataset.logo === 'fetch') await withBusy(b, async () => {
+        try {
+          const r = await api('POST', '/api/admin/logos/fetch', { id: key });
+          toast(r.status === 'ok' ? `Logo trouvé pour ${name}${r.width ? ` (${r.width} × ${r.height} px)` : ''}` : r.status === 'fetching' ? `Recherche toujours en cours pour ${name}` : `Aucun logo trouvé pour ${name} : vous pouvez déposer une image`, r.status === 'failed' ? 'error' : 'ok');
+          await load();
+        } catch (err) { fail(err); }
+      });
+    });
+  }
+
   function uaLabel(ua) {
     if (!ua) return 'Appareil inconnu';
     const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Navigateur';
@@ -1640,7 +1840,7 @@
     'toggle-discret': () => { state.discret = !state.discret; store.set('discret', state.discret); render(); },
     range: (b) => { state.range = b.dataset.range; store.set('range', state.range); render(); },
     breakdown: (b) => { state.breakdown = b.dataset.key; store.set('breakdown', state.breakdown); render(); },
-    logout: async () => { try { await api('POST', '/api/auth/logout'); } catch { /* déjà déconnecté */ } state.user = null; location.hash = '#/'; showLogin('Vous êtes déconnecté.'); },
+    logout: async () => { try { await api('POST', '/api/auth/logout'); } catch { /* déjà déconnecté */ } state.user = null; state.logoVersions = null; location.hash = '#/'; showLogin('Vous êtes déconnecté.'); },
     'new-holding': () => holdingForm().catch(fail),
     'open-holding': (b) => { history.replaceState(null, '', `#/avoirs/${b.dataset.id}`); openHolding(Number(b.dataset.id)); },
     'edit-holding': () => { const h = modal()._holding; holdingForm(h).catch(fail); },

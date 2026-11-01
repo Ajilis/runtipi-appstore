@@ -20,7 +20,7 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 | `server/loans.js` | Échéancier de prêt : tableau d'amortissement (mensualités constantes ou in fine), synthèse, valeurs mensuelles |
 | `server/fx.js` | Taux de change de la BCE |
 | `server/backup.js` | Sauvegardes `VACUUM INTO` et rotation |
-| `server/logos.js` | Logos des établissements : récupération sécurisée sur le site officiel (catalogue uniquement), cache en base |
+| `server/logos.js` | Logos des établissements : recherche de la meilleure icône sur le site officiel (catalogue uniquement), service d'icônes de Google en dernier recours, préchargement, images personnelles, cache en base |
 | `web/institutions.json` | Catalogue des établissements proposés (nom, type, alias, site officiel) |
 | `web/` | Interface, police et générateur de QR code (MIT, voir `web/vendor`) |
 
@@ -30,6 +30,8 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - `holdings` : un avoir (nom, établissement, titulaire, devise, liquidité, clôture).
 - `valuations` : une valeur par avoir et par date (`UNIQUE(holding_id, valued_at)`), en centimes. La valeur d'un avoir à une date est la dernière valeur connue à cette date. Clôturer un avoir enregistre une valeur nulle.
 - `loan_schedules` : échéancier facultatif d'un avoir (montant, taux annuel, durée en mois, date de versement, type). Les valeurs de l'avoir à partir de cette date ne sont pas stockées : elles sont calculées à la lecture (`loadState`) et fusionnées avec les valeurs saisies avant. Retirer l'échéancier ou clôturer l'avoir les enregistre dans `valuations`.
+- `logo_cache` : icône récupérée par site (`host`), avec ses dimensions et sa provenance ; `ok = 0` mémorise un échec (nouvel essai après 3 jours).
+- `institution_logos` : image déposée par l'administrateur, par identifiant du catalogue ou `perso-nom` pour un établissement hors catalogue ; prioritaire sur `logo_cache`.
 - `fx_rates` : 1 unité de devise = `rate` devise de référence.
 - `users`, `sessions`, `audit_log`, `settings`.
 
@@ -42,6 +44,8 @@ DATA_DIR=/tmp/vigie PORT=8289 npm start    # http://127.0.0.1:8289
 ```
 
 Node.js 22.13 ou plus récent est requis pour `node:sqlite`. L'image est construite par `.github/workflows/vigie-image.yml` à chaque modification de `sources/vigie/` ou `apps/vigie/` : tests sur Node 22 et 24, test de démarrage du conteneur, puis publication de `ghcr.io/ajilis/vigie:<version>` et `latest` pour amd64 et arm64.
+
+Le workflow manuel **Vigie logos check** (`.github/workflows/vigie-logos-check.yml`) vérifie depuis Internet que le logo de chaque établissement du catalogue est trouvé, et affiche un rapport texte (dimensions, format, provenance, requêtes en échec). Aucune image n'est conservée.
 
 Pour publier une nouvelle version : augmenter `version` dans `package.json`, `apps/vigie/config.json` (avec `tipi_version` + 1 et `updated_at`) et le tag de l'image dans `apps/vigie/docker-compose.yml`. Le workflow refuse un catalogue incohérent.
 
