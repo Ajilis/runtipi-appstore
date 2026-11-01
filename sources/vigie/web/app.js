@@ -890,7 +890,8 @@
               <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}</span></span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${when}</span>
-              <span class="amount"><b>${h.value_cents === null ? '—' : money(h.value_cents, h.currency)}</b>
+              <span class="amount"><b>${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency)}</b>
+                ${h.property && h.property.ownership_bp < 10000 ? html`<span class="muted">Votre part : ${h.property.ownership_bp / 100} % du bien (${money(h.value_cents, h.currency)})</span>` : ''}
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
                 ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
                 ${h.latent_gain_cents !== null && h.latent_gain_cents !== undefined ? html`<span class="${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}">Plus-value latente : ${money(h.latent_gain_cents, h.currency, { sign: true })}</span>` : ''}
@@ -978,18 +979,21 @@
       </div>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
         : html`<div class="grid-3 value-row">
-        <label class="field" data-manual><span>Valeur actuelle</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>
+        <label class="field" data-manual><span>Valeur actuelle du bien entier</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>
         <label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${c === settings.base_currency ? 'selected' : ''}>${c}</option>`)}</select></label>
         <label class="field" data-manual><span>Date de la valeur</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}"></label>
       </div><small class="muted" data-manual data-credit-hint hidden>Pour un crédit, indiquez le capital restant dû, en positif.</small>`}
-      ${existing ? html`<label class="field" data-real-current hidden><span>Valeur actuelle (${h.currency || 'EUR'})</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off" value="${h.value_cents !== null && h.value_cents !== undefined ? centsInput(h.value_cents) : ''}"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>` : ''}
+      ${existing ? html`<label class="field" data-real-current hidden><span>Valeur actuelle du bien entier (${h.currency || 'EUR'})</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off" value="${h.value_cents !== null && h.value_cents !== undefined ? centsInput(h.value_cents) : ''}"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>` : ''}
       <section class="section real-estate-fields" data-real-estate hidden>
         ${h3i('house', 'Informations immobilières')}
         <div class="grid-2">
-          <label class="field"><span>Valeur d'achat</span><input class="input amount" name="purchase_amount" inputmode="decimal" placeholder="Ex. 220 000" autocomplete="off" value="${property ? centsInput(property.purchase_cents) : ''}"></label>
+          <label class="field"><span>Valeur d'achat du bien entier</span><input class="input amount" name="purchase_amount" inputmode="decimal" placeholder="Ex. 220 000" autocomplete="off" value="${property ? centsInput(property.purchase_cents) : ''}"></label>
           <label class="field"><span>Date d'achat</span><input class="input" name="purchased_at" type="date" max="${todayIso()}" value="${property?.purchased_at || ''}"></label>
         </div>
-        <p class="small muted">Le prix d'achat ne change pas lorsque vous estimez la valeur actuelle. La plus-value latente est calculée automatiquement (hors frais et fiscalité).</p>
+        <div class="grid-2">
+          <label class="field"><span>Quote-part de propriété (%)</span><input class="input amount" name="ownership_pct" inputmode="decimal" type="number" min="0.01" max="100" step="0.01" required value="${property ? property.ownership_bp / 100 : 100}"><small>100 % si vous possédez entièrement le bien ; ex. 50 % en indivision.</small></label>
+          <p class="small muted">Les valeurs d'achat et actuelle concernent le bien entier. Seule votre quote-part est comptée dans le patrimoine et dans la plus-value latente.</p>
+        </div>
         <div class="grid-2">
           <label class="field"><span>Type de bien</span><select class="select" name="property_type"><option value="maison" ${property?.property_type !== 'appartement' ? 'selected' : ''}>Maison</option><option value="appartement" ${property?.property_type === 'appartement' ? 'selected' : ''}>Appartement</option></select></label>
           <label class="field"><span>Surface habitable (m²)</span><input class="input" name="surface_m2" type="number" min="9" max="10000" placeholder="Ex. 85" value="${property?.surface_m2 || ''}"></label>
@@ -1171,9 +1175,10 @@
         purchase_amount: body.purchase_amount, purchased_at: body.purchased_at,
         property_type: body.property_type, address: body.property_address,
         surface_m2: body.surface_m2, condition: body.property_condition,
+        ownership_pct: body.ownership_pct,
       };
       for (const k of ['owner_choice', 'owner_new', 'mode', 'sc_kind', 'sc_principal', 'sc_rate', 'sc_months', 'sc_start',
-        'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition']) delete body[k];
+        'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition', 'ownership_pct']) delete body[k];
       if (auto) { body.schedule = schedule; delete body.amount; delete body.date; } else if (sc) body.schedule = null;
       await withBusy(e.submitter, async () => {
         try {
@@ -1302,19 +1307,22 @@
       : valuations[0] ? `Valeur au ${dateLong(valuations[0].valued_at)}` : 'Aucune valeur enregistrée';
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
-      <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.value_cents === null ? '—' : money(h.value_cents, h.currency, { digits: 2 })}</p>
-        <p class="muted">${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
+      <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
+        <p class="muted">${property ? 'Valeur de votre part dans le patrimoine' : ''}${property ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${property ? html`<div class="panel"><dl class="kv">
-        <dt>Valeur d'achat</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
+        <dt>Quote-part possédée</dt><dd>${(property.ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
+        <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
+        <dt>Prix d'achat de votre part</dt><dd>${money(Math.round(property.purchase_cents * property.ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
         <dt>Date d'achat</dt><dd>${dateFr(property.purchased_at)}</dd>
-        <dt>Valeur actuelle</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
-        <dt>Plus-value latente</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
+        <dt>Valeur actuelle (bien entier)</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
+        <dt>Valeur de votre part</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
+        <dt>Plus-value latente sur votre part</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
       </dl><p class="small muted">Gain brut théorique, hors frais, travaux, crédit restant dû et fiscalité.</p></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${sc ? loanPanel(h, sc, w) : ''}
       ${canEdit() && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
         ${h3i('plus', 'Nouvelle valeur')}
-        <div class="grid-2"><label class="field"><span>Valeur en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
+        <div class="grid-2"><label class="field"><span>${property ? 'Valeur du bien entier' : 'Valeur'} en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
         <label class="field"><span>Note (facultative)</span><input class="input" name="note" maxlength="120" placeholder="Relevé annuel, estimation notaire…"></label>
         <div class="form-actions"><button class="btn primary" type="submit">${icon('check')}Enregistrer la valeur</button></div>
@@ -1433,9 +1441,9 @@
             </div>`;
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             return html`<div class="quick" data-row data-line data-stale="${stale}" data-id="${h.id}">
-              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
+              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}${h.property && h.property.ownership_bp < 10000 ? ' · Quote-part ' + (h.property.ownership_bp / 100).toLocaleString('fr-FR') + ' % (saisir valeur du bien entier)' : ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : 'aucune valeur'}</span></div>
-              <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}" placeholder="${h.currency}">
+              <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}${h.property ? ' (valeur du bien entier)' : ''}" placeholder="${h.currency}">
               <button class="btn small keep" type="button" data-action="keep-value" data-id="${h.id}" ${h.value_cents === null ? 'disabled' : ''} title="Reprendre la dernière valeur à la date choisie">${icon('equal')}Inchangée</button>
             </div>`;
           })}</section>`)}
@@ -1458,7 +1466,8 @@
         count++;
         const r = rate(h.currency);
         if (r === undefined) { missing = true; return; }
-        net += (Math.round(cents * r) - (h.value_base || 0)) * signFor(h);
+        const owned = Math.round(cents * (h.property?.ownership_bp ?? 10000) / 10000);
+        net += (Math.round(owned * r) - (h.value_base || 0)) * signFor(h);
       });
       $('#quick-count').textContent = invalid ? `${invalid} montant(s) illisible(s)` : count ? `${count} valeur${count > 1 ? 's' : ''} à enregistrer` : 'Aucune valeur saisie';
       $('#quick-preview').textContent = count ? `Patrimoine net après mise à jour : ${money(net)} (${money(net - netNow, state.base, { sign: true })})${missing ? ', hors devises sans taux' : ''}` : `Patrimoine net actuel : ${money(netNow)}`;
