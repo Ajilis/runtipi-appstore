@@ -1590,7 +1590,7 @@
     const n = (k) => rows.filter((r) => r.state === k).length;
     const mine = rows.filter((r) => r.used);
     const sample = (mine.length ? mine : rows.filter((r) => r.state !== 'none')).slice(0, 14);
-    return html`<section class="section"><div class="section-head">${h2i('bank', 'Logos des établissements')}<p>${st.enabled ? 'Récupérés sur les sites officiels, ou vos propres images' : 'Récupération désactivée : vos images, sinon monogrammes'}</p></div>
+    return html`<section class="section"><div class="section-head">${h2i('bank', 'Logos des établissements')}<p>${st.enabled ? 'Récupérés sur OpenFinTech, Wikidata et les sites officiels, ou vos propres images' : 'Récupération désactivée : vos images, sinon monogrammes'}</p></div>
       <div class="panel logo-summary">
         ${sample.length ? html`<div class="logo-strip" aria-hidden="true">${sample.map((r) => instLogo(r.name, 's36'))}</div>` : ''}
         <p>${plural(n('ok'), 'logo officiel', 'logos officiels')} · ${plural(n('custom'), 'image personnelle', 'images personnelles')} · ${plural(n('none'), 'monogramme', 'monogrammes')}${mine.length ? html`<br><span class="small muted">Vos établissements : ${mine.filter((r) => r.state !== 'none').length} sur ${mine.length} avec un logo</span>` : ''}</p>
@@ -1622,7 +1622,7 @@
   async function pageLogos(el, route, current) {
     let st = await api('GET', '/api/admin/logos');
     if (!current()) return;
-    setHeader('Logos des établissements', 'Logos officiels récupérés par votre serveur, ou vos propres images', html`<a class="btn" href="#/reglages">${icon('settings')}Réglages</a>
+    setHeader('Logos des établissements', 'Logos récupérés sur OpenFinTech, Wikidata et les sites officiels, ou vos propres images', html`<a class="btn" href="#/reglages">${icon('settings')}Réglages</a>
       ${st.enabled ? html`<button class="btn primary" type="button" id="logos-fetch-all">${icon('update')}Rechercher les logos manquants</button>` : ''}`);
     let filter = store.get('logoFilter', 'all');
     let q = '';
@@ -1635,7 +1635,7 @@
         <div class="seg" role="group" aria-label="Établissements affichés">${[['all', 'Tous'], ['mine', 'Mes établissements'], ['none', 'Sans logo']].map(([k, l]) => html`<button type="button" data-filter="${k}" aria-pressed="${filter === k}">${l}</button>`)}</div>
       </div>
       <div id="logo-list"></div>
-      <p class="small muted">Vigie cherche l'icône publiée par le site officiel de chaque établissement du catalogue (icône d'application, apple-touch-icon, favicon) et garde la plus nette dans sa base.${st.fallback ? " Si le site bloque la récupération ou n'offre qu'une petite icône, Vigie la demande au service d'icônes de Google, qui ne reçoit que le nom de domaine de l'établissement." : ''} Les logos sont recherchés de nouveau tous les 30 jours, et 3 jours après un échec. Une image personnelle (PNG, JPEG, WebP ou SVG, réduite à 256 pixels) remplace le logo pour tous les utilisateurs et sert aussi pour un établissement hors catalogue.</p>
+      <p class="small muted">Vigie recherche d'abord les logos dans OpenFinTech et Wikidata, y compris pour les établissements issus de Sirene. Si aucune image n'est disponible, le serveur cherche l'icône du site officiel (apple-touch-icon, favicon) et garde le résultat en base.${st.fallback ? " Si le site bloque la récupération ou n'offre qu'une petite icône, Vigie la demande au service d'icônes de Google, qui ne reçoit que le nom de domaine de l'établissement." : ''} Les logos sont recherchés de nouveau tous les 30 jours, et 3 jours après un échec. Une image personnelle (PNG, JPEG, WebP ou SVG, réduite à 256 pixels) remplace le logo pour tous les utilisateurs et sert aussi pour un établissement hors catalogue.</p>
       <input type="file" id="logo-file" accept="image/*" hidden></div>`);
     const root = $('#logos-page');
 
