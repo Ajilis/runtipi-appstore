@@ -18,6 +18,18 @@ test('réglages : tous les thèmes visibles selon les permissions sont couverts'
   assert.match(app, /data-settings-group="etablissements"/);
 });
 
+test('réglages : sécurité du serveur modifiable par formulaire administrateur', () => {
+  assert.match(settings, /id="security-settings-form"/);
+  for (const field of ['session_idle_minutes', 'session_max_hours', 'login_max_attempts', 'login_lock_minutes', 'require_2fa', 'institution_logos', 'institution_logos_fallback', 'current_password']) {
+    assert.match(settings, new RegExp('name="' + field + '"'));
+  }
+  assert.match(settings, /require_2fa_forced/);
+  assert.match(settings, /securityForm\.addEventListener\('submit'/);
+  assert.match(settings, /api\('PUT', '\/api\/admin\/security'/);
+  assert.match(settings, /response\.needs_2fa_setup/);
+  assert.match(settings, /Enregistrer la sécurité/);
+});
+
 test('réglages : changement accessible, clavier et mémorisation', () => {
   assert.match(settings, /role="tablist"/);
   assert.match(settings, /role="tab"/);
