@@ -147,7 +147,8 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
         address:'12 rue de la Roë, Angers',condition:'bon',ownership_pct:90},
     });
     assert.equal(badUpdate.status,409,'un admin ne peut augmenter sa part au-delà des 100 % avec partage');
-    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,68000000);
+    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,48000000);
+    assert.equal((await lucClient.get('/api/dashboard')).data.totals.assets,20000000);
   } finally { await srv.stop(); await smtp.close(); }
 });
 
