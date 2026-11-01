@@ -605,7 +605,8 @@ export function registerRoutes(router, deps) {
     }
     const property = db.prepare('SELECT * FROM real_estate WHERE holding_id = ?').get(id) || null;
     return { holding: { ...h, value_cents: snap.cents, owned_cents: snap.owned, owner_owned_cents: snap.owner_owned_cents,
-      total_ownership_bp: snap.ownership_bp, value_base: snap.base, missing_rate: snap.missingRate },
+      total_ownership_bp: snap.ownership_bp, shared_with_me: snap.shared_with_me,
+      value_base: snap.base, missing_rate: snap.missingRate },
       property, latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp) : null,
       valuations, schedule, base_currency: state.base };
   });
@@ -1494,7 +1495,12 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Export, import, sauvegardes -------------------------------------------------------------------------------
-  function exportObject() {
+  function exportObject(userId) {
+    // Export personnel uniquement, jamais les autres avoirs du serveur.
+    // Un bien reçu en partage est référencé dans le compte mais appartient
+    // au donneur : il ne doit pas être exporté comme un avoir possédé.
+    const mine = db.prepare('SELECT id FROM holdings WHERE account_user_id = ?').all(userId);
+    const owned = new Set(mine.map((h) => h.id));
     return {
       format: 'vigie-export',
       version: 1,
@@ -1503,10 +1509,10 @@ export function registerRoutes(router, deps) {
       settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList().map((o) => o.name) },
       fx_rates: db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates').all(),
       categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories ORDER BY sort_order, id').all(),
-      holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
-      valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
-      loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all(),
-      real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all(),
+      holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, account_user_id FROM holdings ORDER BY id').all().filter((h) => owned.has(h.id)),
+      valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all().filter((v) => owned.has(v.holding_id)),
+      loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
+      real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       real_estate_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp FROM real_estate_shares
         WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all(),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
@@ -1517,11 +1523,11 @@ export function registerRoutes(router, deps) {
 
   router.get('/api/export.json', { auth: 'viewer' }, (ctx) => {
     audit(ctx, 'export', 'JSON complet');
-    ctx.sendRaw(200, Buffer.from(JSON.stringify(exportObject(), null, 2)), 'application/json; charset=utf-8', `vigie-export-${stampName()}.json`);
+    ctx.sendRaw(200, Buffer.from(JSON.stringify(exportObject(ctx.user.id), null, 2)), 'application/json; charset=utf-8', `vigie-export-${stampName()}.json`);
   });
 
   router.get('/api/export/holdings.csv', { auth: 'viewer' }, (ctx) => {
-    const v = holdingsView(db);
+    const v = holdingsView(db,ctx.user.id);
     const cats = new Map(v.categories.map((c) => [c.id, c]));
     const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur du patrimoine commun en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente du patrimoine commun', 'Quote-part initiale (%)', 'Valeur de la part commune', "Prix d'achat de la part commune", 'Quote-part approuvée des autres (%)', 'Quote-part commune totale (%)']];
     for (const h of v.holdings) {
@@ -1533,7 +1539,7 @@ export function registerRoutes(router, deps) {
   });
 
   router.get('/api/export/history.csv', { auth: 'viewer' }, (ctx) => {
-    const st = loadState(db);
+    const st = loadState(db,todayIso(),ctx.user.id);
     const rows = [['Date', 'Avoir', 'Catégorie', 'Devise', 'Valeur', 'Note']];
     const data = [];
     for (const h of st.holdings) {
@@ -1551,6 +1557,10 @@ export function registerRoutes(router, deps) {
     if (d.format !== 'vigie-export' || d.version !== 1) fail(400, 'invalid_import', "Ce fichier n'est pas un export Vigie (format vigie-export, version 1).");
     for (const k of ['categories', 'holdings', 'valuations', 'fx_rates']) if (!Array.isArray(d[k])) fail(400, 'invalid_import', `Section ${k} manquante.`);
     const base = currency(d.settings?.base_currency || 'EUR');
+    // Les exports personnels ne doivent pas détruire silencieusement les
+    // avoirs détenus par d'autres comptes lors d'une importation globale.
+    if (db.prepare('SELECT 1 FROM holdings WHERE account_user_id <> ? LIMIT 1').get(ctx.user.id))
+      fail(409,'multi_account_import','L’import global risquerait d’effacer les biens des autres comptes. Utilisez une sauvegarde serveur ou contactez l’administrateur.');
     const backup = createBackup(db, paths.backups, 'avantimport');
     transaction(db, () => {
       db.exec('DELETE FROM valuations; DELETE FROM holdings; DELETE FROM categories; DELETE FROM fx_rates;');
@@ -1563,9 +1573,10 @@ export function registerRoutes(router, deps) {
       }
       for (const h of d.holdings) {
         if (h.closed_at && !isIsoDate(h.closed_at)) fail(400, 'invalid_import', `Date de clôture invalide pour ${h.name}.`);
-        db.prepare('INSERT INTO holdings (id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        db.prepare('INSERT INTO holdings (id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at, account_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .run(intId(h.id), intId(h.category_id), text(h.name, 'Avoir', { required: true, max: 80 }), text(h.institution || '', 'Établissement', { max: 80 }), text(h.owner || '', 'Titulaire', { max: 40 }),
-            currency(h.currency), oneOf(h.liquidity, LIQUIDITY, 'Liquidité'), longText(h.notes || '', 'Notes'), h.closed_at || null, Number(h.sort_order) || 0, now, now);
+            currency(h.currency), oneOf(h.liquidity, LIQUIDITY, 'Liquidité'), longText(h.notes || '', 'Notes'), h.closed_at || null, Number(h.sort_order) || 0, now, now,
+            getUser(h.account_user_id)?.id ?? ctx.user.id);
       }
       for (const v of d.valuations) {
         if (!isIsoDate(v.valued_at) || !Number.isInteger(v.amount_cents)) fail(400, 'invalid_import', 'Valeur historique invalide.');
