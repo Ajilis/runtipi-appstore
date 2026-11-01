@@ -41,6 +41,7 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
   const institutions = new InstitutionDirectory(db, { enabled: cfg.INSTITUTION_CATALOGUE !== false, fetcher, log });
   const logos = new LogoService(db, { enabled: cfg.INSTITUTION_LOGOS, fallback: cfg.INSTITUTION_LOGOS_FALLBACK, fetcher, log });
   logos.catalogue = institutions.catalogue;
+  institutions.onUpdated = () => logos.prefetchAll();
   registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions });
   const serveStatic = createStatic(WEB_DIR, cfg.VERSION);
 
