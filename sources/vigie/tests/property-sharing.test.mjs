@@ -16,7 +16,7 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
       username:'adminpartage',first_name:'Camille',last_name:'Dupont',password:PASSWORD,base_currency:'EUR',
     });
     assert.equal(r.status, 200, JSON.stringify(r.data));
-    r = await admin.post('/api/admin/mail', {
+    r = await admin.put('/api/admin/mail', {
       host:'127.0.0.1',port:smtp.port,security:'none',username:'vigie',password:'secret',
       from_address:'vigie@example.fr',from_name:'Vigie',public_url:'https://vigie.exemple.fr',
     });
@@ -81,17 +81,30 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
     assert.equal(accepted.data.invitation.status,'accepted');
     assert.equal((await leaClient.post('/api/property-shares/'+shareId+'/decision',{decision:'accept'})).status,409,
       'double acceptation refusée');
-    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,80000000,
-      'part initiale + part approuvée = 100 %, sans doublon');
+    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,48000000,
+      'le compte de Camille ne conserve que ses 60 %');
+    assert.equal((await leaClient.get('/api/dashboard')).data.totals.assets,32000000,
+      'le compte de Léa ne compte que les 40 % acceptés');
+    assert.equal((await lucClient.get('/api/dashboard')).data.totals.assets,0,
+      'aucun accès aux biens des autres comptes');
+    assert.equal((await leaClient.get('/api/holdings/'+id)).status,200,
+      'le bien partagé apparaît dans le compte destinataire');
+    assert.equal((await lucClient.get('/api/holdings/'+id)).status,404,
+      'le même bien reste invisible aux tiers sans accord');
+    assert.equal((await lucClient.patch('/api/holdings/'+id,{name:'vol'})).status,404,
+      'un éditeur ne peut jamais modifier un bien d’autrui');
+    assert.equal((await leaClient.get('/api/holdings')).data.holdings.find(x=>x.id===id).owned_cents,32000000);
+    assert.equal((await lucClient.get('/api/holdings')).data.holdings.length,0);
     const detail = (await admin.get('/api/holdings/'+id)).data;
     assert.equal(detail.holding.value_cents,80000000,'valeur unique du bien entier');
-    assert.equal(detail.holding.owned_cents,80000000,'une seule valeur commune');
-    assert.equal(detail.holding.total_ownership_bp,10000);
+    assert.equal(detail.holding.owned_cents,48000000,'60 % dans le patrimoine du titulaire original');
+    assert.equal(detail.holding.total_ownership_bp,6000);
+    assert.equal((await leaClient.get('/api/holdings/'+id)).data.holding.total_ownership_bp,4000);
     assert.equal(detail.holding.owner_owned_cents,48000000);
     assert.equal(detail.property.ownership_bp,6000,'quote-part initiale inchangée');
     const listing = (await admin.get('/api/holdings')).data.holdings.find(x=>x.id===id);
-    assert.equal(listing.total_ownership_bp,10000);
-    assert.equal(listing.latent_gain_cents,37500000,'plus-value de la quote-part du foyer');
+    assert.equal(listing.total_ownership_bp,6000);
+    assert.equal(listing.latent_gain_cents,22500000,'plus-value de la quote-part du compte original');
     assert.equal((await admin.get('/api/holdings/'+id+'/shares')).data.accepted_bp,4000);
     const csv = (await admin.get('/api/export/holdings.csv')).data.toString('utf8');
     assert.match(csv,/Quote-part approuvée des autres/);
@@ -102,7 +115,8 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
 
     const imported = await admin.post('/api/admin/import',exported);
     assert.equal(imported.status,200,JSON.stringify(imported.data));
-    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,80000000);
+    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,48000000);
+    assert.equal((await leaClient.get('/api/dashboard')).data.totals.assets,32000000);
     assert.equal((await leaClient.get('/api/property-shares/inbox')).data.accepted.length,1);
     const newShareId = (await leaClient.get('/api/property-shares/inbox')).data.accepted[0].id;
     assert.equal((await lucClient.del('/api/property-shares/'+newShareId)).status,404);
@@ -125,7 +139,8 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
     r = await admin.post('/api/holdings/'+id+'/shares',{recipient_id:luc.id,ownership_pct:25});
     assert.equal(r.status,200);
     assert.equal((await lucClient.post('/api/property-shares/'+r.data.invitation.id+'/decision',{decision:'accept'})).status,200);
-    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,68000000); // 85 % du bien
+    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,48000000);
+    assert.equal((await lucClient.get('/api/dashboard')).data.totals.assets,20000000); // 25 % du bien
     const badUpdate=await admin.patch('/api/holdings/'+id,{
       category_id:cat.id,name:'Maison indivise',property:{purchase_amount:425000,
         purchased_at:'2004-04-01',property_type:'maison',surface_m2:180,
