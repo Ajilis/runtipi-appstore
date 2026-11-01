@@ -143,5 +143,5 @@ test('estimation : notes trop longues et caractéristiques changées sont refus�
   changed.output.children[0].handlers.click();
   assert.equal(changed.amount.value, '520000');
   assert.equal(changed.noteInput.value, 'Jardin clos, portail électrique.');
-  assert.match(changed.output.textContent, /Relancez l’estimation/);
+  assert.match(changed.output.textContent, /relancez l’estimation/i);
 });
