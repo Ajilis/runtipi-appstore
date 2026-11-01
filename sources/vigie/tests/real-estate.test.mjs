@@ -44,7 +44,8 @@ test('baguette magique : données insuffisantes ou service hors ligne n’écras
   const invalid = new RealEstateEstimator({ fetcher: async () => new Response(JSON.stringify({
     data: { estimate: 280000, range: { low: 220000, high: 340000 }, comparables_count: 1 },
   })) });
-  await assert.rejects(invalid.estimate(p), (e) => e instanceof EstimateError && e.status === 422);
+  await assert.rejects(invalid.estimate(p), (e) => e instanceof EstimateError && e.status === 503 &&
+    e.message.includes('format inattendu'));
   const offline = new RealEstateEstimator({ fetcher: async () => { throw Error('offline'); } });
   await assert.rejects(offline.estimate(p), (e) => e instanceof EstimateError && e.status === 503);
   await assert.rejects(invalid.estimate({ ...p, address: '' }), (e) => e.status === 400);
@@ -232,7 +233,7 @@ test('DVF : pour une maison de 180 m² sans équivalent, médiane locale au m² 
   assert.equal(value.confidence, 'low');
   assert.equal(value.radius_m, 1500, 'plus petit périmètre local disponible');
   assert.ok(value.disclaimer.includes('surface'));
-  assert.equal(calls.length, 3, 'vérifie les comparables à 5 km avant le secours au m²');
+  assert.equal(calls.length, 4, 'vérifie les comparables jusqu’à 10 km avant le secours au m²');
   assert.ok(!calls.some((c) => c.url.includes('425000') || c.url.includes('2004-04-01')));
 });
 
