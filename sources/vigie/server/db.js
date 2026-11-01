@@ -225,6 +225,19 @@ export const MIGRATIONS = [
   DELETE FROM logo_cache WHERE ok = 0;
   UPDATE logo_cache SET fetched_at = 0 WHERE ok = 1;
   `,
+  // 0.9.3 : prix d'achat distinct de la valeur actuelle du bien immobilier.
+  `
+  CREATE TABLE real_estate (
+    holding_id INTEGER PRIMARY KEY REFERENCES holdings(id) ON DELETE CASCADE,
+    purchase_cents INTEGER NOT NULL CHECK (purchase_cents > 0),
+    purchased_at TEXT NOT NULL,
+    property_type TEXT NOT NULL CHECK (property_type IN ('maison', 'appartement')),
+    address TEXT NOT NULL DEFAULT '',
+    surface_m2 INTEGER CHECK (surface_m2 IS NULL OR (surface_m2 > 0 AND surface_m2 <= 10000)),
+    condition TEXT NOT NULL DEFAULT 'correct',
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

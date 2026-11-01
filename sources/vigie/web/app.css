@@ -614,6 +614,13 @@ details.amort > p { margin-top: 8px; }
   .settings-tab-panel { gap: 20px; }
 }
 
+/* Immobilier : prix d'achat conservé, valeur actuelle estimable dans le même champ. */
+.estate-value-input { display: flex; align-items: stretch; gap: 8px; }
+.estate-value-input .input { flex: 1; min-width: 0; }
+.estate-value-input .btn { flex: 0 0 42px; border: 1px solid var(--line-strong); }
+.real-estate-fields { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel-2); }
+[data-estimate-result]:not(:empty) { background: var(--panel); border: 1px solid var(--line); padding: 12px; border-radius: var(--radius-s); font-size: 0.875rem; }
+
 /* --- Mode application (PWA) : bandeau hors ligne et zones sûres (encoche, barre d'accueil) ------------------------ */
 .netbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: flex; align-items: center; gap: 9px;
   width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); box-shadow: var(--shadow); font-size: 0.875rem; }

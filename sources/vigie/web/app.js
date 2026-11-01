@@ -229,6 +229,7 @@
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.5 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7c1.9 0 3.5-.6 4.9-1.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    magic: '<path d="M4 20L20 4M13 4l1 3M19 10l-3 1M6 8L3 7M8 3L7 6M18 17l-1-3M21 20l-3-1"/>',
     up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
     alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.5"/>',
@@ -892,6 +893,7 @@
               <span class="amount"><b>${h.value_cents === null ? '—' : money(h.value_cents, h.currency)}</b>
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
                 ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
+                ${h.latent_gain_cents !== null && h.latent_gain_cents !== undefined ? html`<span class="${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}">Plus-value latente : ${money(h.latent_gain_cents, h.currency, { sign: true })}</span>` : ''}
                 ${diff ? html`<span class="${(diff > 0) !== (c.kind === 'liability') ? 'pos' : 'neg'}">${money(diff, h.currency, { sign: true })}</span>` : ''}</span>
             </button>`;
           })}</section>`;
@@ -919,6 +921,7 @@
     if (h.owner && !owners.some((o) => o.toLowerCase() === h.owner.toLowerCase())) owners.push(h.owner);
     const curList = [...new Set([settings.base_currency, ...settings.currencies])];
     const sc = h.schedule || null;
+    const property = h.property || null;
     const d = openDialog(html`<form class="dialog-body form" id="holding-form">
       ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter un avoir', existing ? '' : 'Un compte, un placement, un bien ou un crédit. Seule sa valeur compte, pas ses mouvements.')}
       <label class="field"><span>Nom</span><input class="input" name="name" required maxlength="80" value="${h.name || ''}" placeholder="Livret A, PEA, Appartement Lyon…" autofocus></label>
@@ -965,10 +968,29 @@
       </div>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
         : html`<div class="grid-3 value-row">
-        <label class="field" data-manual><span>Valeur actuelle</span><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"></label>
+        <label class="field" data-manual><span>Valeur actuelle</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn icon" type="button" data-estimate hidden title="Estimer la valeur actuelle" aria-label="Estimer la valeur actuelle">${icon('magic')}</button></span></label>
         <label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${c === settings.base_currency ? 'selected' : ''}>${c}</option>`)}</select></label>
         <label class="field" data-manual><span>Date de la valeur</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}"></label>
       </div><small class="muted" data-manual data-credit-hint hidden>Pour un crédit, indiquez le capital restant dû, en positif.</small>`}
+      ${existing ? html`<label class="field" data-real-current hidden><span>Valeur actuelle (${h.currency || 'EUR'})</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off" value="${h.value_cents !== null && h.value_cents !== undefined ? centsInput(h.value_cents) : ''}"><button class="btn icon" type="button" data-estimate hidden title="Estimer la valeur actuelle" aria-label="Estimer la valeur actuelle">${icon('magic')}</button></span></label>` : ''}
+      <section class="section real-estate-fields" data-real-estate hidden>
+        ${h3i('house', 'Informations immobilières')}
+        <div class="grid-2">
+          <label class="field"><span>Valeur d'achat</span><input class="input amount" name="purchase_amount" inputmode="decimal" placeholder="Ex. 220 000" autocomplete="off" value="${property ? centsInput(property.purchase_cents) : ''}"></label>
+          <label class="field"><span>Date d'achat</span><input class="input" name="purchased_at" type="date" max="${todayIso()}" value="${property?.purchased_at || ''}"></label>
+        </div>
+        <p class="small muted">Le prix d'achat ne change pas lorsque vous estimez la valeur actuelle. La plus-value latente est calculée automatiquement (hors frais et fiscalité).</p>
+        <div class="grid-2">
+          <label class="field"><span>Type de bien</span><select class="select" name="property_type"><option value="maison" ${property?.property_type !== 'appartement' ? 'selected' : ''}>Maison</option><option value="appartement" ${property?.property_type === 'appartement' ? 'selected' : ''}>Appartement</option></select></label>
+          <label class="field"><span>Surface habitable (m²)</span><input class="input" name="surface_m2" type="number" min="9" max="10000" placeholder="Ex. 85" value="${property?.surface_m2 || ''}"></label>
+        </div>
+        <div class="grid-2">
+          <label class="field"><span>Adresse ou commune</span><input class="input" name="property_address" maxlength="180" placeholder="Adresse, code postal, commune" value="${property?.address || ''}"></label>
+          <label class="field"><span>État général</span><select class="select" name="property_condition">${[['correct','Correct'],['bon','Bon'],['renove','Rénové'],['neuf','Neuf'],['travaux','Travaux à prévoir'],['a_renover','À rénover']].map(([key,label]) => html`<option value="${key}" ${(property?.condition || 'correct')===key ? 'selected' : ''}>${label}</option>`)}</select></label>
+        </div>
+        <p class="small muted">La baguette magique utilise l'adresse, le type et la surface pour chercher des ventes comparables DVF. L'adresse est envoyée à GeoRegistry uniquement sur demande.</p>
+        <div data-estimate-result role="status" aria-live="polite"></div>
+      </section>
       <label class="field"><span>Notes</span><textarea class="textarea" name="notes" maxlength="1000">${h.notes || ''}</textarea></label>
       <p class="error-text" hidden></p>
       <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon(existing ? 'check' : 'plus')}${existing ? 'Enregistrer' : "Ajouter l'avoir"}</button></div>
@@ -983,6 +1005,39 @@
     if (!existing) syncLiq();
 
     // Échéancier automatique : proposé pour les prêts accordés et les crédits.
+    const estateSection = $('[data-real-estate]', form);
+    const estimateButtons = $$('[data-estimate]', form);
+    const syncRealEstate = () => {
+      const sel = form.category_id.selectedOptions[0];
+      const show = sel.dataset.kind === 'asset' && (['house', 'building'].includes(sel.dataset.icon) || /immobilier|maison|appartement|résidence/i.test(sel.textContent));
+      estateSection.hidden = !show;
+      $('[data-real-current]', form) && ($('[data-real-current]', form).hidden = !show);
+      estimateButtons.forEach((b) => { b.hidden = !show; });
+      form.purchase_amount.required = show;
+      form.purchased_at.required = show;
+    };
+    form.category_id.addEventListener('change', syncRealEstate);
+    form.currency.addEventListener('change', syncRealEstate);
+    syncRealEstate();
+    estimateButtons.forEach((button) => button.addEventListener('click', async () => {
+      const amountInput = $('[name="amount"]', button.closest('.field'));
+      if (form.currency.value !== 'EUR') return toast('Estimation disponible uniquement pour les biens en euros.');
+      if (!form.property_address.value.trim() || !form.surface_m2.value.trim()) return toast('Indiquez une adresse et une surface pour estimer le bien.');
+      button.disabled = true;
+      const output = $('[data-estimate-result]', form);
+      output.textContent = 'Recherche des ventes comparables…';
+      try {
+        const result = await api('POST', '/api/real-estate/estimate', {
+          property_type: form.property_type.value, surface_m2: Number(form.surface_m2.value),
+          address: form.property_address.value, condition: form.property_condition.value,
+        });
+        const sampleText = result.comparables + ' ventes comparables, fiabilité ' + (result.confidence === 'high' ? 'élevée' : result.confidence === 'medium' ? 'moyenne' : 'faible');
+        output.textContent = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '.';
+        const accepted = await confirmDialog({ title: 'Appliquer cette estimation ?', message: output.textContent + ' La valeur d’achat restera inchangée. Vous devrez enregistrer le formulaire pour sauvegarder la nouvelle valeur.', confirm: 'Remplir la valeur actuelle' });
+        if (accepted) { amountInput.value = centsInput(result.estimate_cents); amountInput.dispatchEvent(new Event('input', { bubbles: true })); }
+      } catch (err) { output.textContent = err.message; }
+      finally { button.disabled = false; }
+    }));
     const modeWrap = $('[data-mode-wrap]', form);
     const block = $('[data-schedule]', form);
     let mode = sc ? 'auto' : 'manual';
@@ -1064,7 +1119,13 @@
       body.owner = body.owner_choice === '__new__' ? body.owner_new.trim() : body.owner_choice;
       const auto = !modeWrap.hidden && mode === 'auto';
       const schedule = { kind: body.sc_kind, principal: body.sc_principal, rate: body.sc_rate, months: Number(body.sc_months.trim()), start_date: body.sc_start };
-      for (const k of ['owner_choice', 'owner_new', 'mode', 'sc_kind', 'sc_principal', 'sc_rate', 'sc_months', 'sc_start']) delete body[k];
+      if (!estateSection.hidden) body.property = {
+        purchase_amount: body.purchase_amount, purchased_at: body.purchased_at,
+        property_type: body.property_type, address: body.property_address,
+        surface_m2: body.surface_m2, condition: body.property_condition,
+      };
+      for (const k of ['owner_choice', 'owner_new', 'mode', 'sc_kind', 'sc_principal', 'sc_rate', 'sc_months', 'sc_start',
+        'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition']) delete body[k];
       if (auto) { body.schedule = schedule; delete body.amount; delete body.date; } else if (sc) body.schedule = null;
       await withBusy(e.submitter, async () => {
         try {
@@ -1181,7 +1242,7 @@
   async function openHolding(id) {
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
-    const { holding: h, valuations, schedule: sc, base_currency: base } = data;
+    const { holding: h, valuations, schedule: sc, base_currency: base, property, latent_gain: latent } = data;
     const cats = holdingsCache ? holdingsCache.categories : (await api('GET', '/api/categories')).categories;
     const cat = cats.find((c) => c.id === h.category_id) || {};
     const asc = [...valuations].reverse();
@@ -1195,6 +1256,12 @@
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.value_cents === null ? '—' : money(h.value_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
+      ${property ? html`<div class="panel"><dl class="kv">
+        <dt>Valeur d'achat</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
+        <dt>Date d'achat</dt><dd>${dateFr(property.purchased_at)}</dd>
+        <dt>Valeur actuelle</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
+        <dt>Plus-value latente</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
+      </dl><p class="small muted">Gain brut théorique, hors frais, travaux, crédit restant dû et fiscalité.</p></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${sc ? loanPanel(h, sc, w) : ''}
       ${canEdit() && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
@@ -1228,7 +1295,7 @@
         <button class="btn danger" type="button" data-action="delete-holding" data-id="${h.id}" data-name="${h.name}">${icon('trash')}Supprimer</button></div>` : ''}
     </div>`, { drawer: true, onClose: () => { if (location.hash.match(/^#\/avoirs\/\d+/)) history.replaceState(null, '', '#/avoirs'); } });
     d.dataset.holding = h.id;
-    d._holding = { ...h, schedule: sc };
+    d._holding = { ...h, schedule: sc, property };
     if (asc.length > 1) lineChart($('#holding-chart', d), asc.map((v) => ({ date: v.valued_at, value: v.amount_cents })), { cur: h.currency, height: 150, label: `Valeur de ${h.name}` });
     const form = $('#valuation-form', d);
     if (form) form.addEventListener('submit', async (e) => {
