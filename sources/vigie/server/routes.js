@@ -1537,6 +1537,7 @@ export function registerRoutes(router, deps) {
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all().filter((v) => owned.has(v.holding_id)),
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
+      holding_acquisitions: db.prepare('SELECT holding_id,purchase_cents,purchased_at FROM holding_acquisitions ORDER BY holding_id').all().filter(p => owned.has(p.holding_id)),
       real_estate_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp FROM real_estate_shares
         WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all().filter((p) => owned.has(p.holding_id)),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
@@ -1556,7 +1557,7 @@ export function registerRoutes(router, deps) {
     const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur de votre part en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente de votre part', 'Quote-part (%)', 'Valeur de votre part', "Prix d'achat de votre part", 'Part reçue par partage (%)', 'Votre quote-part totale (%)']];
     for (const h of v.holdings) {
       const c = cats.get(h.category_id) || {};
-      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.total_ownership_bp)) : '', h.property ? String(h.shared_with_me ? h.total_ownership_bp / 100 : 0).replace('.', ',') : '', h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '']);
+      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : h.acquisition ? frNumber(h.acquisition.purchase_cents) : '', h.property?.purchased_at || h.acquisition?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.total_ownership_bp)) : '', h.property ? String(h.shared_with_me ? h.total_ownership_bp / 100 : 0).replace('.', ',') : '', h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '']);
     }
     audit(ctx, 'export', 'CSV des avoirs');
     ctx.sendRaw(200, Buffer.from('﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-avoirs-${stampName()}.csv`);
@@ -1606,6 +1607,14 @@ export function registerRoutes(router, deps) {
         if (!isIsoDate(v.valued_at) || !Number.isInteger(v.amount_cents)) fail(400, 'invalid_import', 'Valeur historique invalide.');
         db.prepare('INSERT INTO valuations (holding_id, valued_at, amount_cents, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
           .run(intId(v.holding_id), v.valued_at, v.amount_cents, text(v.note || '', 'Note', { max: 120 }), ctx.user.id, now);
+      }
+      for (const a of Array.isArray(d.holding_acquisitions) ? d.holding_acquisitions : []) {
+        const hid = intId(a.holding_id);
+        const holding = db.prepare('SELECT * FROM holdings WHERE id = ?').get(hid);
+        if (!holding) fail(400, 'invalid_import', 'Acquisition sans avoir correspondant.');
+        const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(holding.category_id);
+        const validated = parseAcquisition({ acquisition: { purchase_amount: a.purchase_cents / 100, purchased_at: a.purchased_at } }, cat, null, false);
+        saveAcquisition(hid, validated);
       }
       for (const p of Array.isArray(d.real_estate) ? d.real_estate : []) {
         const id = intId(p.holding_id);
