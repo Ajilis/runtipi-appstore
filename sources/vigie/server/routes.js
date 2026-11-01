@@ -14,6 +14,7 @@ import {
 import { fetchEcbRates, ratesToBase } from './fx.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
 import { TRANSPARENT_PNG } from './logos.js';
+import { LOAN_KINDS, amortization, loanSummary, loanValuations } from './loans.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP', 'CAD', 'JPY', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'CNY', 'HKD', 'SGD', 'NZD', 'ZAR', 'BRL', 'MXN', 'INR', 'KRW', 'TRY', 'ILS', 'THB', 'IDR', 'MYR', 'PHP', 'ISK'];
 
@@ -377,11 +378,19 @@ export function registerRoutes(router, deps) {
     const id = intId(ctx.params.id);
     const h = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
     if (!h) fail(404, 'not_found', 'Avoir introuvable.');
-    const state = loadState(db);
+    const today = todayIso();
+    const state = loadState(db, today);
     const snap = holdingSnapshot(state, h);
-    const valuations = db.prepare(`SELECT v.id, v.valued_at, v.amount_cents, v.note, v.created_at, u.display_name AS created_by
+    let valuations = db.prepare(`SELECT v.id, v.valued_at, v.amount_cents, v.note, v.created_at, u.display_name AS created_by
       FROM valuations v LEFT JOIN users u ON u.id = v.created_by WHERE v.holding_id = ? ORDER BY v.valued_at DESC`).all(id);
-    return { holding: { ...h, value_cents: snap.cents, value_base: snap.base, missing_rate: snap.missingRate }, valuations, base_currency: state.base };
+    const sched = state.schedules.get(id);
+    let schedule = null;
+    if (sched) {
+      valuations = [...valuations.filter((v) => v.valued_at < sched.start_date), ...loanValuations(sched, today).map((v) => ({ ...v, id: null }))]
+        .sort((a, b) => (a.valued_at < b.valued_at ? 1 : -1));
+      schedule = { ...loanSummary(sched, today), rows: amortization(sched) };
+    }
+    return { holding: { ...h, value_cents: snap.cents, value_base: snap.base, missing_rate: snap.missingRate }, valuations, schedule, base_currency: state.base };
   });
 
   router.get('/api/categories', { auth: 'viewer' }, () => {
@@ -538,12 +547,44 @@ export function registerRoutes(router, deps) {
     };
   }
 
+  // --- Échéancier de prêt ---------------------------------------------------------------------------------------
+  function parseSchedule(v) {
+    if (v === null) return null;
+    if (typeof v !== 'object' || Array.isArray(v)) fail(400, 'invalid_field', 'Échéancier invalide.');
+    const kind = oneOf(v.kind || 'amortizing', LOAN_KINDS, 'Type de remboursement');
+    const principal = amount(v.principal, 'Montant du prêt');
+    if (principal <= 0) fail(400, 'invalid_field', 'Montant du prêt : nombre positif attendu.');
+    const rate = typeof v.rate === 'number' ? v.rate : Number(String(v.rate ?? '').replace(/[%\s]/g, '').replace(',', '.'));
+    if (String(v.rate ?? '').trim() === '' || !Number.isFinite(rate) || rate < 0 || rate > 50) fail(400, 'invalid_field', 'Taux annuel : pourcentage entre 0 et 50, par exemple 3,5.');
+    const months = Number(v.months);
+    if (!Number.isInteger(months) || months < 1 || months > 600) fail(400, 'invalid_field', 'Durée : nombre de mois entre 1 et 600.');
+    if (!isIsoDate(v.start_date) || v.start_date < '1950-01-01' || v.start_date > todayIso()) fail(400, 'invalid_field', 'Date du versement : date passée ou du jour.');
+    return { kind, principal_cents: principal, annual_rate: Math.round(rate * 1000) / 1000, months, start_date: v.start_date };
+  }
+  const getSchedule = (id) => db.prepare('SELECT * FROM loan_schedules WHERE holding_id = ?').get(id);
+  const saveSchedule = (id, sc) => db.prepare(`INSERT INTO loan_schedules (holding_id, kind, principal_cents, annual_rate, months, start_date, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(holding_id) DO UPDATE SET kind = excluded.kind, principal_cents = excluded.principal_cents,
+    annual_rate = excluded.annual_rate, months = excluded.months, start_date = excluded.start_date, updated_at = excluded.updated_at`)
+    .run(id, sc.kind, sc.principal_cents, sc.annual_rate, sc.months, sc.start_date, Date.now(), Date.now());
+  // Retour en saisie manuelle : les valeurs calculées deviennent des valeurs enregistrées, rien ne disparaît de l'historique.
+  function materializeSchedule(id, userId, until = todayIso()) {
+    const sc = getSchedule(id);
+    if (!sc) return 0;
+    db.prepare('DELETE FROM valuations WHERE holding_id = ? AND valued_at >= ?').run(id, sc.start_date);
+    const points = loanValuations(sc, until, until);
+    for (const pt of points) upsertValuation.run(id, pt.valued_at, pt.amount_cents, pt.note, userId, Date.now());
+    db.prepare('DELETE FROM loan_schedules WHERE holding_id = ?').run(id);
+    return points.length;
+  }
+  const scheduleText = (sc) => `${frNumber(sc.principal_cents)} à ${String(sc.annual_rate).replace('.', ',')} % sur ${sc.months} mois depuis le ${sc.start_date}${sc.kind === 'bullet' ? ', in fine' : ''}`;
+
   const upsertValuation = db.prepare(`INSERT INTO valuations (holding_id, valued_at, amount_cents, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(holding_id, valued_at) DO UPDATE SET amount_cents = excluded.amount_cents, note = excluded.note, created_by = excluded.created_by, created_at = excluded.created_at`);
 
   router.post('/api/holdings', { auth: 'editor' }, (ctx) => {
     const f = holdingFields(ctx.body);
-    const hasInitial = ctx.body.amount !== undefined && ctx.body.amount !== null && ctx.body.amount !== '';
+    const schedule = ctx.body.schedule ? parseSchedule(ctx.body.schedule) : null;
+    const hasInitial = !schedule && ctx.body.amount !== undefined && ctx.body.amount !== null && ctx.body.amount !== '';
     const cents = hasInitial ? amount(ctx.body.amount, 'Valeur actuelle') : null;
     const date = valuationDate(ctx.body.date);
     const id = transaction(db, () => {
@@ -553,9 +594,10 @@ export function registerRoutes(router, deps) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(f.category_id, f.name, f.institution, f.owner, f.currency, f.liquidity, f.notes, order, now, now);
       const newId = Number(r.lastInsertRowid);
       if (cents !== null) upsertValuation.run(newId, date, cents, '', ctx.user.id, now);
+      if (schedule) saveSchedule(newId, schedule);
       return newId;
     });
-    audit(ctx, 'avoir_cree', f.name);
+    audit(ctx, 'avoir_cree', schedule ? `${f.name}, échéancier ${scheduleText(schedule)}` : f.name);
     return { id };
   });
 
@@ -564,9 +606,22 @@ export function registerRoutes(router, deps) {
     const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
     if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
     const f = holdingFields(ctx.body, existing);
-    db.prepare('UPDATE holdings SET category_id = ?, name = ?, institution = ?, owner = ?, currency = ?, liquidity = ?, notes = ?, updated_at = ? WHERE id = ?')
-      .run(f.category_id, f.name, f.institution, f.owner, f.currency, f.liquidity, f.notes, Date.now(), id);
+    const scheduleChange = 'schedule' in ctx.body ? parseSchedule(ctx.body.schedule) : undefined;
+    const had = getSchedule(id);
+    if (scheduleChange && existing.closed_at) fail(409, 'closed', "Rouvrez l'avoir avant de lui associer un échéancier.");
+    transaction(db, () => {
+      db.prepare('UPDATE holdings SET category_id = ?, name = ?, institution = ?, owner = ?, currency = ?, liquidity = ?, notes = ?, updated_at = ? WHERE id = ?')
+        .run(f.category_id, f.name, f.institution, f.owner, f.currency, f.liquidity, f.notes, Date.now(), id);
+      if (scheduleChange === null && had) materializeSchedule(id, ctx.user.id);
+      else if (scheduleChange) {
+        // Nouveau départ (remboursement anticipé, renégociation) : l'historique calculé jusque-là est enregistré.
+        if (had && scheduleChange.start_date > had.start_date) materializeSchedule(id, ctx.user.id, addDays(scheduleChange.start_date, -1));
+        saveSchedule(id, scheduleChange);
+      }
+    });
     audit(ctx, 'avoir_modifie', f.name);
+    if (scheduleChange) audit(ctx, 'echeancier_defini', `${f.name} : ${scheduleText(scheduleChange)}`);
+    else if (scheduleChange === null && had) audit(ctx, 'echeancier_retire', `${f.name} : retour en saisie manuelle, valeurs calculées conservées`);
     return { id };
   });
 
@@ -585,6 +640,7 @@ export function registerRoutes(router, deps) {
     if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
     const date = valuationDate(ctx.body.date);
     transaction(db, () => {
+      materializeSchedule(id, ctx.user.id, date);
       upsertValuation.run(id, date, 0, 'Clôture', ctx.user.id, Date.now());
       db.prepare('UPDATE holdings SET closed_at = ?, updated_at = ? WHERE id = ?').run(date, Date.now(), id);
     });
@@ -605,6 +661,7 @@ export function registerRoutes(router, deps) {
     const id = intId(ctx.params.id);
     const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
     if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    if (getSchedule(id)) fail(409, 'scheduled', "Cet avoir suit un échéancier automatique : modifiez l'échéancier ou repassez en saisie manuelle.");
     const cents = amount(ctx.body.amount, 'Valeur');
     const date = valuationDate(ctx.body.date);
     const note = text(ctx.body.note || '', 'Note', { max: 120 });
@@ -631,6 +688,7 @@ export function registerRoutes(router, deps) {
     const parsed = items.map((it, i) => {
       const hid = intId(it.holding_id, `Ligne ${i + 1}`);
       if (!db.prepare('SELECT 1 FROM holdings WHERE id = ?').get(hid)) fail(400, 'invalid_field', `Ligne ${i + 1} : avoir introuvable.`);
+      if (getSchedule(hid)) fail(400, 'scheduled', `Ligne ${i + 1} : cet avoir suit un échéancier automatique.`);
       return { hid, cents: amount(it.amount, `Ligne ${i + 1}`) };
     });
     transaction(db, () => {
@@ -810,6 +868,7 @@ export function registerRoutes(router, deps) {
       categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories ORDER BY sort_order, id').all(),
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
+      loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all(),
     };
   }
 
@@ -833,12 +892,17 @@ export function registerRoutes(router, deps) {
   });
 
   router.get('/api/export/history.csv', { auth: 'viewer' }, (ctx) => {
+    const st = loadState(db);
     const rows = [['Date', 'Avoir', 'Catégorie', 'Devise', 'Valeur', 'Note']];
-    const data = db.prepare(`SELECT v.valued_at, h.name, c.name AS category, h.currency, v.amount_cents, v.note FROM valuations v
-      JOIN holdings h ON h.id = v.holding_id JOIN categories c ON c.id = h.category_id ORDER BY v.valued_at, c.sort_order, h.name`).all();
-    for (const r of data) rows.push([r.valued_at, r.name, r.category, r.currency, frNumber(r.amount_cents), r.note]);
+    const data = [];
+    for (const h of st.holdings) {
+      const c = st.catById.get(h.category_id) || {};
+      for (const v of st.byHolding.get(h.id) || []) data.push([v.valued_at, h.name, c.name, h.currency, frNumber(v.amount_cents), v.note || '', c.sort_order || 0]);
+    }
+    data.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[6] - b[6] || String(a[1]).localeCompare(String(b[1]), 'fr')));
+    for (const r of data) rows.push(r.slice(0, 6));
     audit(ctx, 'export', "CSV de l'historique");
-    ctx.sendRaw(200, Buffer.from('﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-historique-${stampName()}.csv`);
+    ctx.sendRaw(200, Buffer.from('\ufeff' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-historique-${stampName()}.csv`);
   });
 
   router.post('/api/admin/import', { auth: 'admin', bodyLimit: 25 * 1024 * 1024 }, (ctx) => {
@@ -866,6 +930,13 @@ export function registerRoutes(router, deps) {
         if (!isIsoDate(v.valued_at) || !Number.isInteger(v.amount_cents)) fail(400, 'invalid_import', 'Valeur historique invalide.');
         db.prepare('INSERT INTO valuations (holding_id, valued_at, amount_cents, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
           .run(intId(v.holding_id), v.valued_at, v.amount_cents, text(v.note || '', 'Note', { max: 120 }), ctx.user.id, now);
+      }
+      for (const sc of Array.isArray(d.loan_schedules) ? d.loan_schedules : []) {
+        if (!LOAN_KINDS.includes(sc.kind) || !Number.isInteger(sc.principal_cents) || sc.principal_cents <= 0 || !Number.isInteger(sc.months) || sc.months < 1 || sc.months > 600
+          || typeof sc.annual_rate !== 'number' || !(sc.annual_rate >= 0 && sc.annual_rate <= 50) || !isIsoDate(sc.start_date)) fail(400, 'invalid_import', 'Échéancier invalide.');
+        const hid = intId(sc.holding_id);
+        if (!db.prepare('SELECT 1 FROM holdings WHERE id = ?').get(hid)) fail(400, 'invalid_import', 'Échéancier rattaché à un avoir absent du fichier.');
+        saveSchedule(hid, sc);
       }
       for (const r of d.fx_rates) {
         const c = currency(r.currency);

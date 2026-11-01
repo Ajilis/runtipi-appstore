@@ -1,6 +1,22 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 5** · **Version de Vigie : 0.5.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 6** · **Version de Vigie : 0.6.0** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.6.0 : prêts et crédits à échéancier
+
+- **Nouvelle catégorie « Prêts accordés »** : l'argent prêté à un proche ou à une société (prêt familial, compte courant d'associé) est un actif, compté dans le patrimoine et classé « bloqué ». Elle est ajoutée aux installations existantes, juste avant « Autres actifs », sauf si vous aviez déjà une catégorie de prêts ou de créances.
+- **Échéancier automatique** : pour un prêt accordé ou un crédit (immobilier, auto, consommation), choisissez **Échéancier automatique** au lieu de **Saisie manuelle** et indiquez le montant, le taux annuel, la durée en mois et la date du versement (ou du déblocage). Vigie calcule seul, chaque mois, le capital restant : plus aucune valeur à saisir.
+  - **Mensualités constantes** : la même somme chaque mois, arrondie au centime comme sur un tableau bancaire ; la dernière échéance solde les arrondis.
+  - **In fine** : seuls les intérêts sont versés chaque mois, le capital est remboursé en une fois à la fin.
+  - Taux à 0 % accepté (prêt familial sans intérêts).
+- **Aperçu immédiat** pendant la saisie : mensualité, capital restant aujourd'hui, nombre d'échéances passées, dernière échéance et coût total des intérêts.
+- **Panneau Échéancier** dans le détail de l'avoir : progression du remboursement, prochaine échéance (part d'intérêts et de capital), intérêts perçus ou payés à ce jour, et **tableau d'amortissement** complet (lignes passées grisées, prochaine échéance en évidence).
+- **Partout dans Vigie** : la courbe, l'historique, le tableau de bord, les variations et l'export CSV de l'historique reprennent les valeurs calculées. Un avoir à échéancier n'est jamais signalé « à actualiser » et s'affiche sans champ dans la mise à jour rapide.
+- **Remboursement anticipé ou renégociation** : modifiez l'échéancier avec le capital restant, la date de reprise et la durée restante. Les valeurs calculées jusque-là restent dans l'historique.
+- **Retour en saisie manuelle** à tout moment, et **clôture** : les valeurs calculées jusqu'à cette date sont enregistrées, rien ne disparaît.
+- Les échéanciers sont inclus dans l'**export JSON** et la **restauration**.
+
+Limites : le calcul ne tient pas compte de l'assurance emprunteur, des frais, des différés d'amortissement ni des taux variables. Dans ces cas, passez en saisie manuelle et reportez le capital restant de votre tableau bancaire.
 
 ## Nouveautés de la version 0.5.0 : établissements et logos
 
@@ -45,8 +61,9 @@ Vigie donne une vue globale et privée de votre patrimoine. Vous ne gérez aucun
 
 ## Ce que fait Vigie
 
-- **Avoirs par catégorie** : comptes courants, épargne réglementée, assurance-vie, bourse, épargne retraite, épargne salariale, immobilier, crypto-actifs, métaux précieux, autres actifs. Catégories modifiables.
+- **Avoirs par catégorie** : comptes courants, épargne réglementée, assurance-vie, bourse, épargne retraite, épargne salariale, immobilier, crypto-actifs, métaux précieux, prêts accordés, autres actifs. Catégories modifiables.
 - **Patrimoine net** : les passifs (crédit immobilier, autres crédits) sont déduits des actifs.
+- **Échéancier automatique** pour les prêts accordés et les crédits : capital restant calculé chaque mois à partir du montant, du taux, de la durée et de la date de versement.
 - **Historique automatique** : chaque valeur saisie est conservée. Courbe d'évolution sur 3 mois à 3 ans, variations sur 1 mois, 1 an et depuis janvier.
 - **Mise à jour rapide** : un écran pour actualiser tous les avoirs d'un coup, avec l'estimation du nouveau patrimoine avant d'enregistrer.
 - **Rappels** : les avoirs dont la valeur date de plus de 45 jours (réglable) sont signalés « à actualiser ».
@@ -84,7 +101,7 @@ Tout est dans le dossier de l'application Runtipi, `APP_DATA_DIR/data/` :
 | Dossier | Contenu |
 | --- | --- |
 | `config/vigie.env` | Fichier de configuration, créé au premier démarrage puis jamais écrasé |
-| `db/vigie.sqlite` | Base de données SQLite (avoirs, historique, comptes, journal) |
+| `db/vigie.sqlite` | Base de données SQLite (avoirs, historique, échéanciers, comptes, journal) |
 | `backups/` | Sauvegardes quotidiennes de la base, conservées 30 jours |
 
 ## Fichier de configuration

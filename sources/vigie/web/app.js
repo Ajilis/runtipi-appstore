@@ -106,6 +106,51 @@
   const ROLE = { admin: 'Administrateur', editor: 'Éditeur', viewer: 'Lecture seule' };
   const LIQ_ICON = { immediate: 'drop', short: 'clock', locked: 'lock' };
   const ROLE_ICON = { admin: 'crown', editor: 'pencil', viewer: 'eye' };
+
+  // Montant saisi (12 500,50 ou 12,500.50) en centimes ; null si vide, NaN si illisible.
+  function parseCents(s) {
+    let t = String(s ?? '').replace(/[\s\u00a0\u202f€$£]/g, '');
+    if (!t) return null;
+    if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+    else t = t.replace(',', '.');
+    return /^-?\d+(\.\d+)?$/.test(t) ? Math.round(Number(t) * 100) : NaN;
+  }
+  const centsInput = (cents) => (cents / 100).toFixed(2).replace('.', ',').replace(',00', '');
+
+  // Échéancier de prêt : même calcul que server/loans.js, pour l'aperçu immédiat du formulaire.
+  const LOAN_ICONS = ['handshake', 'loanHouse', 'loanDoc'];
+  const isLoanCat = (c) => Boolean(c) && (c.kind === 'liability' || LOAN_ICONS.includes(c.icon));
+  const LOAN_KIND = { amortizing: 'Mensualités constantes', bullet: 'In fine' };
+  function addMonthsIso(iso, months) {
+    const d = new Date(iso + 'T00:00:00Z');
+    const day = d.getUTCDate();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + months);
+    d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()));
+    return d.toISOString().slice(0, 10);
+  }
+  function amortize(s) {
+    const P = s.principal_cents, n = s.months, i = s.annual_rate / 100 / 12, rows = [];
+    if (s.kind === 'bullet') {
+      for (let k = 1; k <= n; k++) { const interest = Math.round(P * i); rows.push({ n: k, date: addMonthsIso(s.start_date, k), payment: interest + (k === n ? P : 0), interest, principal: k === n ? P : 0, remaining: k === n ? 0 : P }); }
+      return rows;
+    }
+    const M = Math.round(i === 0 ? P / n : (P * i) / (1 - (1 + i) ** -n));
+    let remaining = P;
+    for (let k = 1; k <= n; k++) {
+      const interest = Math.round(remaining * i);
+      const principal = k === n ? remaining : Math.min(remaining, M - interest);
+      remaining -= principal;
+      rows.push({ n: k, date: addMonthsIso(s.start_date, k), payment: principal + interest, interest, principal, remaining });
+    }
+    return rows;
+  }
+  // Libellés selon le sens : argent prêté (actif) ou emprunté (passif).
+  const loanWords = (liability) => (liability
+    ? { principal: 'Montant emprunté', start: 'Date du déblocage', remaining: 'Capital restant dû', payment: 'Mensualité hors assurance', interest: 'Coût total des intérêts', interestToDate: 'Intérêts payés à ce jour', end: 'Dernière échéance' }
+    : { principal: 'Montant prêté', start: 'Date du versement', remaining: 'Capital restant à recevoir', payment: 'Mensualité reçue', interest: 'Intérêts à percevoir au total', interestToDate: 'Intérêts perçus à ce jour', end: 'Dernière échéance' });
+  const monthYear = (iso) => asDate(iso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  const durationText = (m) => { const y = Math.floor(m / 12), r = m % 12; return [y ? `${y} an${y > 1 ? 's' : ''}` : '', r ? `${r} mois` : ''].filter(Boolean).join(' et '); };
   const catIconKey = (c) => (c && c.icon && CAT_ICONS[c.icon] ? c.icon : (c && c.kind === 'liability' ? 'loanDoc' : 'cube'));
   const pict = (key, cls = '') => html`<span class="pict ${cls}" aria-hidden="true">${icon(key)}</span>`;
   const catPict = (c, cls = '') => pict(catIconKey(c), `${c && c.kind === 'liability' ? 'liability' : ''} ${cls}`.trim());
@@ -711,12 +756,15 @@
         return html`<section class="panel flush group" aria-label="${c.name}">
           <div class="group-head"><div class="gh">${catPict(c)}<div><h3>${c.name}</h3><span class="sub">${c.kind === 'liability' ? 'Passif' : c.description || ''}</span></div></div><b>${money(c.kind === 'liability' ? -sum : sum)}</b></div>
           ${items.map((h) => {
-            const stale = !h.closed_at && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
+            const stale = !h.closed_at && !h.schedule && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             const diff = h.previous_cents !== null && h.value_cents !== null ? h.value_cents - h.previous_cents : null;
+            const when = h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>`
+              : h.schedule ? (h.schedule.done ? html`<span class="tag brand">${icon('check')}Remboursé</span>` : html`<span class="tag brand">${icon('calendar')}Échéancier</span><br>prochaine le ${dateFr(h.schedule.next_date)}`)
+              : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`;
             return html`<button type="button" class="holding ${h.closed_at ? 'closed' : ''}" data-action="open-holding" data-id="${h.id}">
-              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}</span></span></span>
+              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}</span></span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
-              <span class="when">${h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>` : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`}</span>
+              <span class="when">${when}</span>
               <span class="amount"><b>${h.value_cents === null ? '—' : money(h.value_cents, h.currency)}</b>
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
                 ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
@@ -742,10 +790,11 @@
   async function holdingForm(existing = null) {
     const [cats, settings] = await Promise.all([api('GET', '/api/categories'), api('GET', '/api/settings')]);
     const h = existing || {};
-    const catOptions = (kind, label) => html`<optgroup label="${label}">${cats.categories.filter((c) => c.kind === kind).map((c) => html`<option value="${c.id}" data-liq="${c.default_liquidity}" data-icon="${catIconKey(c)}" data-kind="${c.kind}" ${h.category_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</optgroup>`;
+    const catOptions = (kind, label) => html`<optgroup label="${label}">${cats.categories.filter((c) => c.kind === kind).map((c) => html`<option value="${c.id}" data-liq="${c.default_liquidity}" data-icon="${catIconKey(c)}" data-kind="${c.kind}" data-loan="${isLoanCat(c)}" ${h.category_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</optgroup>`;
     const owners = [...settings.owners];
     if (h.owner && !owners.some((o) => o.toLowerCase() === h.owner.toLowerCase())) owners.push(h.owner);
     const curList = [...new Set([settings.base_currency, ...settings.currencies])];
+    const sc = h.schedule || null;
     const d = openDialog(html`<form class="dialog-body form" id="holding-form">
       ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter un avoir', existing ? '' : 'Un compte, un placement, un bien ou un crédit. Seule sa valeur compte, pas ses mouvements.')}
       <label class="field"><span>Nom</span><input class="input" name="name" required maxlength="80" value="${h.name || ''}" placeholder="Livret A, PEA, Appartement Lyon…" autofocus></label>
@@ -767,12 +816,35 @@
         </select></label>
       </div>
       <label class="field" data-new-owner hidden><span>Nom du nouveau titulaire</span><input class="input" name="owner_new" maxlength="40" autocomplete="off" placeholder="Prénom, enfant, SCI…"></label>
+      <fieldset class="mode" data-mode-wrap hidden>
+        <legend class="sr-only">Suivi de la valeur</legend>
+        <div class="seg seg-radio">
+          <label><input type="radio" name="mode" value="auto"><span>${icon('calendar')}Échéancier automatique</span></label>
+          <label><input type="radio" name="mode" value="manual"><span>${icon('pencil')}Saisie manuelle</span></label>
+        </div>
+        <small class="muted" data-mode-hint></small>
+      </fieldset>
+      <div class="form loan-fields" data-schedule hidden>
+        <div class="grid-2">
+          <label class="field"><span data-w="principal">Montant prêté</span><input class="input amount" name="sc_principal" inputmode="decimal" autocomplete="off" placeholder="0" value="${sc ? centsInput(sc.principal_cents) : ''}"></label>
+          <label class="field"><span data-w="start">Date du versement</span><input class="input" type="date" name="sc_start" value="${sc ? sc.start_date : todayIso()}" max="${todayIso()}"></label>
+        </div>
+        <div class="grid-2">
+          <label class="field"><span>Taux annuel</span><span class="suffix"><input class="input amount" name="sc_rate" inputmode="decimal" autocomplete="off" placeholder="0" value="${sc ? String(sc.annual_rate).replace('.', ',') : ''}"><i aria-hidden="true">%</i></span></label>
+          <label class="field"><span>Durée</span><span class="suffix"><input class="input amount" name="sc_months" inputmode="numeric" autocomplete="off" placeholder="240" value="${sc ? sc.months : ''}" aria-describedby="sc-years"><i aria-hidden="true">mois</i></span><small id="sc-years" data-years></small></label>
+        </div>
+        <div class="grid-2">
+          <label class="field"><span>Remboursement</span><select class="select" name="sc_kind" aria-describedby="sc-kind-hint">${Object.entries(LOAN_KIND).map(([k, l]) => html`<option value="${k}" ${(sc ? sc.kind : 'amortizing') === k ? 'selected' : ''}>${l}</option>`)}</select></label>
+          <p class="kind-hint" id="sc-kind-hint" data-kind-hint></p>
+        </div>
+        <div class="loan-preview" data-preview aria-live="polite"></div>
+      </div>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
-        : html`<div class="grid-3">
-        <label class="field"><span>Valeur actuelle</span><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"></label>
+        : html`<div class="grid-3 value-row">
+        <label class="field" data-manual><span>Valeur actuelle</span><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"></label>
         <label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${c === settings.base_currency ? 'selected' : ''}>${c}</option>`)}</select></label>
-        <label class="field"><span>Date de la valeur</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}"></label>
-      </div><small class="muted">Pour un crédit, indiquez le capital restant dû, en positif.</small>`}
+        <label class="field" data-manual><span>Date de la valeur</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}"></label>
+      </div><small class="muted" data-manual data-credit-hint hidden>Pour un crédit, indiquez le capital restant dû, en positif.</small>`}
       <label class="field"><span>Notes</span><textarea class="textarea" name="notes" maxlength="1000">${h.notes || ''}</textarea></label>
       <p class="error-text" hidden></p>
       <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon(existing ? 'check' : 'plus')}${existing ? 'Enregistrer' : "Ajouter l'avoir"}</button></div>
@@ -785,6 +857,77 @@
     form.category_id.addEventListener('change', syncPict);
     form.category_id.addEventListener('change', syncLiq);
     if (!existing) syncLiq();
+
+    // Échéancier automatique : proposé pour les prêts accordés et les crédits.
+    const modeWrap = $('[data-mode-wrap]', form);
+    const block = $('[data-schedule]', form);
+    let mode = sc ? 'auto' : 'manual';
+    let modeTouched = Boolean(existing);
+    const scNames = ['sc_principal', 'sc_rate', 'sc_months', 'sc_start'];
+    const current = () => {
+      const o = form.category_id.selectedOptions[0];
+      return { loan: o.dataset.loan === 'true' || Boolean(sc), liability: o.dataset.kind === 'liability' };
+    };
+    const readSchedule = () => {
+      const P = parseCents(form.sc_principal.value);
+      const rateTxt = form.sc_rate.value.replace(/[%\s]/g, '').replace(',', '.');
+      const rate = Number(rateTxt);
+      const months = Number(form.sc_months.value.trim());
+      const start = form.sc_start.value;
+      const ok = P > 0 && rateTxt !== '' && rate >= 0 && rate <= 50 && Number.isInteger(months) && months >= 1 && months <= 600 && /^\d{4}-\d{2}-\d{2}$/.test(start) && start <= todayIso();
+      return ok ? { kind: form.sc_kind.value, principal_cents: P, annual_rate: rate, months, start_date: start } : null;
+    };
+    const drawPreview = () => {
+      if (block.hidden) return;
+      const { liability } = current();
+      const w = loanWords(liability);
+      $('[data-kind-hint]', form).textContent = form.sc_kind.value === 'bullet'
+        ? 'Seuls les intérêts sont versés chaque mois ; le capital est remboursé en une fois à la dernière échéance.'
+        : 'Chaque mois, la même somme rembourse une part de capital et les intérêts.';
+      const m = Number(form.sc_months.value.trim());
+      $('[data-years]', form).textContent = Number.isInteger(m) && m >= 12 && m <= 600 ? durationText(m) : '';
+      const s = readSchedule();
+      const box = $('[data-preview]', form);
+      if (!s) { box.innerHTML = part(html`<p class="il small muted">${icon('info')}<span>Renseignez le montant, le taux, la durée et la date : la mensualité et le capital restant s'affichent ici.</span></p>`); return; }
+      const rows = amortize(s);
+      const today = todayIso();
+      const paid = rows.filter((r) => r.date <= today);
+      const cur = form.currency.value;
+      const total = rows.reduce((t, r) => t + r.interest, 0);
+      box.innerHTML = part(html`
+        <div><span>${s.kind === 'bullet' ? (liability ? 'Intérêts mensuels' : 'Intérêts reçus par mois') : w.payment}</span><b>${exact(rows[0].payment, cur)}</b></div>
+        <div><span>${w.remaining} aujourd'hui</span><b>${exact(paid.length ? paid[paid.length - 1].remaining : s.principal_cents, cur)}</b><small>${paid.length} échéance${paid.length > 1 ? 's' : ''} passée${paid.length > 1 ? 's' : ''} sur ${rows.length}</small></div>
+        <div><span>${w.end}</span><b>${dateFr(rows[rows.length - 1].date)}</b>${s.kind === 'bullet' ? html`<small>capital remboursé en une fois</small>` : ''}</div>
+        <div><span>${w.interest}</span><b>${money(total, cur)}</b></div>`);
+    };
+    const syncMode = () => {
+      const { loan, liability } = current();
+      modeWrap.hidden = !loan;
+      if (!loan) mode = 'manual';
+      else if (!modeTouched) mode = 'auto';
+      for (const r of form.querySelectorAll('[name="mode"]')) r.checked = r.value === mode;
+      const auto = loan && mode === 'auto';
+      block.hidden = !auto;
+      $$('[data-manual]', form).forEach((el) => { el.hidden = auto; });
+      const ch = $('[data-credit-hint]', form);
+      if (ch) ch.hidden = auto || !liability;
+      for (const n of scNames) form[n].required = auto;
+      const w = loanWords(liability);
+      $$('[data-w]', form).forEach((el) => { el.textContent = w[el.dataset.w]; });
+      $('[data-mode-hint]', form).textContent = auto
+        ? (sc ? 'Remboursement anticipé ou renégociation : indiquez le capital restant, la date de reprise et la durée restante. Les valeurs calculées jusque-là restent dans l\'historique.'
+          : `Vigie calcule chaque mois le ${liability ? 'capital restant dû' : 'capital restant à recevoir'} à partir du montant, du taux et de la durée. Aucune valeur à saisir ensuite.`)
+        : (sc ? "Les valeurs calculées jusqu'à aujourd'hui restent dans l'historique ; vous saisirez ensuite les nouvelles valeurs vous-même."
+          : 'Vous saisissez la valeur vous-même, quand vous le souhaitez.');
+      drawPreview();
+    };
+    form.addEventListener('change', (e) => {
+      if (e.target.name === 'mode') { mode = e.target.value; modeTouched = true; syncMode(); }
+      else if (e.target.name === 'category_id') syncMode();
+      else if (e.target.name === 'currency' || e.target.name === 'sc_kind') drawPreview();
+    });
+    block.addEventListener('input', drawPreview);
+    syncMode();
     const newOwner = $('[data-new-owner]', form);
     form.owner_choice.addEventListener('change', () => {
       newOwner.hidden = form.owner_choice.value !== '__new__';
@@ -795,7 +938,10 @@
       e.preventDefault();
       const body = formData(form);
       body.owner = body.owner_choice === '__new__' ? body.owner_new.trim() : body.owner_choice;
-      delete body.owner_choice; delete body.owner_new;
+      const auto = !modeWrap.hidden && mode === 'auto';
+      const schedule = { kind: body.sc_kind, principal: body.sc_principal, rate: body.sc_rate, months: Number(body.sc_months.trim()), start_date: body.sc_start };
+      for (const k of ['owner_choice', 'owner_new', 'mode', 'sc_kind', 'sc_principal', 'sc_rate', 'sc_months', 'sc_start']) delete body[k];
+      if (auto) { body.schedule = schedule; delete body.amount; delete body.date; } else if (sc) body.schedule = null;
       await withBusy(e.submitter, async () => {
         try {
           const r = existing ? await api('PATCH', `/api/holdings/${existing.id}`, body) : await api('POST', '/api/holdings', body);
@@ -899,16 +1045,23 @@
   async function openHolding(id) {
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
-    const { holding: h, valuations, base_currency: base } = data;
+    const { holding: h, valuations, schedule: sc, base_currency: base } = data;
     const cats = holdingsCache ? holdingsCache.categories : (await api('GET', '/api/categories')).categories;
     const cat = cats.find((c) => c.id === h.category_id) || {};
     const asc = [...valuations].reverse();
+    const w = loanWords(cat.kind === 'liability');
+    const shown = sc ? valuations.filter((v) => v.id !== null) : valuations;
+    const valueLine = sc
+      ? (sc.done ? `Prêt entièrement remboursé le ${dateLong(sc.end_date)}`
+        : sc.paid_count ? `${w.remaining} après l'échéance du ${dateLong(valuations[0].valued_at)}` : `${w.remaining}, première échéance le ${dateLong(sc.next_date)}`)
+      : valuations[0] ? `Valeur au ${dateLong(valuations[0].valued_at)}` : 'Aucune valeur enregistrée';
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.value_cents === null ? '—' : money(h.value_cents, h.currency, { digits: 2 })}</p>
-        <p class="muted">${valuations[0] ? `Valeur au ${dateLong(valuations[0].valued_at)}` : 'Aucune valeur enregistrée'}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
+        <p class="muted">${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
-      ${canEdit() ? html`<form class="panel form" id="valuation-form" style="padding:16px">
+      ${sc ? loanPanel(h, sc, w) : ''}
+      ${canEdit() && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
         ${h3i('plus', 'Nouvelle valeur')}
         <div class="grid-2"><label class="field"><span>Valeur en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
@@ -923,23 +1076,23 @@
         <dt>${icon(LIQ_ICON[h.liquidity])}Liquidité</dt><dd>${LIQ[h.liquidity]}</dd>
         ${h.notes ? html`<dt>${icon('journal')}Notes</dt><dd style="white-space:pre-wrap">${h.notes}</dd>` : ''}
       </dl>
-      <section class="section">${h3i('clock', 'Historique des valeurs')}
-        ${valuations.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
-          ${valuations.map((v, i) => {
-            const prev = valuations[i + 1];
+      ${sc && !shown.length ? '' : html`<section class="section">${h3i('clock', sc ? "Valeurs saisies avant l'échéancier" : 'Historique des valeurs')}
+        ${shown.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
+          ${shown.map((v, i) => {
+            const prev = shown[i + 1];
             const diff = prev ? v.amount_cents - prev.amount_cents : null;
             return html`<tr><td>${dateFr(v.valued_at)}${v.note ? html`<br><span class="small muted">${v.note}</span>` : ''}</td><td class="num">${exact(v.amount_cents, h.currency)}</td>
               <td class="num ${!diff ? 'muted' : (diff > 0) !== (cat.kind === 'liability') ? 'pos' : 'neg'}">${diff === null ? '' : money(diff, h.currency, { sign: true })}</td>
               ${canEdit() ? html`<td class="num"><button class="btn icon ghost small" type="button" data-action="delete-valuation" data-id="${v.id}" data-holding="${h.id}" aria-label="Supprimer la valeur du ${dateFr(v.valued_at)}">${icon('trash')}</button></td>` : ''}</tr>`;
           })}</tbody></table></div>` : html`<p class="muted">Aucune valeur.</p>`}
-      </section>
+      </section>`}
       ${canEdit() ? html`<div class="form-actions" style="justify-content:flex-start">
         <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier</button>
         ${h.closed_at ? html`<button class="btn" type="button" data-action="reopen-holding" data-id="${h.id}">${icon('unlock')}Rouvrir</button>` : html`<button class="btn" type="button" data-action="close-holding" data-id="${h.id}">${icon('lock')}Clôturer</button>`}
         <button class="btn danger" type="button" data-action="delete-holding" data-id="${h.id}" data-name="${h.name}">${icon('trash')}Supprimer</button></div>` : ''}
     </div>`, { drawer: true, onClose: () => { if (location.hash.match(/^#\/avoirs\/\d+/)) history.replaceState(null, '', '#/avoirs'); } });
     d.dataset.holding = h.id;
-    d._holding = h;
+    d._holding = { ...h, schedule: sc };
     if (asc.length > 1) lineChart($('#holding-chart', d), asc.map((v) => ({ date: v.valued_at, value: v.amount_cents })), { cur: h.currency, height: 150, label: `Valeur de ${h.name}` });
     const form = $('#valuation-form', d);
     if (form) form.addEventListener('submit', async (e) => {
@@ -952,6 +1105,44 @@
         } catch (err) { fail(err); }
       });
     });
+  }
+
+  // Panneau « Échéancier » d'un avoir : progression, chiffres clés, prochaine échéance et tableau d'amortissement.
+  function loanPanel(h, sc, w) {
+    const today = todayIso();
+    const cur = h.currency;
+    const done = Math.round((sc.repaid_cents / sc.principal_cents) * 100);
+    const next = sc.rows.find((r) => r.n === sc.paid_count + 1);
+    const plain = (cents) => (state.discret ? MASK : (cents / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    const shortDate = (iso) => asDate(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    return html`<section class="panel loan" aria-label="Échéancier">
+      <div class="loan-head">${h3i('calendar', 'Échéancier automatique')}<span class="tag brand">${LOAN_KIND[sc.kind]}</span></div>
+      <div class="progress" role="progressbar" aria-label="Capital remboursé" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${done}"><span style="width:${done}%"></span></div>
+      <p class="small muted">${sc.paid_count} échéance${sc.paid_count > 1 ? 's' : ''} sur ${sc.months} · ${money(sc.repaid_cents, cur)} de capital remboursé (${done} %)</p>
+      <div class="loan-preview">
+        <div><span>${w.principal}</span><b>${money(sc.principal_cents, cur)}</b><small>le ${dateFr(sc.start_date)}</small></div>
+        <div><span>Taux annuel</span><b>${String(sc.annual_rate).replace('.', ',')} %</b><small>sur ${durationText(sc.months)}</small></div>
+        <div><span>${sc.kind === 'bullet' ? 'Intérêts mensuels' : w.payment}</span><b>${exact(sc.payment_cents, cur)}</b></div>
+        <div><span>${w.end}</span><b>${dateFr(sc.end_date)}</b></div>
+      </div>
+      ${sc.done ? html`<div class="notice info">${icon('check')}<div>Prêt entièrement remboursé le ${dateLong(sc.end_date)}.${canEdit() && !h.closed_at ? ' Vous pouvez le clôturer pour le retirer de la liste.' : ''}</div></div>`
+        : next ? html`<div class="notice info">${icon('clock')}<div>Prochaine échéance le <b>${dateLong(next.date)}</b> : ${exact(next.payment, cur)}, dont ${exact(next.interest, cur)} d'intérêts et ${exact(next.principal, cur)} de capital.</div></div>` : ''}
+      <dl class="kv">
+        <dt>${icon('percent')}${w.interestToDate}</dt><dd>${exact(sc.interest_received_cents, cur)}</dd>
+        <dt>${icon('sum')}${w.interest}</dt><dd>${exact(sc.total_interest_cents, cur)}</dd>
+      </dl>
+      <details class="amort">
+        <summary>${icon('chevDown')}<span>Tableau d'amortissement</span><span class="muted">${sc.rows.length} échéances</span></summary>
+        <div class="amort-wrap" tabindex="0" aria-label="Tableau d'amortissement, défilable"><table class="amort-table">
+          <thead><tr><th class="opt">N°</th><th>Date</th><th class="num opt">Échéance</th><th class="num">Intérêts</th><th class="num">Capital</th><th class="num">Restant</th></tr></thead>
+          <tbody>${sc.rows.map((r) => html`<tr class="${r.date <= today ? 'paid' : ''}${next && r.n === next.n ? ' next' : ''}"><td class="opt">${r.n}</td><td>${shortDate(r.date)}</td><td class="num opt">${plain(r.payment)}</td><td class="num">${plain(r.interest)}</td><td class="num">${plain(r.principal)}</td><td class="num">${plain(r.remaining)}</td></tr>`)}</tbody>
+        </table></div>
+        <p class="small muted">Montants en ${cur}. Les lignes passées sont grisées. Calcul au centime, sans assurance ni frais.</p>
+      </details>
+      ${canEdit() ? html`<div class="form-actions" style="justify-content:flex-start">
+        <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier l'échéancier</button>
+        <button class="btn" type="button" data-action="schedule-manual" data-id="${h.id}">${icon('pencil')}Passer en saisie manuelle</button></div>` : ''}
+    </section>`;
   }
 
   async function refreshAfterChange(holdingId) {
@@ -969,6 +1160,7 @@
     state.base = v.base_currency;
     setHeader('Mise à jour rapide', 'Saisissez les nouvelles valeurs, les autres restent inchangées', discretButton());
     const open = v.holdings.filter((h) => !h.closed_at);
+    const manualOpen = open.filter((h) => !h.schedule);
     if (!open.length) { el.innerHTML = part(html`<div class="panel empty">${pict('update', 'lg')}<h2>Aucun avoir à mettre à jour</h2><p>Ajoutez d'abord vos avoirs.</p><a class="btn primary" href="#/avoirs">Voir les avoirs</a></div>`); return; }
     const rate = (cur) => (cur === v.base_currency ? 1 : (s.rates.find((r) => r.currency === cur) || {}).rate);
     const kind = new Map(v.categories.map((c) => [c.id, c.kind]));
@@ -983,8 +1175,13 @@
         ${groups.map(({ c, items }) => html`<section class="panel flush group" data-group>
           <div class="group-head"><div class="gh">${catPict(c, 'sm')}<h3>${c.name}</h3></div><span class="sub">${c.kind === 'liability' ? 'Capital restant dû' : ''}</span></div>
           ${items.map((h) => {
+            if (h.schedule) return html`<div class="quick auto" data-line data-stale="false">
+              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span></div></div>
+              <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : '—'}</span></div>
+              <div class="auto-note">${il('calendar', h.schedule.done ? 'Prêt remboursé' : `Calculé par l'échéancier, prochaine échéance le ${dateFr(h.schedule.next_date)}`)}</div>
+            </div>`;
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
-            return html`<div class="quick" data-row data-stale="${stale}" data-id="${h.id}">
+            return html`<div class="quick" data-row data-line data-stale="${stale}" data-id="${h.id}">
               <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : 'aucune valeur'}</span></div>
               <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}" placeholder="${h.currency}">
@@ -995,14 +1192,8 @@
           <button class="btn primary" type="submit" id="quick-save" disabled>${icon('check')}Enregistrer les valeurs</button></div>
       </form>`);
     const form = $('#quick-form');
-    const byId = new Map(open.map((h) => [String(h.id), h]));
-    const parse = (s) => {
-      let t = String(s).replace(/[\s  €$£]/g, '');
-      if (!t) return null;
-      if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
-      else t = t.replace(',', '.');
-      return /^-?\d+(\.\d+)?$/.test(t) ? Math.round(Number(t) * 100) : NaN;
-    };
+    const byId = new Map(manualOpen.map((h) => [String(h.id), h]));
+    const parse = parseCents;
     const update = () => {
       let count = 0, invalid = 0, net = netNow, missing = false;
       $$('[data-row]', form).forEach((row) => {
@@ -1025,8 +1216,8 @@
     form.addEventListener('input', update);
     $('#only-stale').addEventListener('change', (e) => {
       onlyStale = e.target.checked;
-      $$('[data-row]', form).forEach((r) => { r.hidden = onlyStale && r.dataset.stale !== 'true'; });
-      $$('[data-group]', form).forEach((g) => { g.hidden = $$('[data-row]', g).every((r) => r.hidden); });
+      $$('[data-line]', form).forEach((r) => { r.hidden = onlyStale && r.dataset.stale !== 'true'; });
+      $$('[data-group]', form).forEach((g) => { g.hidden = $$('[data-line]', g).every((r) => r.hidden); });
     });
     form.addEventListener('click', (e) => {
       const b = e.target.closest('[data-action="keep-value"]');
@@ -1453,6 +1644,12 @@
     'new-holding': () => holdingForm().catch(fail),
     'open-holding': (b) => { history.replaceState(null, '', `#/avoirs/${b.dataset.id}`); openHolding(Number(b.dataset.id)); },
     'edit-holding': () => { const h = modal()._holding; holdingForm(h).catch(fail); },
+    'schedule-manual': async (b) => {
+      const id = Number(b.dataset.id);
+      const h = modal()._holding;
+      if (!(await confirmDialog({ title: `Passer ${h.name} en saisie manuelle ?`, message: "Les valeurs calculées jusqu'à aujourd'hui sont enregistrées dans l'historique. Vous saisirez ensuite les nouvelles valeurs vous-même. Vous pourrez redéfinir un échéancier plus tard.", confirm: 'Passer en saisie manuelle' }))) { openHolding(id); return; }
+      try { await api('PATCH', `/api/holdings/${id}`, { schedule: null }); toast('Échéancier retiré, valeurs conservées'); await refreshAfterChange(id); } catch (err) { fail(err); }
+    },
     'close-holding': async (b) => {
       const id = b.dataset.id;
       const h = modal()._holding;

@@ -17,6 +17,7 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 | `server/auth.js` | Sessions, limitation des tentatives, défis de double authentification |
 | `server/security.js` | scrypt, AES-256-GCM, TOTP (RFC 6238), codes de secours |
 | `server/portfolio.js` | Calculs : valeurs à une date, totaux, répartitions, variations, historique |
+| `server/loans.js` | Échéancier de prêt : tableau d'amortissement (mensualités constantes ou in fine), synthèse, valeurs mensuelles |
 | `server/fx.js` | Taux de change de la BCE |
 | `server/backup.js` | Sauvegardes `VACUUM INTO` et rotation |
 | `server/logos.js` | Logos des établissements : récupération sécurisée sur le site officiel (catalogue uniquement), cache en base |
@@ -28,6 +29,7 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - `categories` : actif ou passif, liquidité par défaut, allocation cible.
 - `holdings` : un avoir (nom, établissement, titulaire, devise, liquidité, clôture).
 - `valuations` : une valeur par avoir et par date (`UNIQUE(holding_id, valued_at)`), en centimes. La valeur d'un avoir à une date est la dernière valeur connue à cette date. Clôturer un avoir enregistre une valeur nulle.
+- `loan_schedules` : échéancier facultatif d'un avoir (montant, taux annuel, durée en mois, date de versement, type). Les valeurs de l'avoir à partir de cette date ne sont pas stockées : elles sont calculées à la lecture (`loadState`) et fusionnées avec les valeurs saisies avant. Retirer l'échéancier ou clôturer l'avoir les enregistre dans `valuations`.
 - `fx_rates` : 1 unité de devise = `rate` devise de référence.
 - `users`, `sessions`, `audit_log`, `settings`.
 

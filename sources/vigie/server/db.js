@@ -128,6 +128,25 @@ export const MIGRATIONS = [
     fetched_at INTEGER NOT NULL
   );
   `,
+  // 0.6.0 : échéancier automatique des prêts, et catégorie « Prêts accordés » ajoutée aux installations existantes.
+  `
+  CREATE TABLE loan_schedules (
+    holding_id INTEGER PRIMARY KEY REFERENCES holdings(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('amortizing', 'bullet')),
+    principal_cents INTEGER NOT NULL CHECK (principal_cents > 0),
+    annual_rate REAL NOT NULL CHECK (annual_rate >= 0),
+    months INTEGER NOT NULL CHECK (months > 0),
+    start_date TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  INSERT INTO categories (name, kind, description, default_liquidity, icon, sort_order, created_at)
+  SELECT 'Prêts accordés', 'asset', 'Argent prêté à un proche ou à une société', 'locked', 'handshake',
+    COALESCE((SELECT sort_order FROM categories WHERE name = 'Autres actifs') - 5, (SELECT MAX(sort_order) FROM categories) + 10),
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE EXISTS (SELECT 1 FROM categories)
+    AND NOT EXISTS (SELECT 1 FROM categories WHERE icon = 'handshake' OR lower(name) LIKE '%prêt%accord%' OR lower(name) LIKE '%pret%accord%' OR lower(name) LIKE '%créance%' OR lower(name) LIKE '%creance%');
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).
@@ -186,6 +205,7 @@ export const DEFAULT_CATEGORIES = [
   { name: 'Immobilier', kind: 'asset', default_liquidity: 'locked', description: 'Résidence principale, locatif, SCPI', icon: 'house' },
   { name: 'Crypto-actifs', kind: 'asset', default_liquidity: 'short', description: 'Portefeuilles et plateformes', icon: 'crypto' },
   { name: 'Métaux précieux', kind: 'asset', default_liquidity: 'short', description: 'Or, argent', icon: 'gold' },
+  { name: 'Prêts accordés', kind: 'asset', default_liquidity: 'locked', description: 'Argent prêté à un proche ou à une société', icon: 'handshake' },
   { name: 'Autres actifs', kind: 'asset', default_liquidity: 'locked', description: 'Véhicules, objets de valeur, parts de société', icon: 'gem' },
   { name: 'Crédits immobiliers', kind: 'liability', default_liquidity: 'locked', description: 'Capital restant dû', icon: 'loanHouse' },
   { name: 'Autres crédits', kind: 'liability', default_liquidity: 'locked', description: 'Prêts personnels, auto, travaux', icon: 'loanDoc' },

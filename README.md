@@ -19,6 +19,8 @@ Accès direct LAN : `http://IP_DU_SERVEUR:8291` ; Cloudflare Tunnel vers ce port
 Fichiers : [Docker Compose](apps/cloakbrowser/docker-compose.yml) · [Configuration Runtipi](apps/cloakbrowser/config.json) · [Documentation de CloakBrowser](apps/cloakbrowser/metadata/description.md).
 
 ---
+**Vigie Patrimoine V6 (0.6.0)** : prêts accordés et crédits à échéancier automatique ; capital restant calculé chaque mois à partir du montant, du taux, de la durée et de la date de versement (mensualités constantes ou in fine), tableau d'amortissement, nouvelle catégorie « Prêts accordés ». [Documentation](apps/vigie/metadata/description.md#nouveautés-de-la-version-060--prêts-et-crédits-à-échéancier).
+
 **Vigie Patrimoine V5 (0.5.0)** : suggestions d'établissement dès la 3e lettre (catalogue de 73 banques, courtiers, assureurs, plateformes), pastille d'établissement dans chaque avoir avec logo récupéré sur le site officiel ou monogramme. [Documentation](apps/vigie/metadata/description.md).
 
 **Vigie Patrimoine V4 (0.4.0)** : application installable (PWA) via l'adresse HTTPS Cloudflare, sur Android, iPhone et ordinateur ; interface en cache, données jamais stockées sur l'appareil ; écran hors ligne et reconnexion automatique. [Installation de l'application](apps/vigie/metadata/description.md#nouveautés-de-la-version-040--application-installable-pwa).
@@ -148,9 +150,9 @@ Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/d
 
 ## Installer Vigie Patrimoine (suivi de patrimoine, Cloudflare Tunnel, sans Traefik)
 
-**Version du catalogue Runtipi : 5** · **Version du logiciel : Vigie 0.5.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 6** · **Version du logiciel : Vigie 0.6.0** · **Runtipi minimum : 4.9.1**
 
-Vigie donne une vue globale de votre patrimoine sans gérer les mouvements : une valeur par avoir et par date. Patrimoine net (passifs déduits), historique et variations, répartition par catégorie, établissement, titulaire, devise et liquidité, allocation cible, mise à jour rapide, rappels, multi-devises (taux BCE), mode discret, exports et sauvegardes. Un seul conteneur (Node.js + SQLite, image `ghcr.io/ajilis/vigie`).
+Vigie donne une vue globale de votre patrimoine sans gérer les mouvements : une valeur par avoir et par date. Patrimoine net (passifs déduits), prêts accordés et crédits avec échéancier automatique, historique et variations, répartition par catégorie, établissement, titulaire, devise et liquidité, allocation cible, mise à jour rapide, rappels, multi-devises (taux BCE), mode discret, exports et sauvegardes. Un seul conteneur (Node.js + SQLite, image `ghcr.io/ajilis/vigie`).
 
 1. **Image Docker :** construite par GitHub Actions (`.github/workflows/vigie-image.yml`) à chaque modification de `sources/vigie/`. Au premier passage, vérifier dans **GitHub → Packages → vigie → Package settings** que la visibilité est **Public**, sinon Runtipi ne pourra pas télécharger l'image.
 2. Dans **Runtipi → Settings → App Stores**, actualiser `https://github.com/Ajilis/runtipi-appstore`, puis installer **Vigie Patrimoine** (port local **8289**). Le secret est généré par Runtipi ; cocher **Double authentification obligatoire** si Vigie sera joignable par le tunnel.

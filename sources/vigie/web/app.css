@@ -185,7 +185,7 @@ h3.ti svg { width: 17px; height: 17px; color: var(--brand); flex: none; }
 .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
 .btn[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand); }
 
-.field { display: grid; gap: 6px; }
+.field { display: grid; gap: 6px; align-content: start; }
 .field > span, .field > label { font-weight: 500; font-size: 0.875rem; }
 .field small { color: var(--muted); font-size: 0.8125rem; }
 .input, .select, .textarea { width: 100%; min-height: 40px; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--panel); }
@@ -349,6 +349,8 @@ fieldset.field legend b { font-weight: 400; color: var(--muted); }
 .quick .prev b { font-weight: 500; display: block; }
 .quick .prev span { font-size: 0.8125rem; color: var(--muted); }
 .quick.changed { background: var(--brand-soft); }
+.quick .auto-note { grid-column: 3 / -1; color: var(--muted); font-size: 0.8125rem; }
+.quick .auto-note .il > svg { color: var(--brand); }
 .sticky-foot { position: sticky; bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border-radius: var(--radius-m); background: var(--panel); border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
 
 /* --- Dialogues et tiroir ------------------------------------------------------------------------------------------------ */
@@ -413,6 +415,10 @@ dialog[open].drawer { animation: slide-in 0.18s ease-out; }
   .quick { grid-template-columns: minmax(0, 1fr) minmax(120px, 0.8fr); }
   .quick .prev { grid-column: 1; text-align: left; grid-row: 2; }
   .quick .keep { grid-column: 2; grid-row: 2; justify-self: end; }
+  .quick.auto { grid-template-columns: minmax(0, 1fr) auto; }
+  .quick.auto .prev { grid-column: 2; grid-row: 1; text-align: right; }
+  .quick.auto .auto-note { grid-column: 1 / -1; grid-row: 2; }
+  .loan-fields { padding: 12px; }
   .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); }
   .bar-row { grid-template-columns: minmax(0, 1fr) auto; }
   .bar-row .track { grid-column: 1 / -1; grid-row: 2; }
@@ -439,6 +445,9 @@ dialog[open].drawer { animation: slide-in 0.18s ease-out; }
 }
 @media (max-width: 480px) {
   .ac-list { left: 0; width: 100%; }
+  .amort-table th, .amort-table td { padding-left: 6px; padding-right: 6px; }
+  .amort-table { font-size: 0.75rem; }
+  .seg-radio span { flex-direction: column; gap: 3px; font-size: 0.8125rem; }
   .bar-row .label { gap: 10px; }
   .pict.lg { width: 42px; height: 42px; }
 }
@@ -458,6 +467,64 @@ dialog[open].drawer { animation: slide-in 0.18s ease-out; }
   .table td[colspan] { display: block; text-align: left; font-weight: 400; }
   .table tbody tr.clickable:hover td { background: none; }
 }
+/* --- Échéancier de prêt ------------------------------------------------------------------------------------------- */
+fieldset.mode { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 8px; }
+.seg-radio { display: flex; width: 100%; }
+.seg-radio label { flex: 1 1 0; position: relative; cursor: pointer; min-width: 0; }
+.seg-radio label + label { border-left: 1px solid var(--line); }
+.seg-radio input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.seg-radio span { display: flex; align-items: center; justify-content: center; gap: 7px; height: 100%; min-height: 38px; padding: 6px 10px; color: var(--muted); font-weight: 500; font-size: 0.875rem; text-align: center; line-height: 1.25; }
+.seg-radio svg { width: 16px; height: 16px; flex: none; }
+.seg-radio label:hover span { color: var(--ink); }
+.seg-radio input:checked + span { background: var(--ink); color: var(--panel); }
+.seg-radio input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: -3px; }
+.loan-fields { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel-2); }
+.field > .suffix { position: relative; display: block; font-weight: 400; font-size: inherit; }
+.suffix .input { padding-right: 52px; }
+.suffix i { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); font-size: 0.875rem; pointer-events: none; }
+.loan-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; padding: 12px 14px; border-radius: var(--radius-s); background: var(--panel); border: 1px solid var(--line); }
+.loan-preview > div { display: grid; gap: 1px; align-content: start; min-width: 0; }
+.loan-preview span { color: var(--muted); font-size: 0.8125rem; }
+.loan-preview b { font-weight: 500; font-size: 1.0625rem; font-variant-numeric: tabular-nums; }
+.loan-preview small { color: var(--muted); font-size: 0.75rem; }
+.loan-preview > p { grid-column: 1 / -1; margin: 0; }
+.loan-preview > p svg { color: var(--brand); }
+.panel.loan { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 16px; }
+.panel.loan > * { min-width: 0; }
+.panel.loan .loan-preview { background: var(--panel-2); }
+.loan-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.progress { height: 8px; border-radius: 999px; background: var(--grid); overflow: hidden; }
+.progress span { display: block; height: 100%; min-width: 2px; background: var(--brand); border-radius: 999px; }
+.panel.loan .kv { grid-template-columns: max-content 1fr; }
+.panel.loan .kv dd { text-align: right; font-variant-numeric: tabular-nums; }
+details.amort { border-top: 1px solid var(--line); padding-top: 10px; }
+details.amort summary { display: flex; align-items: center; gap: 8px; min-height: 38px; cursor: pointer; font-weight: 500; list-style: none; }
+details.amort summary::-webkit-details-marker { display: none; }
+details.amort summary svg { width: 16px; height: 16px; flex: none; color: var(--brand); transition: transform 0.15s; transform: rotate(-90deg); }
+details.amort[open] summary svg { transform: none; }
+details.amort summary .muted { margin-left: auto; font-weight: 400; font-size: 0.8125rem; }
+details.amort > p { margin-top: 8px; }
+.amort-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-s); margin-top: 6px; }
+.amort-wrap:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.amort-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.amort-table th { position: sticky; top: 0; z-index: 1; background: var(--panel); color: var(--muted); font-weight: 500; text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.amort-table td { padding: 5px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.amort-table .num { text-align: right; }
+.amort-table tr:last-child td { border-bottom: 0; }
+.amort-table tr.paid td { color: var(--faint); }
+.amort-table tr.next td { background: var(--brand-soft); color: var(--ink); font-weight: 500; }
+.m-only { display: none; }
+.kind-hint { align-self: center; color: var(--muted); font-size: 0.8125rem; margin: 0; }
+@media (max-width: 860px) {
+  .m-only { display: inline; }
+  .panel.loan .kv dt { margin-top: 0; }
+  .kind-hint { margin-top: -6px; }
+}
+@media (max-width: 480px) {
+  .amort-table .opt { display: none; }
+  .panel.loan { padding: 14px 12px; }
+}
+
 /* --- Mode application (PWA) : bandeau hors ligne et zones sûres (encoche, barre d'accueil) ------------------------ */
 .netbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: flex; align-items: center; gap: 9px;
   width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); box-shadow: var(--shadow); font-size: 0.875rem; }

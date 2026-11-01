@@ -44,7 +44,8 @@ test('installation locale du compte administrateur', async () => {
   const again = await client(srv.base).post('/api/auth/setup', { username: 'bob', display_name: 'Bob', password: PASSWORD });
   assert.equal(again.status, 409);
   const cats = await admin.get('/api/categories');
-  assert.equal(cats.data.categories.length, 12);
+  assert.equal(cats.data.categories.length, 13);
+  assert.equal(cats.data.categories.find((c) => c.name === 'Prêts accordés').kind, 'asset');
 });
 
 test('protection CSRF des requêtes modifiantes', async () => {
@@ -101,7 +102,7 @@ test('avoirs, valeurs, devises et passifs', async () => {
 
 test('pictogrammes des catégories', async () => {
   const cats = (await admin.get('/api/categories')).data.categories;
-  assert.deepEqual(cats.map((c) => c.icon), ['wallet', 'piggy', 'umbrella', 'chart', 'hourglass', 'briefcase', 'house', 'crypto', 'gold', 'gem', 'loanHouse', 'loanDoc']);
+  assert.deepEqual(cats.map((c) => c.icon), ['wallet', 'piggy', 'umbrella', 'chart', 'hourglass', 'briefcase', 'house', 'crypto', 'gold', 'handshake', 'gem', 'loanHouse', 'loanDoc']);
   const created = await admin.post('/api/categories', { name: 'Véhicules', kind: 'asset' });
   assert.equal(created.data.category.icon, 'cube', 'pictogramme par défaut');
   const upd = await admin.patch(`/api/categories/${created.data.category.id}`, { icon: 'car' });

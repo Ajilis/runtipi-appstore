@@ -1,5 +1,6 @@
 // Calculs du patrimoine : valeurs actuelles, conversions de devises, répartitions et historique.
 import { getSetting } from './db.js';
+import { loanSummary, loanValuations } from './loans.js';
 
 export const LIQUIDITY = ['immediate', 'short', 'locked'];
 
@@ -69,7 +70,18 @@ export function getRates(db) {
 }
 
 // Charge l'état complet en mémoire : quelques centaines de lignes pour un patrimoine personnel.
-export function loadState(db) {
+export function getSchedules(db) {
+  return new Map(db.prepare('SELECT * FROM loan_schedules').all().map((s) => [s.holding_id, s]));
+}
+
+// Valeurs d'un avoir : saisies manuelles, ou, s'il suit un échéancier, valeurs antérieures au versement
+// puis capital restant calculé à chaque échéance jusqu'à aujourd'hui.
+export function mergeSchedule(list, schedule, today) {
+  if (!schedule) return list;
+  return [...list.filter((v) => v.valued_at < schedule.start_date), ...loanValuations(schedule, today)];
+}
+
+export function loadState(db, today = todayIso()) {
   const categories = db.prepare('SELECT * FROM categories ORDER BY sort_order, id').all();
   const holdings = db.prepare('SELECT * FROM holdings ORDER BY sort_order, id').all();
   const valuations = db.prepare('SELECT id, holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all();
@@ -78,9 +90,11 @@ export function loadState(db) {
     if (!byHolding.has(v.holding_id)) byHolding.set(v.holding_id, []);
     byHolding.get(v.holding_id).push(v);
   }
+  const schedules = getSchedules(db);
+  for (const [hid, s] of schedules) byHolding.set(hid, mergeSchedule(byHolding.get(hid) || [], s, today));
   const catById = new Map(categories.map((c) => [c.id, c]));
   const { base, rates } = getRates(db);
-  return { categories, holdings, byHolding, catById, base, rates };
+  return { categories, holdings, byHolding, catById, base, rates, schedules, today };
 }
 
 function lastOnOrBefore(list, date) {
@@ -144,8 +158,8 @@ function groupSum(items) {
 }
 
 export function dashboard(db, options = {}) {
-  const state = loadState(db);
   const today = options.today || todayIso();
+  const state = loadState(db, today);
   const staleDays = Number(getSetting(db, 'stale_days', '45'));
   let assets = 0, liabilities = 0;
   const liquidity = { immediate: 0, short: 0, locked: 0 };
@@ -163,7 +177,7 @@ export function dashboard(db, options = {}) {
       openCount += 1;
       const last = snap.valuation ? snap.valuation.valued_at : null;
       const age = last ? daysBetween(last, today) : null;
-      if (staleDays > 0 && (age === null || age > staleDays)) stale.push({ id: h.id, name: h.name, category: cat.name, category_icon: cat.icon, kind: cat.kind, last_date: last, age_days: age });
+      if (!state.schedules.has(h.id) && staleDays > 0 && (age === null || age > staleDays)) stale.push({ id: h.id, name: h.name, category: cat.name, category_icon: cat.icon, kind: cat.kind, last_date: last, age_days: age });
     }
     if (snap.missingRate) { missingRates.add(h.currency); continue; }
     if (snap.base === null || (h.closed_at && snap.base === 0)) continue;
@@ -217,8 +231,8 @@ export function dashboard(db, options = {}) {
 
 // Points de la courbe : chaque date de valorisation de la période, plus ses bornes.
 export function history(db, range = '1y', options = {}) {
-  const state = loadState(db);
   const today = options.today || todayIso();
+  const state = loadState(db, today);
   const first = firstValuationDate(state);
   if (!first) return { base_currency: state.base, points: [] };
   const starts = { '3m': addMonths(today, -3), '6m': addMonths(today, -6), '1y': addMonths(today, -12), '3y': addMonths(today, -36), '5y': addMonths(today, -60), all: first };
@@ -232,8 +246,8 @@ export function history(db, range = '1y', options = {}) {
 
 // Liste des avoirs avec leur valeur actuelle et une mini-série pour l'aperçu.
 export function holdingsView(db) {
-  const state = loadState(db);
   const today = todayIso();
+  const state = loadState(db, today);
   const staleDays = Number(getSetting(db, 'stale_days', '45'));
   return {
     base_currency: state.base,
@@ -255,6 +269,7 @@ export function holdingsView(db) {
         previous_date: prev ? prev.valued_at : null,
         valuation_count: list.length,
         spark: list.slice(-24).map((v) => [v.valued_at, v.amount_cents]),
+        schedule: state.schedules.has(h.id) ? loanSummary(state.schedules.get(h.id), today) : null,
       };
     }),
   };

@@ -39,6 +39,7 @@ test('base 0.1.0 : prénom et nom repris du nom affiché, pictogrammes déduits 
     'Comptes courants': 'wallet', 'Épargne réglementée': 'piggy', 'Assurance-vie': 'umbrella', Bourse: 'chart', 'Épargne retraite': 'hourglass',
     'Épargne salariale': 'briefcase', Immobilier: 'house', SCPI: 'building', 'Crypto-actifs': 'crypto', 'Métaux précieux': 'gold', 'Véhicules': 'car',
     'Autres actifs': 'gem', 'Ma collection': 'cube', 'Crédits immobiliers': 'loanHouse', 'Autres crédits': 'loanDoc',
+    'Prêts accordés': 'handshake',
   });
   db.close();
   const again = openDatabase(dir);
@@ -57,4 +58,35 @@ test('base 0.2.0 : seule la migration des pictogrammes est appliquée', () => {
   assert.equal(db.prepare("SELECT first_name FROM users").get().first_name, 'Alex');
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('base 0.5.0 : catégorie « Prêts accordés » ajoutée une seule fois, table des échéanciers créée', () => {
+  const dir = legacyDatabase(4, (raw) => {
+    const c = raw.prepare("INSERT INTO categories (name, kind, icon, sort_order, created_at) VALUES (?, 'asset', ?, ?, 0)");
+    c.run('Comptes courants', 'wallet', 10); c.run('Autres actifs', 'gem', 20);
+  });
+  const db = openDatabase(dir);
+  assert.equal(db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v, schemaVersion());
+  const rows = db.prepare('SELECT name, kind, icon, default_liquidity, sort_order FROM categories ORDER BY sort_order').all().map((r) => ({ ...r }));
+  assert.deepEqual(rows.map((r) => r.name), ['Comptes courants', 'Prêts accordés', 'Autres actifs']);
+  assert.equal(rows[1].icon, 'handshake');
+  assert.equal(rows[1].default_liquidity, 'locked');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'loan_schedules'").get().n, 1);
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('base 0.5.0 : une catégorie de créances existante est respectée, base vide laissée vide', () => {
+  const dir = legacyDatabase(4, (raw) => {
+    raw.prepare("INSERT INTO categories (name, kind, icon, sort_order, created_at) VALUES ('Créances familiales', 'asset', 'cube', 10, 0)").run();
+  });
+  const db = openDatabase(dir);
+  assert.deepEqual(db.prepare('SELECT name FROM categories').all().map((r) => r.name), ['Créances familiales']);
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+  const empty = legacyDatabase(4, () => {});
+  const db2 = openDatabase(empty);
+  assert.equal(db2.prepare('SELECT COUNT(*) AS n FROM categories').get().n, 0, "l'installation crée les catégories par défaut, pas la migration");
+  db2.close();
+  fs.rmSync(empty, { recursive: true, force: true });
 });
