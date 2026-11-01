@@ -337,3 +337,31 @@ test('déconnexion', async () => {
   assert.equal(r.status, 200);
   assert.equal((await admin.get('/api/dashboard')).status, 401);
 });
+
+test('plus-values latentes multi-actifs : création, mise à jour et suppression', async () => {
+  const cats = (await admin.get('/api/categories')).data.categories;
+  const crypto = cats.find(c => c.name === 'Crypto-actifs').id;
+  const created = await admin.post('/api/holdings', {
+    category_id: crypto, name: 'Crypto suivi V1', amount: 1500, date: today,
+    acquisition: { purchase_amount: 1000, purchased_at: addDays(today, -30) },
+  });
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  const id = created.data.id;
+  let list = (await admin.get('/api/holdings')).data.holdings;
+  let holding = list.find(h => h.id === id);
+  assert.equal(holding.latent_gain_cents, 50000);
+  assert.equal(holding.latent_basis_cents, 100000);
+  let detail = (await admin.get('/api/holdings/' + id)).data;
+  assert.equal(detail.latent_gain.gain_pct, 50);
+  const updated = await admin.patch('/api/holdings/' + id, {
+    acquisition: { purchase_amount: 2000, purchased_at: addDays(today, -30) },
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+  holding = (await admin.get('/api/holdings')).data.holdings.find(h => h.id === id);
+  assert.equal(holding.latent_gain_cents, -50000);
+  const cleared = await admin.patch('/api/holdings/' + id, { acquisition: null });
+  assert.equal(cleared.status, 200);
+  holding = (await admin.get('/api/holdings')).data.holdings.find(h => h.id === id);
+  assert.equal(holding.latent_gain_cents, null);
+  assert.equal((await admin.del('/api/holdings/' + id)).status, 200);
+});
