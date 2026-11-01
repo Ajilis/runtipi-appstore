@@ -258,8 +258,7 @@ export const MIGRATIONS = [
     accepted_at INTEGER,
     declined_at INTEGER,
     revoked_at INTEGER,
-    CHECK (accepted_at IS NULL OR declined_at IS NULL),
-    CHECK (accepted_at IS NULL OR revoked_at IS NULL)
+    CHECK (accepted_at IS NULL OR declined_at IS NULL)
   );
   CREATE INDEX idx_real_estate_shares_holding ON real_estate_shares(holding_id);
   CREATE INDEX idx_real_estate_shares_recipient ON real_estate_shares(recipient_id, accepted_at);
