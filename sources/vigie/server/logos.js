@@ -242,6 +242,21 @@ export async function fetchLogo(host, fetcher = globalThis.fetch, { fallback = f
   return best;
 }
 
+// Les URLs externes ne proviennent jamais d'un champ libre : seuls les deux
+// hébergeurs de ressources du catalogue ouvert sont acceptés.
+export async function fetchDirectoryLogo(url, fetcher = globalThis.fetch) {
+  const source = safeUrl(url);
+  if (!source || !['static.openfintech.io', 'commons.wikimedia.org'].includes(source.hostname)) return null;
+  const image = await fetchLimited(fetcher, source.href, MAX_ICON_BYTES, 'image/png,image/*;q=0.8').catch(() => null);
+  if (!image) return null;
+  const destination = safeUrl(image.url);
+  if (!destination || !['static.openfintech.io', 'commons.wikimedia.org', 'upload.wikimedia.org'].includes(destination.hostname)) return null;
+  const type = sniffImage(image.buf);
+  if (!type || image.buf.length < 64) return null;
+  const size = imageSize(image.buf, type);
+  return { type, data: image.buf, width: size?.width || null, height: size?.height || null, source: source.hostname };
+}
+
 export class LogoService {
   constructor(db, { enabled = true, fallback = false, fetcher = globalThis.fetch, log = console } = {}) {
     this.db = db;
@@ -256,9 +271,11 @@ export class LogoService {
     this.closed = false;
   }
 
+  cacheKeyOf(e) { return e.host || (e.logo_url ? 'catalogue:' + e.id : null); }
+
   hostOf(id) {
     const e = this.catalogue.get(id);
-    return e ? e.host : undefined;
+    return e ? this.cacheKeyOf(e) : undefined;
   }
 
   cached(host) {
@@ -269,7 +286,11 @@ export class LogoService {
     if (this.pending.has(host)) return this.pending.get(host);
     const p = (async () => {
       let logo = null;
-      try { logo = await fetchLogo(host, this.fetcher, { fallback: this.fallback }); } catch (err) { this.log.debug?.(`Logo ${host} : ${err.message}`); }
+      try {
+        const entry = [...this.catalogue.values()].find((e) => this.cacheKeyOf(e) === host);
+        if (entry?.logo_url) logo = await fetchDirectoryLogo(entry.logo_url, this.fetcher);
+        if (!logo && !host.startsWith('catalogue:')) logo = await fetchLogo(host, this.fetcher, { fallback: this.fallback });
+      } catch (err) { this.log.debug?.(`Logo ${host} : ${err.message}`); }
       if (this.closed) return logo;
       try {
         this.db.prepare(`INSERT INTO logo_cache (host, content_type, data, ok, fetched_at, width, height, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -291,12 +312,13 @@ export class LogoService {
     if (own) return { type: own.content_type, data: own.data };
     const entry = this.catalogue.get(id);
     if (!entry) return CUSTOM_KEY.test(id) ? null : undefined;
-    if (!this.enabled || !entry.host) return null;
-    const row = this.cached(entry.host);
+    const key = this.cacheKeyOf(entry);
+    if (!this.enabled || !key) return null;
+    const row = this.cached(key);
     const age = row ? Date.now() - row.fetched_at : Infinity;
     if (row && row.ok && age < OK_TTL_MS) return { type: row.content_type, data: row.data };
     if (row && !row.ok && age < FAIL_TTL_MS) return null;
-    const job = this.refresh(entry.host);
+    const job = this.refresh(key);
     const fresh = await Promise.race([job, new Promise((r) => { const t = setTimeout(() => r(undefined), WAIT_MS); t.unref?.(); })]);
     if (fresh) return fresh;
     // Pas encore de réponse : ancien logo s'il existe, sinon monogramme (le prochain affichage aura le logo).
@@ -326,7 +348,7 @@ export class LogoService {
   versions() {
     const out = {};
     const ok = new Map(this.db.prepare('SELECT host, fetched_at FROM logo_cache WHERE ok = 1').all().map((r) => [r.host, r.fetched_at]));
-    if (this.enabled) for (const [id, e] of this.catalogue) if (e.host && ok.has(e.host)) out[id] = `f${ok.get(e.host)}`;
+    if (this.enabled) for (const [id, e] of this.catalogue) { const k = this.cacheKeyOf(e); if (k && ok.has(k)) out[id] = `f${ok.get(k)}`; }
     for (const r of this.db.prepare('SELECT key, updated_at FROM institution_logos').all()) out[r.key] = `c${r.updated_at}`;
     return out;
   }
@@ -336,11 +358,12 @@ export class LogoService {
     const rows = new Map(this.db.prepare('SELECT host, ok, fetched_at, width, height, source FROM logo_cache').all().map((r) => [r.host, r]));
     const catalogue = {};
     for (const [id, e] of this.catalogue) {
-      const r = e.host ? rows.get(e.host) : null;
-      let status = !e.host ? 'no_site' : !r ? 'missing' : r.ok ? 'ok' : 'failed';
-      if (e.host && this.pending.has(e.host)) status = 'fetching';
+      const key = this.cacheKeyOf(e);
+      const r = key ? rows.get(key) : null;
+      let status = !key ? 'no_site' : !r ? 'missing' : r.ok ? 'ok' : 'failed';
+      if (key && this.pending.has(key)) status = 'fetching';
       catalogue[id] = {
-        status, host: e.host || null,
+        status, host: e.host || (e.logo_url ? 'Source ouverte' : null),
         fetched_at: r ? r.fetched_at : null, width: r && r.ok ? r.width : null, height: r && r.ok ? r.height : null, source: r && r.ok ? r.source : null,
         retry_after: r && !r.ok ? r.fetched_at + FAIL_TTL_MS : null,
       };
@@ -357,7 +380,7 @@ export class LogoService {
     if (this.batch) return this.batch;
     const now = Date.now();
     const rows = new Map(this.db.prepare('SELECT host, ok, fetched_at, width FROM logo_cache').all().map((r) => [r.host, r]));
-    const hosts = [...new Set([...this.catalogue.values()].map((e) => e.host).filter(Boolean))].filter((h) => {
+    const hosts = [...new Set([...this.catalogue.values()].map((e) => this.cacheKeyOf(e)).filter(Boolean))].filter((h) => {
       const r = rows.get(h);
       if (!r) return true;
       if (r.ok) return now - r.fetched_at >= OK_TTL_MS || r.width === null;

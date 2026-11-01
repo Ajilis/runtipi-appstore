@@ -21,8 +21,9 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 | `server/fx.js` | Taux de change de la BCE |
 | `server/backup.js` | Sauvegardes `VACUUM INTO` et rotation |
 | `server/mail.js` | Envoi d'e-mails : client SMTP sans dépendance (STARTTLS, SSL/TLS, AUTH PLAIN ou LOGIN), message MIME UTF-8, modèles des e-mails |
-| `server/logos.js` | Logos des établissements : recherche de la meilleure icône sur le site officiel (catalogue uniquement), service d'icônes de Google en dernier recours, préchargement, images personnelles, cache en base |
-| `web/institutions.json` | Catalogue des établissements proposés (nom, type, alias, site officiel) |
+| `server/logos.js` | Logos des établissements : images sourcées depuis OpenFinTech ou Wikimedia Commons, ou site officiel, image personnelle prioritaire, cache en base |
+| `server/institutions.js` | Annuaire vivant : import OpenFinTech vérifié, recherche Wikidata et Sirene, cache SQLite, dédoublonnage et limitation des requêtes |
+| `web/institutions.json` | Catalogue initial de secours (nom, type, alias, site officiel) |
 | `web/` | Interface, police et générateur de QR code (MIT, voir `web/vendor`) |
 
 ## Modèle de données
@@ -33,10 +34,19 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - `loan_schedules` : échéancier facultatif d'un avoir (montant, taux annuel, durée en mois, date de versement, type). Les valeurs de l'avoir à partir de cette date ne sont pas stockées : elles sont calculées à la lecture (`loadState`) et fusionnées avec les valeurs saisies avant. Retirer l'échéancier ou clôturer l'avoir les enregistre dans `valuations`.
 - `logo_cache` : icône récupérée par site (`host`), avec ses dimensions et sa provenance ; `ok = 0` mémorise un échec (nouvel essai après 3 jours).
 - `institution_logos` : image déposée par l'administrateur, par identifiant du catalogue ou `perso-nom` pour un établissement hors catalogue ; prioritaire sur `logo_cache`.
+- `institution_directory` : établissements ajoutés depuis les sources ouvertes, avec provenance, aliases, site et URL du logo. Les 73 entrées embarquées restent intactes.
 - `fx_rates` : 1 unité de devise = `rate` devise de référence.
 - `users` (adresse e-mail facultative et unique), `sessions`, `audit_log`, `settings` (dont `mail` : réglages SMTP, mot de passe chiffré).
 - `invitations` : invitation par e-mail, jeton stocké haché (SHA-256), valable 7 jours, à usage unique.
 - `password_resets` : lien « Mot de passe oublié », jeton haché, valable 1 heure ; un seul lien actif par utilisateur.
+
+## Catalogue dynamique (0.9.0)
+
+- **OpenFinTech** : téléchargement quotidien des fournisseurs actifs signalés en France depuis [static.openfintech.io/raw](https://static.openfintech.io/raw/). Le descripteur `latest.json`, `SHA256SUMS` et le hash du fichier `vendors.json` sont vérifiés avant insertion. Les logos PNG connus sont tentés sur `static.openfintech.io`, puis Vigie utilise le site officiel si présent.
+- **Wikidata** : recherche à la demande dès 3 caractères, uniquement parmi les entités dont la description est financière ; lecture du site officiel (P856), des alias et du logo (P154) sur Wikimedia Commons. Les images sont téléchargées par le serveur, validées et conservées en base, jamais directement chargées par le navigateur.
+- **France** : compléments depuis l'[API Recherche d'Entreprises](https://www.data.gouv.fr/dataservices/api-recherche-dentreprises), limitée ici aux codes NAF 64, 65, 66 ; cette source ne garantit ni agrément bancaire ni logo. Ne pas présenter Sirene comme une liste d'établissements agréés.
+- **Confidentialité / résilience** : seul le texte recherché est envoyé à Wikidata et au service public français. Les noms des avoirs, les montants et les identifiants des utilisateurs ne quittent pas Vigie. Les résultats sont conservés dans SQLite et utilisés si une source tombe. Les logos personnalisés passent toujours en priorité.
+- **Contrôle** : `INSTITUTION_CATALOGUE=false` désactive toutes les requêtes vers ces trois sources (mais laisse le catalogue embarqué et les entrées déjà mises en cache). `INSTITUTION_LOGOS=false` désactive les téléchargements de logos. L'annuaire est consultable via `GET /api/institutions/catalogue` et enrichi via `GET /api/institutions/search?q=...` (authentification obligatoire).
 
 ## Développement
 

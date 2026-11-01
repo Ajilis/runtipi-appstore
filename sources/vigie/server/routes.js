@@ -117,7 +117,7 @@ function personFields(b, existing = null) {
 const hasPerson = (b) => b.first_name !== undefined || b.last_name !== undefined || b.display_name !== undefined;
 
 export function registerRoutes(router, deps) {
-  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos } = deps;
+  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions } = deps;
 
   const audit = (ctx, action, detail = '') => {
     db.prepare('INSERT INTO audit_log (at, user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?, ?)')
@@ -477,6 +477,16 @@ export function registerRoutes(router, deps) {
       };
     }
     return out;
+  });
+
+  // Annuaire dynamique, toujours servi depuis le cache SQLite lorsque les sources sont indisponibles.
+  router.get('/api/institutions/catalogue', { auth: 'viewer' }, () => ({
+    institutions: institutions.list(), enabled: institutions.enabled, last_sync: institutions.lastSync,
+  }));
+  router.get('/api/institutions/search', { auth: 'viewer' }, async (ctx) => {
+    const q = text(ctx.query.get('q'), 'Recherche', { max: 65, min: 3 });
+    if (q.length < 3) fail(400, 'invalid_field', 'Saisissez trois caractères au minimum.');
+    return { institutions: await institutions.search(q) };
   });
 
   // --- Logos des établissements ----------------------------------------------------------------------------------

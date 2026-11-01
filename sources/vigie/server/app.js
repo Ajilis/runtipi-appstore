@@ -8,6 +8,7 @@ import { SessionStore, IpLimiter, PendingChallenges, SESSION_COOKIE, roleAtLeast
 import { registerRoutes } from './routes.js';
 import { startBackupScheduler } from './backup.js';
 import { LogoService } from './logos.js';
+import { InstitutionDirectory } from './institutions.js';
 
 const WEB_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 
@@ -37,8 +38,11 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
   const ipLimiter = new IpLimiter(cfg.IP_MAX_FAILURES);
   const challenges = new PendingChallenges();
   const router = new Router();
+  const institutions = new InstitutionDirectory(db, { enabled: cfg.INSTITUTION_CATALOGUE !== false, fetcher, log });
   const logos = new LogoService(db, { enabled: cfg.INSTITUTION_LOGOS, fallback: cfg.INSTITUTION_LOGOS_FALLBACK, fetcher, log });
-  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos });
+  logos.catalogue = institutions.catalogue;
+  institutions.onUpdated = () => logos.prefetchAll();
+  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions });
   const serveStatic = createStatic(WEB_DIR, cfg.VERSION);
 
   async function handleApi(req, res, url) {
@@ -110,14 +114,16 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
   if (withScheduler) {
     const t = startBackupScheduler(db, paths.backups, cfg, log);
     if (t) timers.push(t);
+    timers.push(...institutions.startScheduler());
     timers.push(...logos.startScheduler());
   }
 
   return {
-    server, db, logos,
+    server, db, logos, institutions,
     close() {
       timers.forEach(clearInterval);
       logos.close();
+      institutions.close();
       return new Promise((resolve) => server.close(() => { try { db.close(); } catch { /* déjà fermée */ } resolve(); }));
     },
   };

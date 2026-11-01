@@ -160,13 +160,19 @@
   const h2i = (name, text) => html`<h2 class="ti">${icon(name)}<span>${text}</span></h2>`;
   const h3i = (name, text) => html`<h3 class="ti">${icon(name)}<span>${text}</span></h3>`;
   const il = (name, text) => html`<span class="il">${icon(name)}<span>${text}</span></span>`;
-  // Établissements : catalogue (web/institutions.json), logos servis par le serveur, monogramme de secours.
+  // Établissements : le serveur enrichit le catalogue local depuis Wikidata, OpenFinTech et Sirene.
   const fold = (s) => [...String(s || '')].map((c) => c.normalize('NFD')[0].toLowerCase()).join('');
   const normKey = (s) => fold(s).replace(/[^a-z0-9]+/g, ' ').trim();
   function indexInstitutions(list) {
     const map = new Map();
-    for (const e of list) for (const n of [e.name, ...e.aliases]) for (const k of [normKey(n), normKey(n).replace(/ /g, '')]) if (k && !map.has(k)) map.set(k, e);
+    for (const e of list) for (const n of [e.name, ...(Array.isArray(e.aliases) ? e.aliases : [])]) for (const k of [normKey(n), normKey(n).replace(/ /g, '')]) if (k && !map.has(k)) map.set(k, e);
     return { list, map };
+  }
+  function mergeInstitutions(entries) {
+    if (!Array.isArray(entries)) return;
+    const byId = new Map(state.inst.list.map((e) => [e.id, e]));
+    for (const e of entries) if (e && typeof e.id === 'string' && typeof e.name === 'string') byId.set(e.id, e);
+    state.inst = indexInstitutions([...byId.values()]);
   }
   const findInstitution = (name) => { const k = normKey(name); return k ? state.inst.map.get(k) || state.inst.map.get(k.replace(/ /g, '')) || null : null; };
   const MONO_STOP = new Set(['la', 'le', 'les', 'de', 'du', 'des', 'd', 'l', 'et', 'the', 'and']);
@@ -1106,12 +1112,12 @@
   }
 
   function institutionAutocomplete(input, list, preview, own) {
-    let items = [], active = -1, closeTimer = null;
+    let items = [], active = -1, closeTimer = null, remoteTimer = null;
     const setPreview = () => { preview.innerHTML = part(instLogo(input.value, 's36')); };
     const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; };
     const paint = () => {
       list.innerHTML = part(items.map((it, i) => {
-        const desc = it.entry ? `${it.entry.kind}${it.via ? `, ${it.via}` : ''}` : 'Établissement personnalisé';
+        const desc = it.entry ? `${it.entry.kind}${it.entry.source ? ' · ' + it.entry.source : ''}${it.via ? `, ${it.via}` : ''}` : 'Établissement personnalisé';
         return html`<li class="ac-item" role="option" id="inst-opt-${i}" data-i="${i}" aria-selected="${i === active}">${instLogo(it.name, 's24')}<span class="ac-txt"><b>${highlight(it.name, input.value)}</b><span>${it.mine ? `Déjà utilisé, ${desc.charAt(0).toLowerCase()}${desc.slice(1)}` : desc}</span></span></li>`;
       }));
       if (active >= 0) { input.setAttribute('aria-activedescendant', `inst-opt-${active}`); const el = list.children[active]; if (el) el.scrollIntoView({ block: 'nearest' }); }
@@ -1132,9 +1138,21 @@
       close();
       setPreview();
     };
-    input.addEventListener('input', () => { update(); setPreview(); });
-    input.addEventListener('focus', () => { if (input.value.trim().length >= 3) update(); });
-    input.addEventListener('blur', () => { closeTimer = setTimeout(close, 150); });
+    const remoteSearch = () => {
+      clearTimeout(remoteTimer);
+      const q = input.value.trim();
+      if (q.length < 3 || !state.boot?.user) return;
+      remoteTimer = setTimeout(async () => {
+        try {
+          const response = await api('GET', '/api/institutions/search?q=' + encodeURIComponent(q));
+          mergeInstitutions(response.institutions);
+          if (input.value.trim() === q) { update(); setPreview(); }
+        } catch { /* La recherche locale reste fonctionnelle sans les sources externes. */ }
+      }, 550);
+    };
+    input.addEventListener('input', () => { update(); setPreview(); remoteSearch(); });
+    input.addEventListener('focus', () => { if (input.value.trim().length >= 3) { update(); remoteSearch(); } });
+    input.addEventListener('blur', () => { clearTimeout(remoteTimer); closeTimer = setTimeout(close, 150); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         if (list.hidden) { update(); if (list.hidden) return; }
@@ -2368,6 +2386,10 @@
     if (!state.inst.list.length) {
       try { state.inst = indexInstitutions((await (await fetch(`/institutions.json?v=${encodeURIComponent(state.boot.version)}`)).json()).institutions); }
       catch { state.inst = indexInstitutions([]); }
+    }
+    if (state.boot.user && !state.boot.needs_2fa_setup) {
+      try { mergeInstitutions((await api('GET', '/api/institutions/catalogue')).institutions); }
+      catch { /* Le catalogue local reste disponible. */ }
     }
     if (state.boot.setup_required) return showSetup();
     const link = gateRoute();
