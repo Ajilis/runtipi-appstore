@@ -16,7 +16,7 @@ import { fetchEcbRates, ratesToBase } from './fx.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
 import { TRANSPARENT_PNG, CUSTOM_KEY, sniffImage, imageSize } from './logos.js';
 import { LOAN_KINDS, amortization, loanSummary, loanValuations } from './loans.js';
-import { isRealEstateCategory, latentGain, REAL_ESTATE_TYPES, REAL_ESTATE_CONDITIONS, EstimateError } from './real-estate.js';
+import { isRealEstateCategory, latentGain, ownedCents, ownershipBasisPoints, REAL_ESTATE_TYPES, REAL_ESTATE_CONDITIONS, EstimateError } from './real-estate.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP', 'CAD', 'JPY', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'CNY', 'HKD', 'SGD', 'NZD', 'ZAR', 'BRL', 'MXN', 'INR', 'KRW', 'TRY', 'ILS', 'THB', 'IDR', 'MYR', 'PHP', 'ISK'];
 
@@ -446,8 +446,8 @@ export function registerRoutes(router, deps) {
       schedule = { ...loanSummary(sched, today), rows: amortization(sched) };
     }
     const property = db.prepare('SELECT * FROM real_estate WHERE holding_id = ?').get(id) || null;
-    return { holding: { ...h, value_cents: snap.cents, value_base: snap.base, missing_rate: snap.missingRate },
-      property, latent_gain: property ? latentGain(snap.cents, property.purchase_cents) : null,
+    return { holding: { ...h, value_cents: snap.cents, owned_cents: snap.owned, value_base: snap.base, missing_rate: snap.missingRate },
+      property, latent_gain: property ? latentGain(snap.cents, property.purchase_cents, property.ownership_bp) : null,
       valuations, schedule, base_currency: state.base };
   });
 
@@ -678,13 +678,13 @@ export function registerRoutes(router, deps) {
   }
 
   const saveProperty = db.prepare(`INSERT INTO real_estate
-    (holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,updated_at)
-    VALUES (?,?,?,?,?,?,?,?)
+    (holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?)
     ON CONFLICT(holding_id) DO UPDATE SET purchase_cents=excluded.purchase_cents,
     purchased_at=excluded.purchased_at,property_type=excluded.property_type,address=excluded.address,
-    surface_m2=excluded.surface_m2,condition=excluded.condition,updated_at=excluded.updated_at`);
+    surface_m2=excluded.surface_m2,condition=excluded.condition,ownership_bp=excluded.ownership_bp,updated_at=excluded.updated_at`);
 
-  function propertyFields(b, cat, currencyCode) {
+  function propertyFields(b, cat, currencyCode, holdingId = null) {
     if (b.property === undefined || b.property === null) return null;
     if (!isRealEstateCategory(cat)) fail(400, 'invalid_field', 'Ces informations sont réservées aux biens immobiliers.');
     if (typeof b.property !== 'object' || Array.isArray(b.property)) fail(400, 'invalid_field', 'Caractéristiques immobilières invalides.');
@@ -700,10 +700,13 @@ export function registerRoutes(router, deps) {
       ? null : Number(p.surface_m2);
     if (surface !== null && (!Number.isInteger(surface) || surface < 9 || surface > 10000))
       fail(400, 'invalid_field', 'Surface habitable : 9 à 10 000 m².');
-    return { purchase, date, type, condition, address, surface };
+    const old = holdingId ? db.prepare('SELECT ownership_bp FROM real_estate WHERE holding_id = ?').get(holdingId)?.ownership_bp : null;
+    const ownership = ownershipBasisPoints(p.ownership_pct ?? (old === null || old === undefined ? 100 : old / 100));
+    if (ownership === null) fail(400, 'invalid_field', 'Quote-part de propriété : pourcentage de 0,01 à 100, avec 2 décimales maximum.');
+    return { purchase, date, type, condition, address, surface, ownership };
   }
   function writeProperty(id, p) {
-    saveProperty.run(id, p.purchase, p.date, p.type, p.address, p.surface, p.condition, Date.now());
+    saveProperty.run(id, p.purchase, p.date, p.type, p.address, p.surface, p.condition, p.ownership, Date.now());
   }
 
   // --- Échéancier de prêt ---------------------------------------------------------------------------------------
@@ -769,7 +772,7 @@ export function registerRoutes(router, deps) {
     if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
     const f = holdingFields(ctx.body, existing);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
-    const prop = propertyFields(ctx.body, cat, f.currency);
+    const prop = propertyFields(ctx.body, cat, f.currency, id);
     const amountChange = ctx.body.amount !== undefined && ctx.body.amount !== ''
       ? amount(ctx.body.amount, 'Valeur actuelle') : null;
     const valuationOn = amountChange !== null ? valuationDate(ctx.body.date) : null;
@@ -1344,7 +1347,7 @@ export function registerRoutes(router, deps) {
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all(),
-      real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition FROM real_estate ORDER BY holding_id').all(),
+      real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all(),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
     };
   }
@@ -1359,10 +1362,10 @@ export function registerRoutes(router, deps) {
   router.get('/api/export/holdings.csv', { auth: 'viewer' }, (ctx) => {
     const v = holdingsView(db);
     const cats = new Map(v.categories.map((c) => [c.id, c]));
-    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur', `Valeur en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat", "Date d'achat", 'Plus-value latente']];
+    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur de ma part en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente de ma part', 'Quote-part (%)', 'Valeur de ma part (devise du bien)', "Prix d'achat de ma part"]];
     for (const h of v.holdings) {
       const c = cats.get(h.category_id) || {};
-      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents)]);
+      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.property.ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.property.ownership_bp)) : '']);
     }
     audit(ctx, 'export', 'CSV des avoirs');
     ctx.sendRaw(200, Buffer.from('﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-avoirs-${stampName()}.csv`);
@@ -1419,6 +1422,7 @@ export function registerRoutes(router, deps) {
           property_type: p.property_type,
           address: p.address || '', surface_m2: p.surface_m2,
           condition: p.condition || 'correct',
+          ownership_pct: p.ownership_bp === undefined ? 100 : p.ownership_bp / 100,
         } }, cat, holding.currency);
         writeProperty(id, validated);
       }
