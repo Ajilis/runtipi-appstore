@@ -1330,6 +1330,7 @@ export function registerRoutes(router, deps) {
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order FROM holdings ORDER BY id').all(),
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all(),
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all(),
+      real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition FROM real_estate ORDER BY holding_id').all(),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
     };
   }
@@ -1344,10 +1345,10 @@ export function registerRoutes(router, deps) {
   router.get('/api/export/holdings.csv', { auth: 'viewer' }, (ctx) => {
     const v = holdingsView(db);
     const cats = new Map(v.categories.map((c) => [c.id, c]));
-    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur', `Valeur en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le']];
+    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur', `Valeur en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat", "Date d'achat", 'Plus-value latente']];
     for (const h of v.holdings) {
       const c = cats.get(h.category_id) || {};
-      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at]);
+      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents)]);
     }
     audit(ctx, 'export', 'CSV des avoirs');
     ctx.sendRaw(200, Buffer.from('﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-avoirs-${stampName()}.csv`);
@@ -1392,6 +1393,20 @@ export function registerRoutes(router, deps) {
         if (!isIsoDate(v.valued_at) || !Number.isInteger(v.amount_cents)) fail(400, 'invalid_import', 'Valeur historique invalide.');
         db.prepare('INSERT INTO valuations (holding_id, valued_at, amount_cents, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
           .run(intId(v.holding_id), v.valued_at, v.amount_cents, text(v.note || '', 'Note', { max: 120 }), ctx.user.id, now);
+      }
+      for (const p of Array.isArray(d.real_estate) ? d.real_estate : []) {
+        const id = intId(p.holding_id);
+        const holding = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
+        if (!holding) fail(400, 'invalid_import', 'Bien immobilier sans avoir correspondant.');
+        const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(holding.category_id);
+        const validated = propertyFields({ property: {
+          purchase_amount: p.purchase_cents / 100,
+          purchased_at: p.purchased_at,
+          property_type: p.property_type,
+          address: p.address || '', surface_m2: p.surface_m2,
+          condition: p.condition || 'correct',
+        } }, cat, holding.currency);
+        writeProperty(id, validated);
       }
       for (const sc of Array.isArray(d.loan_schedules) ? d.loan_schedules : []) {
         if (!LOAN_KINDS.includes(sc.kind) || !Number.isInteger(sc.principal_cents) || sc.principal_cents <= 0 || !Number.isInteger(sc.months) || sc.months < 1 || sc.months > 600
