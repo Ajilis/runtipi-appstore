@@ -226,8 +226,16 @@ export class RealEstateEstimator {
       }
       successfulLookups++;
 
+      // Contrat réel GeoRegistry (vérifié sur le service le 01/11/2026) :
+      // une "disposition" expose row.mutation.{date,nature,mutation_uid},
+      // row.distance_meters et row.prix_m2. Le format aplati documenté
+      // mutation_date/nature/distance_m reste accepté pour compatibilité.
       let typedSales = 0;
+      let rejectedDate = 0;
+      let rejectedOld = 0;
+      let rejectedNature = 0;
       let rejectedPrice = 0;
+      let rejectedDuplicates = 0;
       const seen = new Set();
       const sales = [];
       for (const row of payload.data) {
@@ -236,36 +244,50 @@ export class RealEstateEstimator {
         const expected = params.type_local === 1 ? 'maison' : 'appartement';
         if (type !== String(params.type_local) && type !== expected) continue;
         typedSales++;
-        const date = String(row.mutation_date || row.date_mutation || '');
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < after || date > today) continue;
-        const nature = String(row.nature || row.nature_mutation || '').trim().toLowerCase();
-        if (nature && nature !== 'vente') continue;
+        const mutation = row.mutation && typeof row.mutation === 'object' && !Array.isArray(row.mutation)
+          ? row.mutation : {};
+        const dateRaw = String(mutation.date ?? mutation.mutation_date ?? mutation.date_mutation ??
+          row.mutation_date ?? row.date_mutation ?? '').trim();
+        const date = /^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(dateRaw) ? dateRaw.slice(0, 10) : '';
+        if (!date) { rejectedDate++; continue; }
+        if (date < after || date > today) { rejectedOld++; continue; }
+        const nature = String(mutation.nature ?? mutation.nature_mutation ??
+          row.nature ?? row.nature_mutation ?? '').trim().toLowerCase();
+        if (nature && nature !== 'vente') { rejectedNature++; continue; }
         const size = Number(row.surface_bati);
-        // GeoRegistry ne fournit prix_m2 que pour les ventes à lot unique :
-        // reconstruire valeur_fonciere/surface_bati sur un multi-lot tromperait.
+        // Le prix au m² est celui fourni par GeoRegistry ; ne jamais
+        // inventer valeur_fonciere/surface_bati pour une mutation multi-lots.
         const unitPrice = Number(row.prix_m2);
-        const distance = row.distance_m === undefined || row.distance_m === null
-          ? null : Number(row.distance_m);
+        const rawDistance = row.distance_meters ?? row.distance_m;
+        const distance = rawDistance === undefined || rawDistance === null ? null : Number(rawDistance);
         if (!Number.isFinite(size) || size < 25 || size > 600 ||
             !Number.isFinite(unitPrice) || unitPrice < 400 || unitPrice > 30000 ||
             (distance !== null && (!Number.isFinite(distance) || distance > radius))) {
           rejectedPrice++;
           continue;
         }
-        const mutation = String(row.id_mutation || row.mutation_id || '').trim();
-        const id = mutation
-          ? 'mutation:' + mutation
+        const mutationId = String(mutation.mutation_uid ?? mutation.id_mutation ??
+          row.id_mutation ?? row.mutation_id ?? mutation.id ?? row.id ?? '').trim();
+        const id = mutationId
+          ? 'mutation:' + mutationId
           : 'sale:' + date + '|' + size + '|' + unitPrice + '|' + String(row.adresse || '');
-        if (seen.has(id)) continue;
+        if (seen.has(id)) { rejectedDuplicates++; continue; }
         seen.add(id);
         sales.push({ size, price: unitPrice, date });
       }
 
       const geoCount = payload.data.length;
+      const exclusions = [
+        rejectedDate ? rejectedDate + ' date(s) absente(s) ou illisible(s)' : null,
+        rejectedOld ? rejectedOld + ' date(s) hors période (5 ans)' : null,
+        rejectedNature ? rejectedNature + ' mutation(s) hors vente simple' : null,
+        rejectedPrice ? rejectedPrice + ' prix/m², surface ou distance invalide(s)' : null,
+        rejectedDuplicates ? rejectedDuplicates + ' doublon(s) de mutation' : null,
+      ].filter(Boolean);
       diagnostics.push((radius / 1000).toLocaleString('fr-FR') + ' km : ' +
-        geoCount + ' transaction(s) retournée(s), ' + typedSales +
+        geoCount + ' ligne(s) retournée(s), ' + typedSales +
         ' du bon type, ' + sales.length + ' vente(s) exploitable(s)' +
-        (rejectedPrice ? ' (' + rejectedPrice + ' rejet(s) : prix/m², surface ou distance)' : '') + '.');
+        (exclusions.length ? ' ; rejets : ' + exclusions.join(', ') : '') + '.');
 
       // Niveau 2 : ventes de maisons/appartements de surface voisine.
       const comparable = trimOutliers(sales
