@@ -48,6 +48,18 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - **Confidentialité / résilience** : seul le texte recherché est envoyé à Wikidata et au service public français. Les noms des avoirs, les montants et les identifiants des utilisateurs ne quittent pas Vigie. Les résultats sont conservés dans SQLite et utilisés si une source tombe. Les logos personnalisés passent toujours en priorité.
 - **Contrôle** : `INSTITUTION_CATALOGUE=false` désactive toutes les requêtes vers ces trois sources (mais laisse le catalogue embarqué et les entrées déjà mises en cache). `INSTITUTION_LOGOS=false` désactive les téléchargements de logos. L'annuaire est consultable via `GET /api/institutions/catalogue` et enrichi via `GET /api/institutions/search?q=...` (authentification obligatoire).
 
+## Correspondances vérifiées (0.9.1)
+
+Les dénominations légales ci-dessous, renvoyées par le registre Sirene, sont associées à leur site de marque **sans modifier les valeurs déjà enregistrées dans les avoirs**, ni leur nom ni leur identifiant d'annuaire :
+
+- **N26 BANK SE** → `n26.com`, marque N26 (voir les [mentions légales N26](https://n26.com/en-fr/imprint)).
+- **VIVID MONEY S.A.** → `vivid.money`, marque Vivid Money (voir les [mentions légales Vivid](https://vivid.money/en-fr/imprint/)). Attention : le domaine `vivid-money.lu` a été signalé comme frauduleux par la CSSF ; il n'est jamais utilisé.
+
+Les logos de référence sont récupérés sous forme d'image PNG auprès de Wikimedia Commons, et, en cas d'échec, le serveur continue la recherche d'icône sur le site officiel. Les images personnelles gardent la priorité. Sources et attribution :
+
+- **N26** : [N26 logo.svg](https://commons.wikimedia.org/wiki/File:N26_logo.svg), auteur N26, domaine public selon Wikimedia Commons (marque enregistrée).
+- **Vivid** : [Vivid-money-logo.svg](https://commons.wikimedia.org/wiki/File:Vivid-money-logo.svg), auteur *ThisUserIsVivid*, licence [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Conversion en miniature PNG par Wikimedia Commons ; les crédits restent associés à la source originale.
+
 ## Développement
 
 ```bash
