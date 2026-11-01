@@ -265,6 +265,16 @@ export const MIGRATIONS = [
   CREATE UNIQUE INDEX idx_real_estate_shares_active ON real_estate_shares(holding_id, recipient_id)
     WHERE declined_at IS NULL AND revoked_at IS NULL;
   `,
+  // 0.9.8 : chaque avoir est lié au compte Vigie de son créateur.
+  // Les avoirs historiques partagés sont rattachés au premier administrateur.
+  `
+  ALTER TABLE holdings ADD COLUMN account_user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT;
+  UPDATE holdings SET account_user_id = COALESCE(
+    (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1),
+    (SELECT id FROM users ORDER BY id LIMIT 1)
+  );
+  CREATE INDEX idx_holdings_account ON holdings(account_user_id);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).
