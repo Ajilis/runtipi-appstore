@@ -195,6 +195,20 @@ export const MIGRATIONS = [
   );
   CREATE INDEX idx_password_resets_user ON password_resets(user_id);
   `,
+  // 0.9.0 : annuaire ouvert actualisé par le serveur, catalogue embarqué conservé.
+  `
+  CREATE TABLE institution_directory (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    host TEXT,
+    aliases TEXT NOT NULL DEFAULT '[]',
+    logo_url TEXT,
+    source TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX idx_institution_directory_name ON institution_directory(name);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).
