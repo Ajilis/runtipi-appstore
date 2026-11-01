@@ -2294,7 +2294,7 @@
     autres_sessions_fermees: 'Autres sessions fermées', categorie_creee: 'Catégorie ajoutée', categorie_modifiee: 'Catégorie modifiée', categorie_supprimee: 'Catégorie supprimée',
     avoir_cree: 'Avoir ajouté', avoir_modifie: 'Avoir modifié', avoir_supprime: 'Avoir supprimé', avoir_cloture: 'Avoir clôturé', avoir_rouvert: 'Avoir rouvert',
     valeur_enregistree: 'Valeur enregistrée', valeur_supprimee: 'Valeur supprimée', mise_a_jour_rapide: 'Mise à jour rapide', taux_modifies: 'Taux modifiés',
-    taux_supprime: 'Taux supprimé', taux_bce: 'Taux BCE récupérés', reglages_modifies: 'Réglages modifiés', utilisateur_cree: 'Utilisateur ajouté',
+    taux_supprime: 'Taux supprimé', taux_bce: 'Taux BCE récupérés', reglages_modifies: 'Réglages modifiés', securite_modifiee: 'Réglages de sécurité modifiés', utilisateur_cree: 'Utilisateur ajouté',
     utilisateur_modifie: 'Utilisateur modifié', mot_de_passe_reinitialise: 'Mot de passe redéfini', double_auth_reinitialisee: 'Double authentification réinitialisée',
     utilisateur_supprime: 'Utilisateur supprimé', email_reglages: "Envoi d'e-mails configuré", email_desactive: "Envoi d'e-mails désactivé", email_test: "Test d'envoi d'e-mail",
     email_modifie: 'Adresse e-mail modifiée', invitation_envoyee: 'Invitation envoyée', invitation_creee: "Lien d'invitation créé", invitation_renvoyee: 'Invitation renvoyée',
