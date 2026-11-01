@@ -238,10 +238,13 @@ des biens très différents se trouvent à moins de 5 km.
 
 ### Baguette magique et compte rendu dans les notes
 
-Le bouton **« 🪄 Estimer »**, accolé à **Valeur actuelle**, affiche une
-proposition avec son nombre de ventes et sa fourchette. L'utilisateur clique
-ensuite sur **« Appliquer à la valeur actuelle et aux notes »** (dans le même
-formulaire) et enfin sur **Enregistrer**. Sans ces actions, rien n'est modifié.
+Depuis Vigie **0.9.7**, un **seul clic** sur le bouton **« 🪄 Estimer »**,
+accolé à **Valeur actuelle du bien entier**, suffit : après une réponse
+valide du fournisseur, le montant estimé apparaît directement dans le champ
+**Valeur actuelle** et le compte rendu détaillé s'ajoute aux **notes du bien**.
+Il n'y a **plus de second bouton « Appliquer »**. L'utilisateur clique
+uniquement sur **« Enregistrer »** pour sauvegarder les modifications en base.
+En cas d'erreur réseau ou de résultat non fiable, aucune valeur n'est changée.
 
 Vigie ajoute automatiquement un bilan encadré `[Estimation Vigie]` dans les
 **notes du bien** : date, source, montant, fourchette, méthode réellement
@@ -256,8 +259,10 @@ expressément signalé comme non contrôlé pour les calculs de secours.
 
 Les notes personnelles **ne sont jamais effacées** ; un nouveau bilan remplace
 uniquement le précédent bloc automatique. Si le texte dépasserait 1 000
-caractères, Vigie refuse l'application et demande de libérer de l'espace :
-aucune note n'est tronquée, aucune valeur n'est modifiée.
+caractères, Vigie n'écrase ni les notes, ni la valeur actuelle : elle demande
+d'abord de libérer de l'espace. Une valeur saisie manuellement pendant
+l'appel réseau ne sera pas écrasée par la réponse tardive. Le prix d'achat,
+la date d'achat et la quote-part de propriété restent inchangés.
 
 ## Biens immobiliers : achat et valeur actuelle (0.9.3)
 
