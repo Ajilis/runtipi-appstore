@@ -16,6 +16,7 @@ import { fetchEcbRates, ratesToBase } from './fx.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
 import { TRANSPARENT_PNG, CUSTOM_KEY, sniffImage, imageSize } from './logos.js';
 import { LOAN_KINDS, amortization, loanSummary, loanValuations } from './loans.js';
+import { isRealEstateCategory, latentGain, REAL_ESTATE_TYPES, REAL_ESTATE_CONDITIONS, EstimateError } from './real-estate.js';
 
 export const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP', 'CAD', 'JPY', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'CNY', 'HKD', 'SGD', 'NZD', 'ZAR', 'BRL', 'MXN', 'INR', 'KRW', 'TRY', 'ILS', 'THB', 'IDR', 'MYR', 'PHP', 'ISK'];
 
@@ -117,7 +118,7 @@ function personFields(b, existing = null) {
 const hasPerson = (b) => b.first_name !== undefined || b.last_name !== undefined || b.display_name !== undefined;
 
 export function registerRoutes(router, deps) {
-  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions } = deps;
+  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator } = deps;
 
   const audit = (ctx, action, detail = '') => {
     db.prepare('INSERT INTO audit_log (at, user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?, ?)')
@@ -444,7 +445,10 @@ export function registerRoutes(router, deps) {
         .sort((a, b) => (a.valued_at < b.valued_at ? 1 : -1));
       schedule = { ...loanSummary(sched, today), rows: amortization(sched) };
     }
-    return { holding: { ...h, value_cents: snap.cents, value_base: snap.base, missing_rate: snap.missingRate }, valuations, schedule, base_currency: state.base };
+    const property = db.prepare('SELECT * FROM real_estate WHERE holding_id = ?').get(id) || null;
+    return { holding: { ...h, value_cents: snap.cents, value_base: snap.base, missing_rate: snap.missingRate },
+      property, latent_gain: property ? latentGain(snap.cents, property.purchase_cents) : null,
+      valuations, schedule, base_currency: state.base };
   });
 
   router.get('/api/categories', { auth: 'viewer' }, () => {
@@ -651,6 +655,16 @@ export function registerRoutes(router, deps) {
     return { ok: true };
   });
 
+  // L'estimation reste une simple proposition, l'utilisateur doit enregistrer la valeur.
+  // Aucune donnée de montant d'achat ou d'avoirs n'est transmise à l'API externe.
+  router.post('/api/real-estate/estimate', { auth: 'editor' }, async (ctx) => {
+    try { return await estimator.estimate(ctx.body); }
+    catch (err) {
+      if (err instanceof EstimateError) fail(err.status, 'estimate_unavailable', err.message);
+      throw err;
+    }
+  });
+
   // --- Avoirs -----------------------------------------------------------------------------------------------
   function holdingFields(b, existing = {}) {
     const categoryId = intId(b.category_id ?? existing.category_id, 'Catégorie');
@@ -665,6 +679,35 @@ export function registerRoutes(router, deps) {
       liquidity: oneOf(b.liquidity ?? existing.liquidity ?? cat.default_liquidity, LIQUIDITY, 'Liquidité'),
       notes: longText(b.notes ?? existing.notes ?? '', 'Notes'),
     };
+  }
+
+  const saveProperty = db.prepare(`INSERT INTO real_estate
+    (holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,updated_at)
+    VALUES (?,?,?,?,?,?,?,?)
+    ON CONFLICT(holding_id) DO UPDATE SET purchase_cents=excluded.purchase_cents,
+    purchased_at=excluded.purchased_at,property_type=excluded.property_type,address=excluded.address,
+    surface_m2=excluded.surface_m2,condition=excluded.condition,updated_at=excluded.updated_at`);
+
+  function propertyFields(b, cat, currencyCode) {
+    if (b.property === undefined || b.property === null) return null;
+    if (!isRealEstateCategory(cat)) fail(400, 'invalid_field', 'Ces informations sont réservées aux biens immobiliers.');
+    if (typeof b.property !== 'object' || Array.isArray(b.property)) fail(400, 'invalid_field', 'Caractéristiques immobilières invalides.');
+    const p = b.property;
+    const purchase = amount(p.purchase_amount, "Prix d'achat");
+    if (purchase <= 0) fail(400, 'invalid_field', "Prix d'achat positif attendu.");
+    const date = valuationDate(p.purchased_at);
+    if (!p.purchased_at) fail(400, 'invalid_field', "Date d'achat obligatoire.");
+    const type = oneOf(p.property_type, REAL_ESTATE_TYPES, 'Type de bien');
+    const condition = oneOf(p.condition || 'correct', REAL_ESTATE_CONDITIONS, 'État général');
+    const address = text(p.address || '', 'Adresse / commune', { max: 180 });
+    const surface = p.surface_m2 === '' || p.surface_m2 === null || p.surface_m2 === undefined
+      ? null : Number(p.surface_m2);
+    if (surface !== null && (!Number.isInteger(surface) || surface < 9 || surface > 10000))
+      fail(400, 'invalid_field', 'Surface habitable : 9 à 10 000 m².');
+    return { purchase, date, type, condition, address, surface };
+  }
+  function writeProperty(id, p) {
+    saveProperty.run(id, p.purchase, p.date, p.type, p.address, p.surface, p.condition, Date.now());
   }
 
   // --- Échéancier de prêt ---------------------------------------------------------------------------------------
@@ -704,6 +747,8 @@ export function registerRoutes(router, deps) {
   router.post('/api/holdings', { auth: 'editor' }, (ctx) => {
     const f = holdingFields(ctx.body);
     const schedule = ctx.body.schedule ? parseSchedule(ctx.body.schedule) : null;
+    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
+    const prop = propertyFields(ctx.body, cat, f.currency);
     const hasInitial = !schedule && ctx.body.amount !== undefined && ctx.body.amount !== null && ctx.body.amount !== '';
     const cents = hasInitial ? amount(ctx.body.amount, 'Valeur actuelle') : null;
     const date = valuationDate(ctx.body.date);
@@ -715,6 +760,7 @@ export function registerRoutes(router, deps) {
       const newId = Number(r.lastInsertRowid);
       if (cents !== null) upsertValuation.run(newId, date, cents, '', ctx.user.id, now);
       if (schedule) saveSchedule(newId, schedule);
+      if (prop) writeProperty(newId, prop);
       return newId;
     });
     audit(ctx, 'avoir_cree', schedule ? `${f.name}, échéancier ${scheduleText(schedule)}` : f.name);
@@ -726,6 +772,11 @@ export function registerRoutes(router, deps) {
     const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
     if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
     const f = holdingFields(ctx.body, existing);
+    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
+    const prop = propertyFields(ctx.body, cat, f.currency);
+    const amountChange = ctx.body.amount !== undefined && ctx.body.amount !== ''
+      ? amount(ctx.body.amount, 'Valeur actuelle') : null;
+    const valuationOn = amountChange !== null ? valuationDate(ctx.body.date) : null;
     const scheduleChange = 'schedule' in ctx.body ? parseSchedule(ctx.body.schedule) : undefined;
     const had = getSchedule(id);
     if (scheduleChange && existing.closed_at) fail(409, 'closed', "Rouvrez l'avoir avant de lui associer un échéancier.");
@@ -737,6 +788,15 @@ export function registerRoutes(router, deps) {
         // Nouveau départ (remboursement anticipé, renégociation) : l'historique calculé jusque-là est enregistré.
         if (had && scheduleChange.start_date > had.start_date) materializeSchedule(id, ctx.user.id, addDays(scheduleChange.start_date, -1));
         saveSchedule(id, scheduleChange);
+      }
+      if (prop) writeProperty(id, prop);
+      else if (!isRealEstateCategory(cat)) db.prepare('DELETE FROM real_estate WHERE holding_id = ?').run(id);
+      if (amountChange !== null) {
+        if (had || scheduleChange) fail(409, 'invalid_field', 'Retirez d’abord l’échéancier avant de saisir une valeur manuelle.');
+        // Une modification de la valeur actuelle crée une nouvelle entrée de suivi.
+        const current = db.prepare('SELECT amount_cents FROM valuations WHERE holding_id = ? ORDER BY valued_at DESC LIMIT 1').get(id);
+        if (!current || current.amount_cents !== amountChange)
+          upsertValuation.run(id, valuationOn, amountChange, '', ctx.user.id, Date.now());
       }
     });
     audit(ctx, 'avoir_modifie', f.name);
