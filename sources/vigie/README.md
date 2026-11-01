@@ -94,13 +94,23 @@ Si le moteur GeoRegistry renvoie une estimation incomplète, incohérente ou
 moins de trois comparables, Vigie utilise **une seconde méthode de calcul**
 auprès du même fournisseur : `GET /api/v1/dvf/ventes/address`.
 Il cherche d'abord dans un rayon de 1,5 km, puis de 5 km au besoin,
-des ventes effectives sur les cinq dernières années et filtre les biens
-par type et surface. La **médiane du prix au m²** de trois ventes distinctes
-ou plus donne une valeur centrale, avec une fourchette indicative prudente.
+des ventes effectives sur les cinq dernières années. Il privilégie les
+ventes du **même type et de surface proche**. Si moins de trois biens sont
+comparables en taille, il propose un **troisième niveau de secours** : la
+médiane du prix au m² des **maisons seulement** (ou appartements seulement)
+vendues localement, même si leur surface diffère, multipliée par la surface
+du bien. Il faut toujours **au moins trois ventes locales fiables et distinctes** ;
+les transactions sans prix au m² vérifié sont écartées pour ne pas compter des
+ventes multi-lots. On privilégie le rayon de 1,5 km, étendu à 5 km si nécessaire
+pour trouver d'abord des biens de surface voisine.
+
+Ce troisième calcul est **moins précis**, notamment pour les grandes maisons
+et les terrains de tailles diverses : fourchette indicative ±35 %, confiance
+« faible », mention explicite de la formule et du rayon dans l'interface.
 Ces ventes ne constituent **pas une source indépendante** du moteur initial.
 
 L'interface affiche le nombre de transactions retenues, la confiance
-(faible en cas de secours éloigné), la méthode et le rayon de recherche.
+(faible pour le calcul au m²), la méthode et le rayon de recherche.
 En l'absence de données vérifiables, Vigie donne une erreur plus précise
 plutôt qu'un chiffre arbitraire. Ni la valeur actuelle ni le prix d'achat
 ne changent sans validation explicite de l'utilisateur.
