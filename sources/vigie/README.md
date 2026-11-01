@@ -88,6 +88,26 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Estimations immobilières avec peu de ventes DVF (0.9.4)
+
+Si le moteur GeoRegistry renvoie une estimation incomplète, incohérente ou
+moins de trois comparables, Vigie utilise **une seconde méthode de calcul**
+auprès du même fournisseur : `GET /api/v1/dvf/ventes/address`.
+Il cherche d'abord dans un rayon de 1,5 km, puis de 5 km au besoin,
+des ventes effectives sur les cinq dernières années et filtre les biens
+par type et surface. La **médiane du prix au m²** de trois ventes distinctes
+ou plus donne une valeur centrale, avec une fourchette indicative prudente.
+Ces ventes ne constituent **pas une source indépendante** du moteur initial.
+
+L'interface affiche le nombre de transactions retenues, la confiance
+(faible en cas de secours éloigné), la méthode et le rayon de recherche.
+En l'absence de données vérifiables, Vigie donne une erreur plus précise
+plutôt qu'un chiffre arbitraire. Ni la valeur actuelle ni le prix d'achat
+ne changent sans validation explicite de l'utilisateur.
+
+L'estimation reste indicative, particulièrement en zone rurale ou lorsque
+des biens très différents se trouvent à moins de 5 km.
+
 ## Biens immobiliers : achat et valeur actuelle (0.9.3)
 
 Dans le formulaire **Avoirs → Immobilier**, Vigie distingue **Valeur d'achat** et
