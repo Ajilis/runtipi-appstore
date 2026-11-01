@@ -346,6 +346,14 @@ l'historique des valeurs, et sont présents dans l'export JSON, la restauration
 et l'export CSV des avoirs. Les anciennes fiches immobilières restent
 consultables sans devoir renseigner immédiatement ces nouveaux champs.
 
+## Suivi des plus-values latentes (V1, version 0.9.9)
+
+- L'immobilier conserve son coût d'acquisition et ses quote-parts, sans changement de modèle.
+- Pour les autres avoirs éligibles, la table `holding_acquisitions` enregistre facultativement le prix de revient total, la date d'acquisition et l'horodatage de modification.
+- Les gains et pertes bruts sont affichés dans les fiches d'avoirs et dans la synthèse de la page Avoirs, avec conversion dans la devise de référence quand un taux existe.
+- Les anciens avoirs sans prix de revient restent sans plus-value calculée. Les mouvements, frais et impôts ne sont pas modélisés.
+- L'export JSON, l'import JSON et l'export CSV reprennent les nouvelles données.
+
 ## Développement
 
 ```bash
