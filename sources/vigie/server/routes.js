@@ -118,7 +118,7 @@ function personFields(b, existing = null) {
 const hasPerson = (b) => b.first_name !== undefined || b.last_name !== undefined || b.display_name !== undefined;
 
 export function registerRoutes(router, deps) {
-  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator } = deps;
+  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator, securitySettings } = deps;
 
   const audit = (ctx, action, detail = '') => {
     db.prepare('INSERT INTO audit_log (at, user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?, ?)')
@@ -473,12 +473,8 @@ export function registerRoutes(router, deps) {
       institutions: db.prepare("SELECT DISTINCT institution FROM holdings WHERE institution IS NOT NULL AND institution <> '' ORDER BY institution").all().map((r) => r.institution),
     };
     if (ctx.user.role === 'admin') {
-      out.security = {
-        session_idle_minutes: cfg.SESSION_IDLE_MINUTES, session_max_hours: cfg.SESSION_MAX_HOURS, login_max_attempts: cfg.LOGIN_MAX_ATTEMPTS,
-        login_lock_minutes: cfg.LOGIN_LOCK_MINUTES, require_2fa: cfg.REQUIRE_2FA, backup_hour: cfg.BACKUP_HOUR, backup_keep_days: cfg.BACKUP_KEEP_DAYS,
-        institution_logos: cfg.INSTITUTION_LOGOS,
-        institution_logos_fallback: cfg.INSTITUTION_LOGOS && cfg.INSTITUTION_LOGOS_FALLBACK,
-      };
+      out.security = { ...securitySettings.view(),
+        backup_hour: cfg.BACKUP_HOUR, backup_keep_days: cfg.BACKUP_KEEP_DAYS };
     }
     return out;
   });
@@ -957,6 +953,24 @@ export function registerRoutes(router, deps) {
     }
     if (changes.length) audit(ctx, 'reglages_modifies', changes.join(', '));
     return { ok: true, warning };
+  });
+
+  // Paramètres de protection effectifs immédiatement, persistés dans SQLite.
+  // Le secret Runtipi et les garde-fous 2FA externes ne sont pas modifiables par l'interface.
+  router.put('/api/admin/security', { auth: 'admin' }, async (ctx) => {
+    if (!(await verifyPassword(String(ctx.body.current_password || ''), ctx.user.password_hash)))
+      fail(403, 'wrong_password', 'Mot de passe administrateur incorrect.');
+    const changes = { ...ctx.body };
+    delete changes.current_password;
+    let result;
+    try { result = securitySettings.update(changes); }
+    catch (err) {
+      if (err instanceof TypeError || err instanceof RangeError)
+        fail(400, 'invalid_field', err.message);
+      throw err;
+    }
+    audit(ctx, 'securite_modifiee', result.changes.join(', '));
+    return { ok: true, ...result, needs_2fa_setup: cfg.REQUIRE_2FA && !ctx.user.totp_enabled };
   });
 
   // --- Utilisateurs (administrateur) -------------------------------------------------------------------------------
