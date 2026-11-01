@@ -267,6 +267,7 @@ test('export, sauvegarde et import', async () => {
   const up = await admin.patch(`/api/holdings/${ids.pea}`, { acquisition });
   assert.equal(up.status, 200, JSON.stringify(up.data));
   const before = (await admin.get('/api/dashboard')).data;
+  const previousPea = (await admin.get('/api/holdings')).data.holdings.find(h => h.id === ids.pea);
   const exp = await admin.get('/api/export.json');
   assert.equal(exp.status, 200);
   assert.equal(exp.data.format, 'vigie-export');
@@ -292,7 +293,7 @@ test('export, sauvegarde et import', async () => {
   assert.deepEqual(restored.totals, before.totals);
   const restoredPea = (await admin.get('/api/holdings')).data.holdings.find(h => h.id === ids.pea);
   assert.equal(restoredPea.acquisition.purchase_cents, 4200000);
-  assert.equal(restoredPea.latent_gain_cents, 800000);
+  assert.equal(restoredPea.latent_gain_cents, previousPea.latent_gain_cents);
 });
 
 test('en-têtes de sécurité sur la page', async () => {
