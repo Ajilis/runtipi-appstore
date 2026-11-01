@@ -962,6 +962,7 @@
           ${['pending', 'accepted'].includes(share.status) ? html`<button class="btn small danger" data-action="share-revoke" data-id="${share.id}">${icon('close')}Révoquer</button>` : ''}
         </div>`)}
       </div>` : ''}
+      ${data.available_bp === 0 ? html`<p class="notice">Aucun complément disponible. Pour proposer une quote-part, réduisez d'abord votre propre pourcentage dans la fiche du bien (par exemple 60 % pour proposer 40 %), ou révoquez une proposition existante.</p>` : ''}
       ${!recipients.mail_ready ? html`<p class="notice">Configurez d'abord le serveur SMTP et l'URL publique dans Réglages → Envoi d'e-mails.</p>` : ''}
       ${recipients.mail_ready && data.available_bp > 0 && recipients.recipients.length ? html`
         <form class="form" id="share-request-form">
