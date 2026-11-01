@@ -271,7 +271,7 @@ export class LogoService {
     this.closed = false;
   }
 
-  cacheKeyOf(e) { return e.host || (e.logo_url ? 'catalogue:' + e.id : null); }
+  cacheKeyOf(e) { return e.host || (e.logo_url || this.directory?.enabled ? 'catalogue:' + e.id : null); }
 
   hostOf(id) {
     const e = this.catalogue.get(id);
@@ -288,8 +288,21 @@ export class LogoService {
       let logo = null;
       try {
         const entry = [...this.catalogue.values()].find((e) => this.cacheKeyOf(e) === host);
-        if (entry?.logo_url) logo = await fetchDirectoryLogo(entry.logo_url, this.fetcher);
-        if (!logo && !host.startsWith('catalogue:')) logo = await fetchLogo(host, this.fetcher, { fallback: this.fallback });
+        // Les sources ouvertes sont recherchées en premier, pour les fiches historiques
+        // comme pour les établissements Sirene (même sans site officiel connu).
+        const candidates = [this.directory?.openFinTechLogo(entry), entry?.logo_url].filter(Boolean);
+        for (const url of new Set(candidates)) {
+          logo = await fetchDirectoryLogo(url, this.fetcher);
+          if (logo) break;
+        }
+        if (!logo && entry && this.directory?.enabled) {
+          const wikidataUrl = await this.directory.wikidataLogo(entry).catch((err) => {
+            this.log.debug?.('Wikidata logo ' + entry.id + ' : ' + err.message);
+            return null;
+          });
+          if (wikidataUrl && !candidates.includes(wikidataUrl)) logo = await fetchDirectoryLogo(wikidataUrl, this.fetcher);
+        }
+        if (!logo && entry?.host) logo = await fetchLogo(entry.host, this.fetcher, { fallback: this.fallback });
       } catch (err) { this.log.debug?.(`Logo ${host} : ${err.message}`); }
       if (this.closed) return logo;
       try {
@@ -363,7 +376,7 @@ export class LogoService {
       let status = !key ? 'no_site' : !r ? 'missing' : r.ok ? 'ok' : 'failed';
       if (key && this.pending.has(key)) status = 'fetching';
       catalogue[id] = {
-        status, host: e.host || (e.logo_url ? 'Source ouverte' : null),
+        status, host: e.host || (this.directory?.enabled || e.logo_url ? 'Wikidata / OpenFinTech' : null),
         fetched_at: r ? r.fetched_at : null, width: r && r.ok ? r.width : null, height: r && r.ok ? r.height : null, source: r && r.ok ? r.source : null,
         retry_after: r && !r.ok ? r.fetched_at + FAIL_TTL_MS : null,
       };
