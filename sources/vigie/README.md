@@ -48,6 +48,20 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - **Confidentialité / résilience** : seul le texte recherché est envoyé à Wikidata et au service public français. Les noms des avoirs, les montants et les identifiants des utilisateurs ne quittent pas Vigie. Les résultats sont conservés dans SQLite et utilisés si une source tombe. Les logos personnalisés passent toujours en priorité.
 - **Contrôle** : `INSTITUTION_CATALOGUE=false` désactive toutes les requêtes vers ces trois sources (mais laisse le catalogue embarqué et les entrées déjà mises en cache). `INSTITUTION_LOGOS=false` désactive les téléchargements de logos. L'annuaire est consultable via `GET /api/institutions/catalogue` et enrichi via `GET /api/institutions/search?q=...` (authentification obligatoire).
 
+## Logos : OpenFinTech et Wikidata par défaut (0.9.1)
+
+La recherche des logos suit désormais l'ordre suivant, pour **tous** les établissements
+du catalogue historique et les fiches Sirene :
+
+1. **OpenFinTech** : fournisseur français rapproché par nom exact ou par domaine officiel identique ; les URL de logos sont synchronisées et mises en cache en SQLite.
+2. **Wikidata** : recherche des noms exacts en français et en anglais, exclusivement pour les entités décrites comme financières ; récupération du logo P154, sous forme de miniature PNG via Wikimedia Commons.
+3. **Site officiel** : recherche du meilleur favicon ou de l'icône de l'application, avec secours Google si autorisé.
+4. **Monogramme** si aucune source ne répond ou si les images échouent à la validation.
+
+La recherche Wikidata conserve les résultats positifs 30 jours et les recherches sans correspondance 3 jours, afin de limiter les appels aux serveurs publics. Les images et les échecs sont conservés dans SQLite. Les anciennes images déjà valides restent utilisables pendant une mise à jour ; les échecs des versions précédentes sont réessayés après migration. La recherche de logos utilise le **nom de l'établissement**, jamais les montants ni les noms des avoirs ; aucune donnée personnelle n'est transmise à ces sources. Les images personnalisées restent prioritaires.
+
+La configuration `INSTITUTION_CATALOGUE=false` désactive les recherches Wikidata/OpenFinTech, et `INSTITUTION_LOGOS=false` désactive toutes les récupérations automatiques. Les échecs de téléchargement peuvent aussi provenir de la connexion Internet du conteneur Docker : le nouveau mécanisme ne résout pas à lui seul une panne DNS ou réseau.
+
 ## Correspondances vérifiées (0.9.1)
 
 Les dénominations légales ci-dessous, renvoyées par le registre Sirene, sont associées à leur site de marque **sans modifier les valeurs déjà enregistrées dans les avoirs**, ni leur nom ni leur identifiant d'annuaire :
