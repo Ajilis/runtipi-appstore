@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDatabase } from '../server/db.js';
 import { InstitutionDirectory, officialHost } from '../server/institutions.js';
-import { fetchDirectoryLogo } from '../server/logos.js';
+import { fetchDirectoryLogo, LogoService } from '../server/logos.js';
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
 const silent = { info() {}, warn() {}, debug() {} };
@@ -133,3 +133,51 @@ test('logos : les sources externes sont limitées aux hébergeurs autorisés', a
   assert.equal(logo.type, 'image/png');
   assert.equal(logo.width, 128);
 });
+
+test('N26 BANK SE et VIVID MONEY S.A. : fiches Sirene existantes reliées aux marques vérifiées', async () => fixture(async (db) => {
+  const insert = db.prepare('INSERT INTO institution_directory (id, name, kind, host, aliases, logo_url, source, updated_at) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?)');
+  insert.run('fr-840460943', 'N26 BANK SE', 'Établissement financier (Sirene)', '[]', 'Sirene', Date.now());
+  insert.run('fr-123456789', 'VIVID MONEY S.A.', 'Établissement financier (Sirene)', '[]', 'Sirene', Date.now());
+  // La migration doit préserver les avoirs, les fiches et leurs identifiants.
+  const dir = new InstitutionDirectory(db, { enabled: false, fetcher: () => { throw Error('offline'); }, log: silent });
+  const n26 = dir.catalogue.get('fr-840460943');
+  const vivid = dir.catalogue.get('fr-123456789');
+  assert.equal(n26.name, 'N26 BANK SE');
+  assert.equal(n26.host, 'n26.com');
+  assert.ok(n26.logo_url.endsWith('/N26_logo.svg?width=256'));
+  assert.equal(vivid.name, 'VIVID MONEY S.A.');
+  assert.equal(vivid.host, 'vivid.money');
+  assert.ok(vivid.logo_url.endsWith('/Vivid-money-logo.svg?width=256'));
+
+  const image = Buffer.alloc(200, 0);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(image);
+  image.writeUInt32BE(13, 8); image.write('IHDR', 12);
+  image.writeUInt32BE(128, 16); image.writeUInt32BE(128, 20);
+  const calls = [];
+  const logos = new LogoService(db, { fetcher: async (url) => {
+    calls.push(String(url));
+    return String(url).startsWith('https://commons.wikimedia.org/wiki/Special:Redirect/file/')
+      ? new Response(image, { status: 200 }) : new Response('Introuvable', { status: 404 });
+  }, log: silent });
+  logos.catalogue = dir.catalogue;
+  assert.equal(logos.status().catalogue['fr-840460943'].status, 'missing');
+  assert.equal(logos.status().catalogue['fr-123456789'].status, 'missing');
+  assert.equal((await logos.get('fr-840460943')).type, 'image/png');
+  assert.equal((await logos.get('fr-123456789')).type, 'image/png');
+  assert.equal(logos.status().catalogue['fr-840460943'].status, 'ok');
+  assert.equal(logos.status().catalogue['fr-123456789'].status, 'ok');
+  assert.equal(calls.filter((u) => u.startsWith('https://commons.wikimedia.org/')).length, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM institution_directory").get().count, 2);
+  logos.close(); dir.close();
+}));
+
+test('fiches Sirene nouvelles : enrichissement exact sans affecter les autres établissements', async () => fixture(async (db) => {
+  const dir = new InstitutionDirectory(db, { enabled: false, log: silent });
+  assert.equal(dir.accept({ id: 'fr-987654321', name: 'VIVID MONEY S.A.', source: 'Sirene' }), true);
+  assert.equal(dir.catalogue.get('fr-987654321').host, 'vivid.money');
+  assert.equal(dir.accept({ id: 'fr-987654322', name: 'Autre Société Bancaire', source: 'Sirene' }), true);
+  assert.equal(dir.catalogue.get('fr-987654322').host, null);
+  assert.equal(dir.catalogue.get('fr-987654322').logo_url, null);
+  dir.close();
+}));
+
