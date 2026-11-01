@@ -61,10 +61,49 @@ export class RealEstateEstimator {
 
   // Utiliser des mutations réelles auprès du même fournisseur quand le calcul
   // principal est inexploitable. Ce n'est PAS une source indépendante.
+  // Les ventes utilisées pour les deux niveaux de secours restent issues de DVF,
+  // du même fournisseur. Jamais de moyenne mêlant maisons et appartements.
   async getComparableSales(params, initialError) {
     const surface = params.surface_bati;
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const after = new Date(Date.UTC(now.getUTCFullYear() - 5, now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10);
+    const median = (values) => values.length % 2
+      ? values[(values.length - 1) / 2]
+      : (values[values.length / 2 - 1] + values[values.length / 2]) / 2;
+    const trimOutliers = (values) => {
+      if (!values.length) return [];
+      const sorted = values.slice().sort((a, b) => a - b);
+      const mid = median(sorted);
+      return sorted.filter((price) => price >= mid * 0.6 && price <= mid * 1.6);
+    };
+    // Une médiane locale au m² sur des biens de tailles différentes est moins
+    // probante qu'un comparable direct, même si elle utilise plus de ventes.
+    const makeResult = (prices, radius, areaPriceOnly) => {
+      const eurosPerM2 = median(prices);
+      const estimate = Math.round(eurosPerM2 * surface);
+      const variance = areaPriceOnly ? 0.35 : prices.length < 7 ? 0.20 : 0.15;
+      return {
+        estimate_cents: estimate * 100,
+        low_cents: Math.round(estimate * (1 - variance)) * 100,
+        high_cents: Math.round(estimate * (1 + variance)) * 100,
+        price_per_m2: Math.round(eurosPerM2),
+        comparables: prices.length,
+        confidence: areaPriceOnly ? 'low' : prices.length >= 10 && radius <= 1500 ? 'medium' : 'low',
+        source: 'GeoRegistry / DVF (DGFiP), médiane des ventes de ' + (params.type_local === 1 ? 'maisons' : 'appartements'),
+        source_url: 'https://georegistry.fr/docs/api',
+        method: areaPriceOnly ? 'dvf_local_price_m2' : 'dvf_median_nearby',
+        radius_m: radius,
+        as_of: today,
+        disclaimer: areaPriceOnly
+          ? 'Prix médian au m² des ventes locales du même type, appliqué à la surface du bien. Les surfaces des ventes peuvent différer fortement. Estimation très approximative, hors terrain, travaux, frais et fiscalité.'
+          : 'Estimation indicative par ventes proches de surface comparable, non expertise ni seconde source indépendante.',
+      };
+    };
+
     let lastCount = 0;
     let lastRadius = 0;
+    let localPriceFallback = null;
     for (const radius of [1500, 5000]) {
       lastRadius = radius;
       const search = new URLSearchParams({
@@ -86,60 +125,57 @@ export class RealEstateEstimator {
         if (Buffer.byteLength(raw) > MAX_RESPONSE_BYTES) break;
         payload = JSON.parse(raw);
       } catch { break; }
+      // Si la BAN ne reconnaît pas l'adresse, il ne faut pas se rabattre
+      // silencieusement sur un autre quartier ou une autre commune.
       if (payload?.meta?.address === null) break;
       if (!Array.isArray(payload?.data)) break;
-      const today = new Date();
-      const after = new Date(Date.UTC(today.getUTCFullYear() - 5, today.getUTCMonth(), today.getUTCDate())).toISOString().slice(0, 10);
+
       const seen = new Set();
-      const prices = [];
+      const sales = [];
       for (const row of payload.data) {
         if (!row || typeof row !== 'object') continue;
-        const type = String(row.type_local ?? '').toLowerCase();
-        if (type && type !== String(params.type_local) &&
-            !(params.type_local === 1 && type === 'maison') &&
-            !(params.type_local === 2 && type === 'appartement')) continue;
+        const type = String(row.type_local ?? '').trim().toLowerCase();
+        const expected = params.type_local === 1 ? 'maison' : 'appartement';
+        if (type !== String(params.type_local) && type !== expected) continue;
         const date = String(row.mutation_date || row.date_mutation || '');
-        if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < after)) continue;
-        const nature = String(row.nature || row.nature_mutation || '');
-        if (nature && nature.toLowerCase() !== 'vente') continue;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < after || date > today) continue;
+        const nature = String(row.nature || row.nature_mutation || '').trim().toLowerCase();
+        if (nature && nature !== 'vente') continue;
         const size = Number(row.surface_bati);
-        const price = Number(row.prix_m2) || Number(row.valeur_fonciere) / size;
-        const distance = Number(row.distance_m);
-        if (!Number.isFinite(size) || size < surface * 0.55 || size > surface * 1.8 ||
-            !Number.isFinite(price) || price < 400 || price > 30000 ||
-            (Number.isFinite(distance) && distance > radius)) continue;
-        const id = String(row.id_mutation || row.mutation_id || '') + '|' + date + '|' + size + '|' + Number(row.valeur_fonciere || 0);
+        // GeoRegistry ne fournit prix_m2 que pour les ventes à lot unique :
+        // reconstruire valeur_fonciere/surface_bati sur un multi-lot tromperait.
+        const unitPrice = Number(row.prix_m2);
+        const distance = row.distance_m === undefined || row.distance_m === null
+          ? null : Number(row.distance_m);
+        if (!Number.isFinite(size) || size < 25 || size > 600 ||
+            !Number.isFinite(unitPrice) || unitPrice < 400 || unitPrice > 30000 ||
+            (distance !== null && (!Number.isFinite(distance) || distance > radius))) continue;
+        const mutation = String(row.id_mutation || row.mutation_id || '').trim();
+        const id = mutation
+          ? 'mutation:' + mutation
+          : 'sale:' + date + '|' + size + '|' + unitPrice + '|' + String(row.adresse || '');
         if (seen.has(id)) continue;
         seen.add(id);
-        prices.push(price);
+        sales.push({ size, price: unitPrice });
       }
-      prices.sort((a, b) => a - b);
-      const median = (a) => a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
-      const center = prices.length ? median(prices) : 0;
-      const comparable = prices.filter((n) => n >= center * 0.6 && n <= center * 1.6);
+
+      // Niveau 2 : ventes de maisons/appartements de surface voisine.
+      const comparable = trimOutliers(sales
+        .filter((sale) => sale.size >= surface * 0.55 && sale.size <= surface * 1.8)
+        .map((sale) => sale.price));
       lastCount = Math.max(lastCount, comparable.length);
-      if (comparable.length < 3) continue;
-      const euros = median(comparable) * surface;
-      const variance = comparable.length < 7 ? 0.2 : 0.15;
-      const low = Math.round(euros * (1 - variance));
-      const high = Math.round(euros * (1 + variance));
-      return {
-        estimate_cents: Math.round(euros * 100),
-        low_cents: low * 100,
-        high_cents: high * 100,
-        comparables: comparable.length,
-        confidence: comparable.length >= 10 && radius <= 1500 ? 'medium' : 'low',
-        source: 'GeoRegistry / DVF (DGFiP), médiane des ventes proches',
-        source_url: 'https://georegistry.fr/docs/api',
-        method: 'dvf_median_nearby',
-        radius_m: radius,
-        as_of: new Date().toISOString().slice(0, 10),
-        disclaimer: "Estimation indicative à partir des ventes voisines, non expertise. Calcul de secours sans validation indépendante. Prix d'achat et frais non inclus.",
-      };
+      if (comparable.length >= 3) return makeResult(comparable, radius, false);
+
+      // Niveau 3 : prix local au m², même type de bien, sans imposer une
+      // surface équivalente. Conserver le rayon le plus proche disponible.
+      const localPrices = trimOutliers(sales.map((sale) => sale.price));
+      if (!localPriceFallback && localPrices.length >= 3)
+        localPriceFallback = makeResult(localPrices, radius, true);
     }
+    if (localPriceFallback) return localPriceFallback;
     throw new EstimateError(422, lastCount > 0
-      ? 'Estimation indisponible : ' + lastCount + ' vente(s) comparable(s) fiable(s) retenue(s) dans un rayon de ' + (lastRadius / 1000) + ' km (minimum 3 requis). Valeur actuelle inchangée.'
-      : initialError + ' Aucune vente suffisamment comparable et vérifiable trouvée à proximité. Vérifiez l’adresse et la surface ou saisissez une valeur manuelle.');
+      ? 'Estimation indisponible : ' + lastCount + ' vente(s) comparable(s) de surface voisine retenue(s), et moins de 3 ventes locales fiables du même type à ' + (lastRadius / 1000) + ' km. Valeur actuelle inchangée.'
+      : initialError + ' Moins de 3 ventes locales fiables du même type ont été trouvées. Vérifiez l’adresse et la surface ou saisissez une valeur manuelle.');
   }
 
   async resolve(params) {
