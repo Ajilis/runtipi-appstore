@@ -1386,10 +1386,10 @@
         <dt>Votre quote-part</dt><dd>${(h.total_ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
         <dt>Origine du bien</dt><dd>${h.shared_with_me ? 'Bien reçu par partage approuvé' : 'Bien enregistré sur votre compte'}</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
-        <dt>Prix d'achat de votre quote-part</dt><dd>${money(Math.round(property.purchase_cents * h.total_ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
+        <dt>Prix d'achat de votre part</dt><dd>${money(Math.round(property.purchase_cents * h.total_ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
         <dt>Date d'achat</dt><dd>${dateFr(property.purchased_at)}</dd>
         <dt>Valeur actuelle (bien entier)</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
-        <dt>Valeur de votre quote-part</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
+        <dt>Valeur de votre part</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
         <dt>Plus-value latente de votre quote-part</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
       </dl><p class="small muted">Gain brut théorique, hors frais, travaux, crédit restant dû et fiscalité.</p></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
