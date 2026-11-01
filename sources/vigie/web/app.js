@@ -882,7 +882,10 @@
           <div class="group-head"><div class="gh">${catPict(c)}<div><h3>${c.name}</h3><span class="sub">${c.kind === 'liability' ? 'Passif' : c.description || ''}</span></div></div><b>${money(c.kind === 'liability' ? -sum : sum)}</b></div>
           ${items.map((h) => {
             const stale = !h.closed_at && !h.schedule && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
-            const diff = h.previous_cents !== null && h.value_cents !== null ? h.value_cents - h.previous_cents : null;
+            const diff = h.previous_cents !== null && h.value_cents !== null
+              ? Math.round(h.value_cents * (h.property?.ownership_bp ?? 10000) / 10000)
+                - Math.round(h.previous_cents * (h.property?.ownership_bp ?? 10000) / 10000)
+              : null;
             const when = h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>`
               : h.schedule ? (h.schedule.done ? html`<span class="tag brand">${icon('check')}Remboursé</span>` : html`<span class="tag brand">${icon('calendar')}Échéancier</span><br>prochaine le ${dateFr(h.schedule.next_date)}`)
               : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`;
@@ -1059,7 +1062,7 @@
           : result.method === 'dvf_median_nearby'
             ? 'Médiane des ventes DVF de surface comparable (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km).'
             : 'Estimation par le moteur GeoRegistry sur ventes DVF.';
-        const summary = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
+        const summary = 'Estimation du bien entier ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
         output.textContent = summary + ' Le détail de la méthode et des incertitudes sera ajouté aux notes.';
         const apply = document.createElement('button');
         apply.type = 'button';
