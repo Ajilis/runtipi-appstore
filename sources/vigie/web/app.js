@@ -1419,7 +1419,7 @@
               ${mayEdit ? html`<td class="num"><button class="btn icon ghost small" type="button" data-action="delete-valuation" data-id="${v.id}" data-holding="${h.id}" aria-label="Supprimer la valeur du ${dateFr(v.valued_at)}">${icon('trash')}</button></td>` : ''}</tr>`;
           })}</tbody></table></div>` : html`<p class="muted">Aucune valeur.</p>`}
       </section>`}
-      ${property && isAdmin() && !h.shared_with_me ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-property" data-id="${h.id}">${icon('users')}Partager ce bien</button></div>` : ''}
+      ${property && mayEdit ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-property" data-id="${h.id}">${icon('users')}Partager ce bien</button></div>` : ''}
       ${mayEdit ? html`<div class="form-actions" style="justify-content:flex-start">
         <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier</button>
         ${h.closed_at ? html`<button class="btn" type="button" data-action="reopen-holding" data-id="${h.id}">${icon('unlock')}Rouvrir</button>` : html`<button class="btn" type="button" data-action="close-holding" data-id="${h.id}">${icon('lock')}Clôturer</button>`}
