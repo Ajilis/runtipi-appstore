@@ -9,6 +9,8 @@ const FRANCE = 'https://recherche-entreprises.api.gouv.fr/search';
 const DAY = 86400_000;
 const QUERY_TTL = 30 * 60_000;
 const MAX_ITEMS = 1800;
+// Correspondances vérifiées sur les mentions légales officielles, jamais par similarité approximative.
+const VERIFIED_LEGAL_BRANDS = Object.freeze({ 'n26 bank se': 'n26', 'vivid money s a': 'vivid-money' });
 const FINANCE = /banqu|bank|financ|assuran|insuran|courtier|broker|invest|gestion d.actifs|asset manag|paiement|payment|néobanqu|credit institution|établissement de crédit|société de crédit|bourse|stock exchang|cryptocurrency exchang/i;
 
 export const normalizeInstitution = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -61,14 +63,19 @@ export class InstitutionDirectory {
     const key = normalizeInstitution(name);
     if (key.length < 3) return false;
     const current = this.catalogue.get(id);
+    // Une dénomination Sirene peut différer de la marque utilisée par le client.
+    // Préserver la fiche Sirene et son identifiant, mais y associer le site et le logo de marque vérifiés.
+    const brand = this.catalogue.get(VERIFIED_LEGAL_BRANDS[key]);
     if (!current && this.catalogue.size >= MAX_ITEMS) return false;
     // L'identifiant et le libellé des établissements historiques restent inchangés.
     if (!current && [...this.catalogue.values()].some((e) => normalizeInstitution(e.name) === key)) return false;
-    const host = officialHost(entry.host ? 'https://' + entry.host : '');
-    const url = typeof entry.logo_url === 'string' && (
-      /^https:\/\/static\.openfintech\.io\/vendors\/[a-z0-9._-]+\/icon\.png$/.test(entry.logo_url) ||
-      /^https:\/\/commons\.wikimedia\.org\/wiki\/Special:Redirect\/file\/[^?#]{3,200}\?width=256$/.test(entry.logo_url)
-    ) ? entry.logo_url : null;
+    const site = brand?.host || entry.host;
+    const host = officialHost(site ? 'https://' + site : '');
+    const candidateLogo = brand?.logo_url || entry.logo_url;
+    const url = typeof candidateLogo === 'string' && (
+      /^https:\/\/static\.openfintech\.io\/vendors\/[a-z0-9._-]+\/icon\.png$/.test(candidateLogo) ||
+      /^https:\/\/commons\.wikimedia\.org\/wiki\/Special:Redirect\/file\/[^?#]{3,200}\?width=256$/.test(candidateLogo)
+    ) ? candidateLogo : null;
     const aliases = Array.isArray(entry.aliases) ? entry.aliases.map((s) => short(s)).filter((s) => s.length > 1 && s !== name).slice(0, 10) : [];
     const clean = { id, name, kind, host, aliases, logo_url: url, source: entry.source };
     this.catalogue.set(id, clean);
