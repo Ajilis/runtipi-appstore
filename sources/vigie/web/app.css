@@ -617,7 +617,12 @@ details.amort > p { margin-top: 8px; }
 /* Immobilier : prix d'achat conservé, valeur actuelle estimable dans le même champ. */
 .estate-value-input { display: flex; align-items: stretch; gap: 8px; }
 .estate-value-input .input { flex: 1; min-width: 0; }
-.estate-value-input .btn { flex: 0 0 42px; border: 1px solid var(--line-strong); }
+.value-row [data-manual]:first-child { grid-column: span 2; }
+.estate-value-input .estimate-magic { flex: 0 0 auto; min-width: 106px; padding: 0 11px; border: 1px solid var(--brand); background: var(--brand-soft); gap: 7px; font-weight: 650; }
+.estate-value-input .estimate-magic:hover { background: var(--brand); color: var(--brand-ink); }
+.estate-value-input .estimate-magic svg { width: 23px; height: 23px; stroke-width: 2.3; flex: none; }
+[data-estimate-result] .btn { display: flex; margin-top: 12px; width: 100%; white-space: normal; }
+@media (max-width: 520px) { .estate-value-input .estimate-magic { min-width: 94px; padding: 0 9px; } }
 .real-estate-fields { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel-2); }
 [data-estimate-result]:not(:empty) { background: var(--panel); border: 1px solid var(--line); padding: 12px; border-radius: var(--radius-s); font-size: 0.875rem; }
 

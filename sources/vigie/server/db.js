@@ -238,6 +238,11 @@ export const MIGRATIONS = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // 0.9.4 : quote-part détenue, en centièmes de pourcentage (10000 = 100 %).
+  `
+  ALTER TABLE real_estate ADD COLUMN ownership_bp INTEGER NOT NULL DEFAULT 10000
+    CHECK (ownership_bp BETWEEN 1 AND 10000);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

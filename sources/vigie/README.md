@@ -88,6 +88,113 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Quote-part de propriété immobilière (0.9.4)
+
+Pour chaque bien immobilier, le champ **« Quote-part de propriété (%) »**
+permet d'indiquer de **0,01 % à 100 %** de détention, avec une précision
+de deux décimales. Par défaut, la quote-part vaut **100 %**, y compris
+pour tous les biens créés avant cette version et tous les anciens exports.
+
+Les champs **Valeur d'achat** et **Valeur actuelle** concernent toujours
+le **bien immobilier entier**. Le moteur DVF estime lui aussi le bien
+entier. En revanche, le tableau de bord, le patrimoine net, les
+répartitions, les courbes d'évolution et la liste des avoirs
+comptabilisent uniquement **la valeur du bien × la quote-part détenue**.
+La plus-value latente est la différence entre la valeur de la part détenue
+et le prix d'achat correspondant à cette même part (hors frais, crédits,
+fiscalité et éventuels changements de détention dans le temps).
+La fiche de détail expose à la fois les deux valeurs du bien entier
+et celles de la quote-part, afin de ne pas mélanger les montants.
+
+Les saisies d'historique et la mise à jour rapide attendent toujours la
+**valeur du bien entier** ; leur aperçu du patrimoine net tient compte
+de la quote-part. L'export JSON, la restauration et le CSV des avoirs
+incluent le pourcentage ; les anciens exports sans champ de quote-part
+restent compatibles, avec la valeur **100 %**.
+
+La quote-part est un paramètre *actuel* appliqué à l'ensemble de l'historique
+pour la lecture du patrimoine. En cas de changement de quote-part au fil
+du temps, Vigie ne modélise pas encore l'historique juridique de ces
+transferts : les anciennes valorisations restent celles du bien entier.
+
+## Réglages → Sécurité modifiables depuis Vigie (0.9.4)
+
+L'onglet **Réglages → Sécurité** permet désormais à un **administrateur**
+de modifier directement, avec confirmation par son mot de passe actuel,
+les paramètres suivants : délai de déconnexion par inactivité, durée
+maximale d'une nouvelle session, seuil des échecs de connexion, durée
+de blocage, double authentification obligatoire, récupération externe
+des logos et service de secours pour les logos. Un compte éditeur ou
+lecteur ne peut pas les modifier.
+
+Les changements sont validés par le serveur, historisés dans le journal
+d'audit, actifs immédiatement et persistés dans **SQLite** pour être
+restaurés au prochain démarrage. Les sessions déjà créées conservent
+leur échéance absolue initiale, mais le délai d'inactivité est évalué
+avec la nouvelle durée. Les comptes bloqués avant un changement
+conservent leur heure de déblocage actuelle.
+
+**Protection Runtipi :** une obligation de double authentification
+imposée au démarrage par Runtipi ou `data/config/vigie.env` ne peut
+jamais être désactivée depuis l'interface, même si la base SQLite
+contient un réglage contraire. Si la 2FA est rendue obligatoire depuis
+Vigie, un utilisateur non équipé doit l'activer dans **Mon compte**
+avant de retrouver l'accès à ses données. Le secret cryptographique
+de l'application n'est pas modifiable depuis Vigie.
+
+## Estimations immobilières avec peu de ventes DVF (0.9.4)
+
+Si le moteur GeoRegistry renvoie une estimation incomplète, incohérente ou
+moins de trois comparables, Vigie utilise **une seconde méthode de calcul**
+auprès du même fournisseur : `GET /api/v1/dvf/ventes/address`.
+Il cherche d'abord dans un rayon de 1,5 km, puis de 5 km au besoin,
+des ventes effectives sur les cinq dernières années. Il privilégie les
+ventes du **même type et de surface proche**. Si moins de trois biens sont
+comparables en taille, il propose un **troisième niveau de secours** : la
+médiane du prix au m² des **maisons seulement** (ou appartements seulement)
+vendues localement, même si leur surface diffère, multipliée par la surface
+du bien. Il faut toujours **au moins trois ventes locales fiables et distinctes** ;
+les transactions sans prix au m² vérifié sont écartées pour ne pas compter des
+ventes multi-lots. On privilégie le rayon de 1,5 km, étendu à 5 km si nécessaire
+pour trouver d'abord des biens de surface voisine.
+
+Ce troisième calcul est **moins précis**, notamment pour les grandes maisons
+et les terrains de tailles diverses : fourchette indicative ±35 %, confiance
+« faible », mention explicite de la formule et du rayon dans l'interface.
+Ces ventes ne constituent **pas une source indépendante** du moteur initial.
+
+L'interface affiche le nombre de transactions retenues, la confiance
+(faible pour le calcul au m²), la méthode et le rayon de recherche.
+En l'absence de données vérifiables, Vigie donne une erreur plus précise
+plutôt qu'un chiffre arbitraire. Ni la valeur actuelle ni le prix d'achat
+ne changent sans validation explicite de l'utilisateur.
+
+L'estimation reste indicative, particulièrement en zone rurale ou lorsque
+des biens très différents se trouvent à moins de 5 km.
+
+### Baguette magique et compte rendu dans les notes
+
+Le bouton **« 🪄 Estimer »**, accolé à **Valeur actuelle**, affiche une
+proposition avec son nombre de ventes et sa fourchette. L'utilisateur clique
+ensuite sur **« Appliquer à la valeur actuelle et aux notes »** (dans le même
+formulaire) et enfin sur **Enregistrer**. Sans ces actions, rien n'est modifié.
+
+Vigie ajoute automatiquement un bilan encadré `[Estimation Vigie]` dans les
+**notes du bien** : date, source, montant, fourchette, méthode réellement
+utilisée, nombre de ventes, rayon et médiane au m² pour les calculs DVF locaux,
+période et dispersion des surfaces/prix observés, limites et incertitudes.
+Pour la méthode principale de GeoRegistry, Vigie précise au contraire quels
+paramètres (dates, rayons, coefficients) **ne sont pas communiqués** ; elle ne
+prétend pas les connaître. Les fourchettes forfaitaires des méthodes de secours
+sont présentées comme des précautions **et non des intervalles de confiance
+statistiques**. L'effet du terrain, du DPE, des travaux et de l'état réel est
+expressément signalé comme non contrôlé pour les calculs de secours.
+
+Les notes personnelles **ne sont jamais effacées** ; un nouveau bilan remplace
+uniquement le précédent bloc automatique. Si le texte dépasserait 1 000
+caractères, Vigie refuse l'application et demande de libérer de l'espace :
+aucune note n'est tronquée, aucune valeur n'est modifiée.
+
 ## Biens immobiliers : achat et valeur actuelle (0.9.3)
 
 Dans le formulaire **Avoirs → Immobilier**, Vigie distingue **Valeur d'achat** et

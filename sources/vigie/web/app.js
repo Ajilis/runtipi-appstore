@@ -229,7 +229,7 @@
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.5 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7c1.9 0 3.5-.6 4.9-1.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
-    magic: '<path d="M4 20L20 4M13 4l1 3M19 10l-3 1M6 8L3 7M8 3L7 6M18 17l-1-3M21 20l-3-1"/>',
+    magic: '<path d="m4 20 12-12"/><path d="m15 6 3 3"/><path d="M18 2v3M22 6h-3M3 8l2 1M8 2l1 3M18 15l1 2M22 19l-2-1"/>',
     up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
     alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.5"/>',
@@ -882,7 +882,10 @@
           <div class="group-head"><div class="gh">${catPict(c)}<div><h3>${c.name}</h3><span class="sub">${c.kind === 'liability' ? 'Passif' : c.description || ''}</span></div></div><b>${money(c.kind === 'liability' ? -sum : sum)}</b></div>
           ${items.map((h) => {
             const stale = !h.closed_at && !h.schedule && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
-            const diff = h.previous_cents !== null && h.value_cents !== null ? h.value_cents - h.previous_cents : null;
+            const diff = h.previous_cents !== null && h.value_cents !== null
+              ? Math.round(h.value_cents * (h.property?.ownership_bp ?? 10000) / 10000)
+                - Math.round(h.previous_cents * (h.property?.ownership_bp ?? 10000) / 10000)
+              : null;
             const when = h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>`
               : h.schedule ? (h.schedule.done ? html`<span class="tag brand">${icon('check')}Remboursé</span>` : html`<span class="tag brand">${icon('calendar')}Échéancier</span><br>prochaine le ${dateFr(h.schedule.next_date)}`)
               : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`;
@@ -890,7 +893,8 @@
               <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}</span></span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${when}</span>
-              <span class="amount"><b>${h.value_cents === null ? '—' : money(h.value_cents, h.currency)}</b>
+              <span class="amount"><b>${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency)}</b>
+                ${h.property && h.property.ownership_bp < 10000 ? html`<span class="muted">Votre part : ${h.property.ownership_bp / 100} % du bien (${money(h.value_cents, h.currency)})</span>` : ''}
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
                 ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
                 ${h.latent_gain_cents !== null && h.latent_gain_cents !== undefined ? html`<span class="${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}">Plus-value latente : ${money(h.latent_gain_cents, h.currency, { sign: true })}</span>` : ''}
@@ -911,6 +915,16 @@
     $('#show-closed').addEventListener('change', (e) => { state.showClosed = e.target.checked; draw(); });
     draw();
     if (route.arg) openHolding(Number(route.arg));
+  }
+
+  // Conserver les notes personnelles et remplacer seulement le précédent bilan automatique.
+  // Ne jamais tronquer silencieusement le texte fourni par l'utilisateur.
+  function mergeEstimationNote(current, report, max = 1000) {
+    if (typeof report !== 'string' || !report.startsWith('[Estimation Vigie]\n') ||
+        !report.endsWith('[/Estimation Vigie]')) return null;
+    const personal = String(current || '').replace(/\n{0,2}\[Estimation Vigie\][\s\S]*?\[\/Estimation Vigie\]/g, '');
+    const combined = personal + (personal ? (personal.endsWith('\n') ? '\n' : '\n\n') : '') + report;
+    return combined.length <= max ? combined : null;
   }
 
   async function holdingForm(existing = null) {
@@ -968,18 +982,21 @@
       </div>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
         : html`<div class="grid-3 value-row">
-        <label class="field" data-manual><span>Valeur actuelle</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn icon" type="button" data-estimate hidden title="Estimer la valeur actuelle" aria-label="Estimer la valeur actuelle">${icon('magic')}</button></span></label>
+        <label class="field" data-manual><span>Valeur actuelle du bien entier</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>
         <label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${c === settings.base_currency ? 'selected' : ''}>${c}</option>`)}</select></label>
         <label class="field" data-manual><span>Date de la valeur</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}"></label>
       </div><small class="muted" data-manual data-credit-hint hidden>Pour un crédit, indiquez le capital restant dû, en positif.</small>`}
-      ${existing ? html`<label class="field" data-real-current hidden><span>Valeur actuelle (${h.currency || 'EUR'})</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off" value="${h.value_cents !== null && h.value_cents !== undefined ? centsInput(h.value_cents) : ''}"><button class="btn icon" type="button" data-estimate hidden title="Estimer la valeur actuelle" aria-label="Estimer la valeur actuelle">${icon('magic')}</button></span></label>` : ''}
+      ${existing ? html`<label class="field" data-real-current hidden><span>Valeur actuelle du bien entier (${h.currency || 'EUR'})</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off" value="${h.value_cents !== null && h.value_cents !== undefined ? centsInput(h.value_cents) : ''}"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>` : ''}
       <section class="section real-estate-fields" data-real-estate hidden>
         ${h3i('house', 'Informations immobilières')}
         <div class="grid-2">
-          <label class="field"><span>Valeur d'achat</span><input class="input amount" name="purchase_amount" inputmode="decimal" placeholder="Ex. 220 000" autocomplete="off" value="${property ? centsInput(property.purchase_cents) : ''}"></label>
+          <label class="field"><span>Valeur d'achat du bien entier</span><input class="input amount" name="purchase_amount" inputmode="decimal" placeholder="Ex. 220 000" autocomplete="off" value="${property ? centsInput(property.purchase_cents) : ''}"></label>
           <label class="field"><span>Date d'achat</span><input class="input" name="purchased_at" type="date" max="${todayIso()}" value="${property?.purchased_at || ''}"></label>
         </div>
-        <p class="small muted">Le prix d'achat ne change pas lorsque vous estimez la valeur actuelle. La plus-value latente est calculée automatiquement (hors frais et fiscalité).</p>
+        <div class="grid-2">
+          <label class="field"><span>Quote-part de propriété (%)</span><input class="input amount" name="ownership_pct" inputmode="decimal" type="number" min="0.01" max="100" step="0.01" required value="${property ? property.ownership_bp / 100 : 100}"><small>100 % si vous possédez entièrement le bien ; ex. 50 % en indivision.</small></label>
+          <p class="small muted">Les valeurs d'achat et actuelle concernent le bien entier. Seule votre quote-part est comptée dans le patrimoine et dans la plus-value latente.</p>
+        </div>
         <div class="grid-2">
           <label class="field"><span>Type de bien</span><select class="select" name="property_type"><option value="maison" ${property?.property_type !== 'appartement' ? 'selected' : ''}>Maison</option><option value="appartement" ${property?.property_type === 'appartement' ? 'selected' : ''}>Appartement</option></select></label>
           <label class="field"><span>Surface habitable (m²)</span><input class="input" name="surface_m2" type="number" min="9" max="10000" placeholder="Ex. 85" value="${property?.surface_m2 || ''}"></label>
@@ -1021,20 +1038,58 @@
     syncRealEstate();
     estimateButtons.forEach((button) => button.addEventListener('click', async () => {
       const amountInput = $('[name="amount"]', button.closest('.field'));
+      const noteInput = form.querySelector('[name="notes"]');
       if (form.currency.value !== 'EUR') return toast('Estimation disponible uniquement pour les biens en euros.');
       if (!form.property_address.value.trim() || !form.surface_m2.value.trim()) return toast('Indiquez une adresse et une surface pour estimer le bien.');
+      const request = {
+        property_type: form.property_type.value, surface_m2: Number(form.surface_m2.value),
+        address: form.property_address.value, condition: form.property_condition.value,
+      };
       button.disabled = true;
       const output = $('[data-estimate-result]', form);
       output.textContent = 'Recherche des ventes comparables…';
       try {
-        const result = await api('POST', '/api/real-estate/estimate', {
-          property_type: form.property_type.value, surface_m2: Number(form.surface_m2.value),
-          address: form.property_address.value, condition: form.property_condition.value,
-        });
+        const result = await api('POST', '/api/real-estate/estimate', request);
+        if (estateSection.hidden || form.currency.value !== 'EUR' ||
+            form.property_type.value !== request.property_type || Number(form.surface_m2.value) !== request.surface_m2 ||
+            form.property_address.value !== request.address || form.property_condition.value !== request.condition) {
+          output.textContent = 'Les caractéristiques ont changé pendant la recherche. Relancez l’estimation.';
+          return;
+        }
         const sampleText = result.comparables + ' ventes comparables, fiabilité ' + (result.confidence === 'high' ? 'élevée' : result.confidence === 'medium' ? 'moyenne' : 'faible');
-        output.textContent = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '.';
-        const accepted = await confirmDialog({ title: 'Appliquer cette estimation ?', message: output.textContent + ' La valeur d’achat restera inchangée. Vous devrez enregistrer le formulaire pour sauvegarder la nouvelle valeur.', confirm: 'Remplir la valeur actuelle' });
-        if (accepted) { amountInput.value = centsInput(result.estimate_cents); amountInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        const methodText = result.method === 'dvf_local_price_m2'
+          ? 'Prix médian local : ' + Number(result.price_per_m2).toLocaleString('fr-FR') + ' €/m² × ' + Number(form.surface_m2.value).toLocaleString('fr-FR') + ' m² ; les autres maisons peuvent être de taille différente.'
+          : result.method === 'dvf_median_nearby'
+            ? 'Médiane des ventes DVF de surface comparable (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km).'
+            : 'Estimation par le moteur GeoRegistry sur ventes DVF.';
+        const summary = 'Estimation du bien entier ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
+        output.textContent = summary + ' Le détail de la méthode et des incertitudes sera ajouté aux notes.';
+        const apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 'btn primary';
+        apply.textContent = 'Appliquer à la valeur actuelle et aux notes';
+        output.appendChild(apply);
+        // Confirmation à l'intérieur du formulaire : une seconde fenêtre modale
+        // détruisait le formulaire et empêchait de sauvegarder la valeur estimée.
+        apply.addEventListener('click', () => {
+          if (estateSection.hidden || form.currency.value !== 'EUR' ||
+              form.property_type.value !== request.property_type || Number(form.surface_m2.value) !== request.surface_m2 ||
+              form.property_address.value !== request.address || form.property_condition.value !== request.condition) {
+            output.textContent = 'Les caractéristiques ont changé : relancez l’estimation avant de l’appliquer.';
+            return;
+          }
+          const notes = mergeEstimationNote(noteInput.value, result.estimation_note, noteInput.maxLength);
+          if (notes === null) {
+            output.textContent = 'Pas assez de place dans les notes pour conserver le bilan complet sans effacer vos notes. Raccourcissez vos notes personnelles puis relancez l’estimation.';
+            return;
+          }
+          noteInput.value = notes;
+          amountInput.value = centsInput(result.estimate_cents);
+          amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+          noteInput.dispatchEvent(new Event('input', { bubbles: true }));
+          output.textContent = summary + ' Valeur actuelle et notes complétées. Enregistrez le bien pour les sauvegarder. La valeur d’achat est inchangée.';
+          toast('Valeur actuelle et bilan d’estimation ajoutés aux notes. Enregistrez le bien.');
+        });
       } catch (err) { output.textContent = err.message; }
       finally { button.disabled = false; }
     }));
@@ -1123,9 +1178,10 @@
         purchase_amount: body.purchase_amount, purchased_at: body.purchased_at,
         property_type: body.property_type, address: body.property_address,
         surface_m2: body.surface_m2, condition: body.property_condition,
+        ownership_pct: body.ownership_pct,
       };
       for (const k of ['owner_choice', 'owner_new', 'mode', 'sc_kind', 'sc_principal', 'sc_rate', 'sc_months', 'sc_start',
-        'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition']) delete body[k];
+        'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition', 'ownership_pct']) delete body[k];
       if (auto) { body.schedule = schedule; delete body.amount; delete body.date; } else if (sc) body.schedule = null;
       await withBusy(e.submitter, async () => {
         try {
@@ -1254,19 +1310,22 @@
       : valuations[0] ? `Valeur au ${dateLong(valuations[0].valued_at)}` : 'Aucune valeur enregistrée';
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
-      <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.value_cents === null ? '—' : money(h.value_cents, h.currency, { digits: 2 })}</p>
-        <p class="muted">${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
+      <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
+        <p class="muted">${property ? 'Valeur de votre part dans le patrimoine' : ''}${property ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${property ? html`<div class="panel"><dl class="kv">
-        <dt>Valeur d'achat</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
+        <dt>Quote-part possédée</dt><dd>${(property.ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
+        <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
+        <dt>Prix d'achat de votre part</dt><dd>${money(Math.round(property.purchase_cents * property.ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
         <dt>Date d'achat</dt><dd>${dateFr(property.purchased_at)}</dd>
-        <dt>Valeur actuelle</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
-        <dt>Plus-value latente</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
+        <dt>Valeur actuelle (bien entier)</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
+        <dt>Valeur de votre part</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
+        <dt>Plus-value latente sur votre part</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
       </dl><p class="small muted">Gain brut théorique, hors frais, travaux, crédit restant dû et fiscalité.</p></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${sc ? loanPanel(h, sc, w) : ''}
       ${canEdit() && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
         ${h3i('plus', 'Nouvelle valeur')}
-        <div class="grid-2"><label class="field"><span>Valeur en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
+        <div class="grid-2"><label class="field"><span>${property ? 'Valeur du bien entier' : 'Valeur'} en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
         <label class="field"><span>Note (facultative)</span><input class="input" name="note" maxlength="120" placeholder="Relevé annuel, estimation notaire…"></label>
         <div class="form-actions"><button class="btn primary" type="submit">${icon('check')}Enregistrer la valeur</button></div>
@@ -1385,9 +1444,9 @@
             </div>`;
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             return html`<div class="quick" data-row data-line data-stale="${stale}" data-id="${h.id}">
-              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
+              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}${h.property && h.property.ownership_bp < 10000 ? ' · Quote-part ' + (h.property.ownership_bp / 100).toLocaleString('fr-FR') + ' % (saisir valeur du bien entier)' : ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : 'aucune valeur'}</span></div>
-              <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}" placeholder="${h.currency}">
+              <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}${h.property ? ' (valeur du bien entier)' : ''}" placeholder="${h.currency}">
               <button class="btn small keep" type="button" data-action="keep-value" data-id="${h.id}" ${h.value_cents === null ? 'disabled' : ''} title="Reprendre la dernière valeur à la date choisie">${icon('equal')}Inchangée</button>
             </div>`;
           })}</section>`)}
@@ -1410,7 +1469,8 @@
         count++;
         const r = rate(h.currency);
         if (r === undefined) { missing = true; return; }
-        net += (Math.round(cents * r) - (h.value_base || 0)) * signFor(h);
+        const owned = Math.round(cents * (h.property?.ownership_bp ?? 10000) / 10000);
+        net += (Math.round(owned * r) - (h.value_base || 0)) * signFor(h);
       });
       $('#quick-count').textContent = invalid ? `${invalid} montant(s) illisible(s)` : count ? `${count} valeur${count > 1 ? 's' : ''} à enregistrer` : 'Aucune valeur saisie';
       $('#quick-preview').textContent = count ? `Patrimoine net après mise à jour : ${money(net)} (${money(net - netNow, state.base, { sign: true })})${missing ? ', hors devises sans taux' : ''}` : `Patrimoine net actuel : ${money(netNow)}`;
@@ -1607,16 +1667,25 @@
 
       ${logoSt ? logoSummarySection(logoSt) : ''}
 
-      <section class="section" data-settings-group="securite">${h2i('shield', 'Sécurité du serveur')}<div class="panel">
-        <dl class="kv">
-          <dt>${icon('clock')}Déconnexion après inactivité</dt><dd>${s.security.session_idle_minutes} min</dd>
-          <dt>${icon('devices')}Durée maximale d'une session</dt><dd>${s.security.session_max_hours} h</dd>
-          <dt>${icon('lock')}Blocage du compte</dt><dd>après ${s.security.login_max_attempts} échecs, pendant ${s.security.login_lock_minutes} min</dd>
-          <dt>${icon('key')}Double authentification</dt><dd>${s.security.require_2fa ? 'obligatoire pour tous' : 'facultative'}</dd>
-          <dt>${icon('bank')}Logos des établissements</dt><dd>${s.security.institution_logos ? `récupérés sur les sites officiels${s.security.institution_logos_fallback ? ", sinon par le service d'icônes de Google" : ''}` : 'récupération désactivée (images personnelles et monogrammes)'}</dd>
-        </dl>
-        <p class="small muted" style="margin-top:12px">Ces réglages se modifient dans le fichier <b>data/config/vigie.env</b> de l'application, puis en redémarrant Vigie dans Runtipi.</p>
-      </div></section>` : ''}`);
+      <section class="section" data-settings-group="securite">
+        <div class="section-head">${h2i('shield', 'Sécurité du serveur')}<p>Paramètres modifiables par l'administrateur</p></div>
+        <form class="panel form" id="security-settings-form">
+          <div class="grid-2">
+            <label class="field"><span>Déconnexion après inactivité (minutes)</span><input class="input" type="number" name="session_idle_minutes" min="5" max="10080" step="1" required value="${s.security.session_idle_minutes}"><small>De 5 à 10 080 minutes. Applicable aux sessions ouvertes.</small></label>
+            <label class="field"><span>Durée maximale d'une session (heures)</span><input class="input" type="number" name="session_max_hours" min="1" max="2160" step="1" required value="${s.security.session_max_hours}"><small>De 1 à 2 160 heures. Applicable aux nouvelles sessions.</small></label>
+            <label class="field"><span>Échecs avant blocage du compte</span><input class="input" type="number" name="login_max_attempts" min="3" max="50" step="1" required value="${s.security.login_max_attempts}"><small>De 3 à 50 échecs consécutifs.</small></label>
+            <label class="field"><span>Durée du blocage (minutes)</span><input class="input" type="number" name="login_lock_minutes" min="1" max="1440" step="1" required value="${s.security.login_lock_minutes}"><small>De 1 à 1 440 minutes.</small></label>
+          </div>
+          <label class="check"><input type="checkbox" name="require_2fa" ${s.security.require_2fa ? 'checked' : ''} ${s.security.require_2fa_forced ? raw('disabled') : ''}><span><b>Double authentification obligatoire pour tous</b><span class="small muted" style="display:block">${s.security.require_2fa_forced ? 'Imposée par Runtipi ou vigie.env : impossible à désactiver ici.' : 'Les utilisateurs sans 2FA devront l’activer avant d’accéder à leurs données.'}</span></span></label>
+          <div class="section-head">${h3i('bank', 'Services externes : logos')}</div>
+          <label class="check"><input type="checkbox" name="institution_logos" ${s.security.institution_logos ? 'checked' : ''}><span><b>Récupérer les logos des établissements</b><span class="small muted" style="display:block">Autorise les requêtes externes sur les sites des établissements.</span></span></label>
+          <label class="check"><input type="checkbox" name="institution_logos_fallback" ${s.security.institution_logos_fallback ? 'checked' : ''}><span><b>Utiliser le service d'icônes de secours</b><span class="small muted" style="display:block">Si nécessaire, le domaine de l'établissement peut être transmis à Google.</span></span></label>
+          <label class="field"><span>Mot de passe administrateur pour confirmer</span><input class="input" name="current_password" type="password" required autocomplete="current-password" placeholder="Mot de passe actuel"></label>
+          <p class="error-text" role="alert" hidden></p>
+          <div class="form-actions"><button class="btn primary" type="submit">${icon('shield')}Enregistrer la sécurité</button></div>
+          <p class="small muted">Appliqué sans redémarrage et conservé dans SQLite. L'obligation 2FA imposée par Runtipi reste prioritaire. Le secret de l'application n'est pas modifiable ici.</p>
+        </form>
+      </section>` : ''}`);
 
     // Les formulaires restent montés et fonctionnent comme avant ; seul le panneau
     // actif est affiché. Déplacer les sections préserve les écouteurs et leurs identifiants.
@@ -1665,6 +1734,37 @@
     activate(requested || (panels.has(previous) ? previous : 'general'));
 
     if (mail) bindMailForm(mail);
+    const securityForm = $('#security-settings-form');
+    if (securityForm) securityForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const values = formData(securityForm);
+      const error = $('.error-text', securityForm);
+      error.hidden = true;
+      const policy = {
+        session_idle_minutes: Number(values.session_idle_minutes),
+        session_max_hours: Number(values.session_max_hours),
+        login_max_attempts: Number(values.login_max_attempts),
+        login_lock_minutes: Number(values.login_lock_minutes),
+        institution_logos: values.institution_logos,
+        institution_logos_fallback: values.institution_logos_fallback,
+        current_password: values.current_password,
+      };
+      if (!securityForm.elements.namedItem('require_2fa').disabled) policy.require_2fa = values.require_2fa;
+      await withBusy(e.submitter, async () => {
+        try {
+          const response = await api('PUT', '/api/admin/security', policy);
+          securityForm.elements.namedItem('current_password').value = '';
+          toast('Sécurité du serveur enregistrée');
+          if (response.needs_2fa_setup) {
+            state.boot.needs_2fa_setup = true;
+            location.hash = '#/compte';
+          } else await render();
+        } catch (err) {
+          error.textContent = err.message;
+          error.hidden = false;
+        }
+      });
+    });
     const sf = $('#settings-form');
     if (sf) sf.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -2206,7 +2306,7 @@
     autres_sessions_fermees: 'Autres sessions fermées', categorie_creee: 'Catégorie ajoutée', categorie_modifiee: 'Catégorie modifiée', categorie_supprimee: 'Catégorie supprimée',
     avoir_cree: 'Avoir ajouté', avoir_modifie: 'Avoir modifié', avoir_supprime: 'Avoir supprimé', avoir_cloture: 'Avoir clôturé', avoir_rouvert: 'Avoir rouvert',
     valeur_enregistree: 'Valeur enregistrée', valeur_supprimee: 'Valeur supprimée', mise_a_jour_rapide: 'Mise à jour rapide', taux_modifies: 'Taux modifiés',
-    taux_supprime: 'Taux supprimé', taux_bce: 'Taux BCE récupérés', reglages_modifies: 'Réglages modifiés', utilisateur_cree: 'Utilisateur ajouté',
+    taux_supprime: 'Taux supprimé', taux_bce: 'Taux BCE récupérés', reglages_modifies: 'Réglages modifiés', securite_modifiee: 'Réglages de sécurité modifiés', utilisateur_cree: 'Utilisateur ajouté',
     utilisateur_modifie: 'Utilisateur modifié', mot_de_passe_reinitialise: 'Mot de passe redéfini', double_auth_reinitialisee: 'Double authentification réinitialisée',
     utilisateur_supprime: 'Utilisateur supprimé', email_reglages: "Envoi d'e-mails configuré", email_desactive: "Envoi d'e-mails désactivé", email_test: "Test d'envoi d'e-mail",
     email_modifie: 'Adresse e-mail modifiée', invitation_envoyee: 'Invitation envoyée', invitation_creee: "Lien d'invitation créé", invitation_renvoyee: 'Invitation renvoyée',
