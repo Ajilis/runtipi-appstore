@@ -48,6 +48,46 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - **Confidentialité / résilience** : seul le texte recherché est envoyé à Wikidata et au service public français. Les noms des avoirs, les montants et les identifiants des utilisateurs ne quittent pas Vigie. Les résultats sont conservés dans SQLite et utilisés si une source tombe. Les logos personnalisés passent toujours en priorité.
 - **Contrôle** : `INSTITUTION_CATALOGUE=false` désactive toutes les requêtes vers ces trois sources (mais laisse le catalogue embarqué et les entrées déjà mises en cache). `INSTITUTION_LOGOS=false` désactive les téléchargements de logos. L'annuaire est consultable via `GET /api/institutions/catalogue` et enrichi via `GET /api/institutions/search?q=...` (authentification obligatoire).
 
+## Logos : OpenFinTech et Wikidata par défaut (0.9.1)
+
+La recherche des logos suit désormais l'ordre suivant, pour **tous** les établissements
+du catalogue historique et les fiches Sirene :
+
+1. **OpenFinTech** : fournisseur français rapproché par nom exact ou par domaine officiel identique ; les URL de logos sont synchronisées et mises en cache en SQLite.
+2. **Wikidata** : recherche des noms exacts en français et en anglais, exclusivement pour les entités décrites comme financières ; récupération du logo P154, sous forme de miniature PNG via Wikimedia Commons.
+3. **Site officiel** : recherche du meilleur favicon ou de l'icône de l'application, avec secours Google si autorisé.
+4. **Monogramme** si aucune source ne répond ou si les images échouent à la validation.
+
+La recherche Wikidata conserve les résultats positifs 30 jours et les recherches sans correspondance 3 jours, afin de limiter les appels aux serveurs publics. Les images et les échecs sont conservés dans SQLite. Les anciennes images déjà valides restent utilisables pendant une mise à jour ; les échecs des versions précédentes sont réessayés après migration. La recherche de logos utilise le **nom de l'établissement**, jamais les montants ni les noms des avoirs ; aucune donnée personnelle n'est transmise à ces sources. Les images personnalisées restent prioritaires.
+
+La configuration `INSTITUTION_CATALOGUE=false` désactive les recherches Wikidata/OpenFinTech, et `INSTITUTION_LOGOS=false` désactive toutes les récupérations automatiques. Les échecs de téléchargement peuvent aussi provenir de la connexion Internet du conteneur Docker : le nouveau mécanisme ne résout pas à lui seul une panne DNS ou réseau.
+
+## Correspondances vérifiées (0.9.1)
+
+Les dénominations légales ci-dessous, renvoyées par le registre Sirene, sont associées à leur site de marque **sans modifier les valeurs déjà enregistrées dans les avoirs**, ni leur nom ni leur identifiant d'annuaire :
+
+- **N26 BANK SE** → `n26.com`, marque N26 (voir les [mentions légales N26](https://n26.com/en-fr/imprint)).
+- **VIVID MONEY S.A.** → `vivid.money`, marque Vivid Money (voir les [mentions légales Vivid](https://vivid.money/en-fr/imprint/)). Attention : le domaine `vivid-money.lu` a été signalé comme frauduleux par la CSSF ; il n'est jamais utilisé.
+
+Les logos de référence sont récupérés sous forme d'image PNG auprès de Wikimedia Commons, et, en cas d'échec, le serveur continue la recherche d'icône sur le site officiel. Les images personnelles gardent la priorité. Sources et attribution :
+
+- **N26** : [N26 logo.svg](https://commons.wikimedia.org/wiki/File:N26_logo.svg), auteur N26, domaine public selon Wikimedia Commons (marque enregistrée).
+- **Vivid** : [Vivid-money-logo.svg](https://commons.wikimedia.org/wiki/File:Vivid-money-logo.svg), auteur *ThisUserIsVivid*, licence [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Conversion en miniature PNG par Wikimedia Commons ; les crédits restent associés à la source originale.
+
+## Navigation dans les réglages (0.9.1)
+
+La page **Réglages** dispose d'onglets thématiques : **Général** (devise et rappels),
+**Titulaires**, **Devises**, **Établissements** (gestion des logos),
+**Données** (exports, restauration et sauvegardes), **E-mails** (SMTP)
+et **Sécurité** (configuration du serveur). Les rubriques d'administration
+restent invisibles aux rôles non administrateurs. Les formulaires, validations,
+contrôles d'accès et API existants sont conservés.
+
+La barre d'onglets est défilable sur mobile, utilisable au clavier avec
+les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
+dans le navigateur et chaque thème peut être ouvert directement,
+par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
+
 ## Développement
 
 ```bash

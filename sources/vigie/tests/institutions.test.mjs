@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDatabase } from '../server/db.js';
 import { InstitutionDirectory, officialHost } from '../server/institutions.js';
-import { fetchDirectoryLogo } from '../server/logos.js';
+import { fetchDirectoryLogo, LogoService } from '../server/logos.js';
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
 const silent = { info() {}, warn() {}, debug() {} };
@@ -133,3 +133,158 @@ test('logos : les sources externes sont limitées aux hébergeurs autorisés', a
   assert.equal(logo.type, 'image/png');
   assert.equal(logo.width, 128);
 });
+
+test('N26 BANK SE et VIVID MONEY S.A. : fiches Sirene existantes reliées aux marques vérifiées', async () => fixture(async (db) => {
+  const insert = db.prepare('INSERT INTO institution_directory (id, name, kind, host, aliases, logo_url, source, updated_at) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?)');
+  insert.run('fr-840460943', 'N26 BANK SE', 'Établissement financier (Sirene)', '[]', 'Sirene', Date.now());
+  insert.run('fr-123456789', 'VIVID MONEY S.A.', 'Établissement financier (Sirene)', '[]', 'Sirene', Date.now());
+  // La migration doit préserver les avoirs, les fiches et leurs identifiants.
+  const dir = new InstitutionDirectory(db, { enabled: false, fetcher: () => { throw Error('offline'); }, log: silent });
+  const n26 = dir.catalogue.get('fr-840460943');
+  const vivid = dir.catalogue.get('fr-123456789');
+  assert.equal(n26.name, 'N26 BANK SE');
+  assert.equal(n26.host, 'n26.com');
+  assert.ok(n26.logo_url.endsWith('/N26_logo.svg?width=256'));
+  assert.equal(vivid.name, 'VIVID MONEY S.A.');
+  assert.equal(vivid.host, 'vivid.money');
+  assert.ok(vivid.logo_url.endsWith('/Vivid-money-logo.svg?width=256'));
+
+  const image = Buffer.alloc(200, 0);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(image);
+  image.writeUInt32BE(13, 8); image.write('IHDR', 12);
+  image.writeUInt32BE(128, 16); image.writeUInt32BE(128, 20);
+  const calls = [];
+  const logos = new LogoService(db, { fetcher: async (url) => {
+    calls.push(String(url));
+    return String(url).startsWith('https://commons.wikimedia.org/wiki/Special:Redirect/file/')
+      ? new Response(image, { status: 200 }) : new Response('Introuvable', { status: 404 });
+  }, log: silent });
+  logos.catalogue = dir.catalogue;
+  assert.equal(logos.status().catalogue['fr-840460943'].status, 'missing');
+  assert.equal(logos.status().catalogue['fr-123456789'].status, 'missing');
+  assert.equal((await logos.get('fr-840460943')).type, 'image/png');
+  assert.equal((await logos.get('fr-123456789')).type, 'image/png');
+  assert.equal(logos.status().catalogue['fr-840460943'].status, 'ok');
+  assert.equal(logos.status().catalogue['fr-123456789'].status, 'ok');
+  assert.equal(calls.filter((u) => u.startsWith('https://commons.wikimedia.org/')).length, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM institution_directory").get().count, 2);
+  logos.close(); dir.close();
+}));
+
+test('fiches Sirene nouvelles : enrichissement exact sans affecter les autres établissements', async () => fixture(async (db) => {
+  const dir = new InstitutionDirectory(db, { enabled: false, log: silent });
+  assert.equal(dir.accept({ id: 'fr-987654321', name: 'VIVID MONEY S.A.', source: 'Sirene' }), true);
+  assert.equal(dir.catalogue.get('fr-987654321').host, 'vivid.money');
+  assert.equal(dir.accept({ id: 'fr-987654322', name: 'Autre Société Bancaire', source: 'Sirene' }), true);
+  assert.equal(dir.catalogue.get('fr-987654322').host, null);
+  assert.equal(dir.catalogue.get('fr-987654322').logo_url, null);
+  dir.close();
+}));
+
+
+test('OpenFinTech : un fournisseur au même nom ou domaine enrichit une fiche historique', async () => fixture(async (db) => {
+  const vendors = JSON.stringify([{ code: 'n26-ref', status: 'active', countries: ['FR'],
+    name: { en: 'N26' }, links: { website: 'https://n26.com/' } }]);
+  const sums = hash(vendors) + '  data/vendors.json\n';
+  const routes = {
+    'https://static.openfintech.io/raw/latest.json': JSON.stringify({ version: 'v1.0', sha256sums: hash(sums) }),
+    'https://static.openfintech.io/raw/SHA256SUMS': sums,
+    'https://static.openfintech.io/raw/data/vendors.json': vendors,
+  };
+  const { fetcher } = published(routes);
+  const dir = new InstitutionDirectory(db, { fetcher, log: silent });
+  assert.equal(dir.openFinTechLogo(dir.catalogue.get('n26')), null);
+  await dir.syncOpenFinTech();
+  assert.equal(dir.openFinTechLogo(dir.catalogue.get('n26')), 'https://static.openfintech.io/vendors/n26-ref/icon.png');
+  const afterRestart = new InstitutionDirectory(db, { enabled: true, fetcher, log: silent });
+  assert.equal(afterRestart.openFinTechLogo(afterRestart.catalogue.get('n26')), 'https://static.openfintech.io/vendors/n26-ref/icon.png');
+  afterRestart.close(); dir.close();
+}));
+
+test('Priorité Wikidata : logo financier de marque utilisé avant le site officiel et mémorisé', async () => fixture(async (db) => {
+  const calls = [];
+  const image = Buffer.alloc(200, 0);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(image);
+  image.writeUInt32BE(13, 8); image.write('IHDR', 12);
+  image.writeUInt32BE(256, 16); image.writeUInt32BE(256, 20);
+  const fetcher = async (url) => {
+    const address = new URL(url);
+    calls.push(address.href);
+    if (address.hostname === 'www.wikidata.org' && address.searchParams.get('action') === 'wbsearchentities') {
+      return new Response(JSON.stringify({ search: [
+        { id: 'Q777', label: 'Allianz', description: 'compagnie d’assurance internationale' },
+      ] }));
+    }
+    if (address.hostname === 'www.wikidata.org' && address.searchParams.get('action') === 'wbgetentities') {
+      return new Response(JSON.stringify({ entities: {
+        Q777: { claims: { P856: [{ mainsnak: { datavalue: { value: 'https://allianz.fr/' } } }],
+          P154: [{ mainsnak: { datavalue: { value: 'Allianz.svg' } } }] } },
+      } }));
+    }
+    if (address.hostname === 'commons.wikimedia.org') return new Response(image);
+    return new Response('Not found', { status: 404 });
+  };
+  const dir = new InstitutionDirectory(db, { fetcher, log: silent });
+  const logos = new LogoService(db, { fetcher, log: silent });
+  logos.directory = dir;
+  logos.catalogue = dir.catalogue;
+  assert.equal((await logos.get('allianz')).type, 'image/png');
+  assert.equal(logos.status().catalogue.allianz.source, 'commons.wikimedia.org');
+  assert.equal(calls.some((u) => u.startsWith('https://www.allianz.fr/')), false, 'pas de requête au site si Wikimedia a un logo');
+  const before = calls.length;
+  assert.equal((await logos.get('allianz')).type, 'image/png');
+  assert.equal(calls.length, before, 'logo servi depuis SQLite');
+  const store = db.prepare('SELECT wikidata_url FROM institution_logo_sources WHERE id = ?').get('allianz');
+  assert.equal(store.wikidata_url, 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Allianz.svg?width=256');
+  logos.close(); dir.close();
+}));
+
+test('OpenFinTech prioritaire sur Wikidata, puis site officiel en secours', async () => fixture(async (db) => {
+  const image = Buffer.alloc(200, 0);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(image);
+  image.writeUInt32BE(13, 8); image.write('IHDR', 12);
+  image.writeUInt32BE(128, 16); image.writeUInt32BE(128, 20);
+  const calls = [];
+  const fetcher = async (url) => {
+    calls.push(String(url));
+    if (String(url) === 'https://static.openfintech.io/vendors/n26-ref/icon.png') return new Response(image);
+    return new Response('Not found', { status: 404 });
+  };
+  const dir = new InstitutionDirectory(db, { fetcher, log: silent });
+  db.prepare('INSERT INTO institution_logo_sources(id,openfintech_url) VALUES(?,?)').run('n26', 'https://static.openfintech.io/vendors/n26-ref/icon.png');
+  const logos = new LogoService(db, { fetcher, log: silent });
+  logos.directory = dir;
+  logos.catalogue = dir.catalogue;
+  assert.equal((await logos.get('n26')).type, 'image/png');
+  assert.deepEqual(calls, ['https://static.openfintech.io/vendors/n26-ref/icon.png']);
+  assert.equal(logos.status().catalogue.n26.source, 'static.openfintech.io');
+  logos.close(); dir.close();
+}));
+
+test('Fiche Sirene sans site : la recherche Wikidata est proposée plutôt que "Aucun site"', async () => fixture(async (db) => {
+  const dir = new InstitutionDirectory(db, { enabled: true, log: silent });
+  assert.equal(dir.accept({ id: 'fr-222333444', name: 'Banque Exemple', source: 'Sirene' }), true);
+  const logos = new LogoService(db, { log: silent });
+  logos.directory = dir;
+  logos.catalogue = dir.catalogue;
+  assert.equal(logos.hostOf('fr-222333444'), 'catalogue:fr-222333444');
+  assert.equal(logos.status().catalogue['fr-222333444'].status, 'missing');
+  assert.equal(logos.status().catalogue['fr-222333444'].host, 'Wikidata / OpenFinTech');
+  logos.close(); dir.close();
+}));
+
+test('Wikidata : une entité hors secteur financier ne reçoit jamais de logo', async () => fixture(async (db) => {
+  const fetcher = async (url) => {
+    const address = new URL(url);
+    if (address.hostname !== 'www.wikidata.org') return new Response('Non trouvé', { status: 404 });
+    return new Response(JSON.stringify({ search: [{ id: 'Q1', label: 'Allianz', description: 'station de métro' }] }));
+  };
+  const dir = new InstitutionDirectory(db, { fetcher, log: silent });
+  const entry = dir.catalogue.get('allianz');
+  assert.equal(await dir.wikidataLogo(entry), null);
+  const row = db.prepare('SELECT wikidata_checked_at,wikidata_url FROM institution_logo_sources WHERE id = ?').get(entry.id);
+  assert.ok(row.wikidata_checked_at > 0);
+  assert.equal(row.wikidata_url, null);
+  dir.close();
+}));
+

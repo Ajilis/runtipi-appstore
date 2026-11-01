@@ -8,8 +8,12 @@ const WIKIDATA = 'https://www.wikidata.org/w/api.php';
 const FRANCE = 'https://recherche-entreprises.api.gouv.fr/search';
 const DAY = 86400_000;
 const QUERY_TTL = 30 * 60_000;
+const WIKIDATA_POSITIVE_TTL = 30 * DAY;
+const WIKIDATA_NEGATIVE_TTL = 3 * DAY;
 const MAX_ITEMS = 1800;
-const FINANCE = /banqu|bank|financ|assuran|insuran|courtier|broker|invest|gestion d.actifs|asset manag|paiement|payment|néobanqu|credit institution|établissement de crédit|société de crédit|bourse|stock exchang|cryptocurrency exchang/i;
+// Correspondances vérifiées sur les mentions légales officielles, jamais par similarité approximative.
+const VERIFIED_LEGAL_BRANDS = Object.freeze({ 'n26 bank se': 'n26', 'vivid money s a': 'vivid-money' });
+const FINANCE = /banqu|bank|financ|assuran|insuran|courtier|broker|invest|gestion d.actifs|asset manag|paiement|payment|néobanqu|credit institution|établissement de crédit|société de crédit|bourse|stock exchang|cryptocurrency exchang|épargn|epargn|savings|mutuelle|mutual/i;
 
 export const normalizeInstitution = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -36,6 +40,7 @@ export class InstitutionDirectory {
     this.catalogue = loadCatalogue();
     this.searchCache = new Map();
     this.searchPending = new Map();
+    this.logoPending = new Map();
     this.syncPending = null;
     this.closed = false;
     this.lastSync = null;
@@ -61,14 +66,19 @@ export class InstitutionDirectory {
     const key = normalizeInstitution(name);
     if (key.length < 3) return false;
     const current = this.catalogue.get(id);
+    // Une dénomination Sirene peut différer de la marque utilisée par le client.
+    // Préserver la fiche Sirene et son identifiant, mais y associer le site et le logo de marque vérifiés.
+    const brand = this.catalogue.get(VERIFIED_LEGAL_BRANDS[key]);
     if (!current && this.catalogue.size >= MAX_ITEMS) return false;
     // L'identifiant et le libellé des établissements historiques restent inchangés.
     if (!current && [...this.catalogue.values()].some((e) => normalizeInstitution(e.name) === key)) return false;
-    const host = officialHost(entry.host ? 'https://' + entry.host : '');
-    const url = typeof entry.logo_url === 'string' && (
-      /^https:\/\/static\.openfintech\.io\/vendors\/[a-z0-9._-]+\/icon\.png$/.test(entry.logo_url) ||
-      /^https:\/\/commons\.wikimedia\.org\/wiki\/Special:Redirect\/file\/[^?#]{3,200}\?width=256$/.test(entry.logo_url)
-    ) ? entry.logo_url : null;
+    const site = brand?.host || entry.host;
+    const host = officialHost(site ? 'https://' + site : '');
+    const candidateLogo = brand?.logo_url || entry.logo_url;
+    const url = typeof candidateLogo === 'string' && (
+      /^https:\/\/static\.openfintech\.io\/vendors\/[a-z0-9._-]+\/icon\.png$/.test(candidateLogo) ||
+      /^https:\/\/commons\.wikimedia\.org\/wiki\/Special:Redirect\/file\/[^?#]{3,200}\?width=256$/.test(candidateLogo)
+    ) ? candidateLogo : null;
     const aliases = Array.isArray(entry.aliases) ? entry.aliases.map((s) => short(s)).filter((s) => s.length > 1 && s !== name).slice(0, 10) : [];
     const clean = { id, name, kind, host, aliases, logo_url: url, source: entry.source };
     this.catalogue.set(id, clean);
@@ -105,7 +115,7 @@ export class InstitutionDirectory {
     this.syncPending = (async () => {
       const desc = await this.getJson(OFT + 'latest.json', 10_000);
       if (!/^v[0-9.]+$/.test(desc.version || '') || !/^[a-f0-9]{64}$/.test(desc.sha256sums || '')) throw new Error('Version OpenFinTech invalide');
-      const previous = this.db.prepare("SELECT value FROM settings WHERE key='institutions_oft_version'").get();
+      const previous = this.db.prepare("SELECT value FROM settings WHERE key='institutions_oft_logo_version'").get();
       if (previous?.value === desc.version) return { added: 0, unchanged: true, version: desc.version };
       const sums = await this.getText(OFT + 'SHA256SUMS', 150_000);
       if (sha(sums) !== desc.sha256sums) throw new Error('Signature OpenFinTech SHA256SUMS incohérente');
@@ -117,6 +127,10 @@ export class InstitutionDirectory {
       const vendors = JSON.parse(raw);
       if (!Array.isArray(vendors)) throw new Error('Catalogue OpenFinTech invalide');
       let added = 0;
+      const upsertLogo = this.db.prepare(
+        'INSERT INTO institution_logo_sources(id,openfintech_url) VALUES(?,?) ' +
+        'ON CONFLICT(id) DO UPDATE SET openfintech_url=excluded.openfintech_url'
+      );
       for (const v of vendors) {
         if (this.closed || !v || v.status !== 'active' || !Array.isArray(v.countries) || !v.countries.includes('FR')) continue;
         const code = short(v.code, 65).toLowerCase();
@@ -124,18 +138,89 @@ export class InstitutionDirectory {
         const name = short(v.name?.fr || v.name?.en);
         const host = officialHost(v.links?.website);
         const id = 'oft-' + code.replace(/[^a-z0-9]+/g, '-').replace(/-+$/g, '');
+        const logoUrl = 'https://static.openfintech.io/vendors/' + encodeURIComponent(code) + '/icon.png';
+        // Un nom exact ou un même domaine officiel permet de rapprocher un fournisseur et
+        // un établissement historique sans changer son identifiant ni toucher aux avoirs.
+        const names = new Set([v.name?.en, v.name?.fr].map(normalizeInstitution).filter(Boolean));
+        const canonicalHost = (h) => String(h || '').replace(/^www\./, '').toLowerCase();
+        for (const entry of this.catalogue.values()) {
+          if (!entry.id || entry.id.startsWith('oft-')) continue;
+          const sameName = [entry.name, ...(entry.aliases || [])].some((n) => names.has(normalizeInstitution(n)));
+          const sameSite = host && entry.host && canonicalHost(host) === canonicalHost(entry.host);
+          if (sameName || sameSite) upsertLogo.run(entry.id, logoUrl);
+        }
         if (this.accept({ id, name, host, kind: 'Services financiers', source: 'OpenFinTech',
           aliases: [v.name?.en, v.name?.fr].filter(Boolean),
-          logo_url: 'https://static.openfintech.io/vendors/' + encodeURIComponent(code) + '/icon.png',
+          logo_url: logoUrl,
         })) added++;
       }
       this.db.prepare("INSERT INTO settings(key,value) VALUES('institutions_oft_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(desc.version);
+      this.db.prepare("INSERT INTO settings(key,value) VALUES('institutions_oft_logo_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(desc.version);
       this.lastSync = Date.now();
       this.onUpdated?.();
       this.log.info?.('Annuaire OpenFinTech : ' + added + ' fiches mises à jour (' + desc.version + ')');
       return { added, version: desc.version };
     })().finally(() => { this.syncPending = null; });
     return this.syncPending;
+  }
+
+  // Priorité des logos : OpenFinTech (fournisseurs vérifiés), puis Wikidata (P154),
+  // enfin le site officiel. Les sources ne reçoivent que le nom de l'établissement.
+  openFinTechLogo(entry) {
+    if (!this.enabled || !entry) return null;
+    const row = this.db.prepare('SELECT openfintech_url FROM institution_logo_sources WHERE id = ?').get(entry.id);
+    return row?.openfintech_url || (entry.source === 'OpenFinTech' ? entry.logo_url : null) || null;
+  }
+
+  async wikidataLogo(entry) {
+    if (!this.enabled || this.closed || !entry?.name) return null;
+    const row = this.db.prepare('SELECT wikidata_url, wikidata_checked_at FROM institution_logo_sources WHERE id = ?').get(entry.id);
+    const age = row ? Date.now() - row.wikidata_checked_at : Infinity;
+    if (age >= 0 && age < (row?.wikidata_url ? WIKIDATA_POSITIVE_TTL : WIKIDATA_NEGATIVE_TTL)) return row.wikidata_url;
+    if (this.logoPending.has(entry.id)) return this.logoPending.get(entry.id);
+    const pending = (async () => {
+      const known = this.catalogue.get(VERIFIED_LEGAL_BRANDS[normalizeInstitution(entry.name)]);
+      const names = [...new Set([known?.name, entry.name, ...(entry.aliases || [])].filter((v) => typeof v === 'string' && v.length >= 3))].slice(0, 2);
+      let url = null;
+      let success = false;
+      for (const name of names) {
+        if (url) break;
+        for (const lang of ['fr', 'en']) {
+          const params = new URLSearchParams({ action: 'wbsearchentities', search: name, language: lang, uselang: lang, type: 'item', limit: '8', format: 'json' });
+          const search = await this.getJson(WIKIDATA + '?' + params, 100_000);
+          success = true;
+          const exact = (search.search || []).filter((item) =>
+            /^Q\d+$/.test(item.id || '') &&
+            normalizeInstitution(item.label) === normalizeInstitution(name) &&
+            FINANCE.test(item.description || '')).slice(0, 3);
+          if (!exact.length) continue;
+          const req = new URLSearchParams({ action: 'wbgetentities', ids: exact.map((e) => e.id).join('|'), props: 'claims', format: 'json' });
+          const data = await this.getJson(WIKIDATA + '?' + req, 150_000);
+          for (const item of exact) {
+            const entity = data.entities?.[item.id];
+            const claim = (p) => entity?.claims?.[p]?.find((x) => x.rank !== 'deprecated' && x.mainsnak?.datavalue?.value)?.mainsnak?.datavalue?.value;
+            const filename = claim('P154');
+            const official = officialHost(claim('P856'));
+            // Le nom exact et une description financière sont obligatoires.
+            // Une URL du site discordante n'est jamais utilisée pour modifier la fiche.
+            if (official && entry.host && official.replace(/^www\./, '') !== entry.host.replace(/^www\./, '') &&
+                normalizeInstitution(item.label) !== normalizeInstitution(entry.name)) continue;
+            if (typeof filename === 'string' && filename.length >= 3 && filename.length <= 150) {
+              url = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/' + encodeURIComponent(filename) + '?width=256';
+              break;
+            }
+          }
+          if (url) break;
+        }
+      }
+      if (success) this.db.prepare(
+        'INSERT INTO institution_logo_sources(id,wikidata_url,wikidata_checked_at) VALUES(?,?,?) ' +
+        'ON CONFLICT(id) DO UPDATE SET wikidata_url=excluded.wikidata_url,wikidata_checked_at=excluded.wikidata_checked_at'
+      ).run(entry.id, url, Date.now());
+      return url;
+    })().finally(() => this.logoPending.delete(entry.id));
+    this.logoPending.set(entry.id, pending);
+    return pending;
   }
 
   async searchWikidata(q) {
@@ -198,7 +283,7 @@ export class InstitutionDirectory {
   startScheduler() {
     if (!this.enabled) return [];
     const run = () => this.syncOpenFinTech().catch((e) => this.log.warn?.('Annuaire OpenFinTech : ' + e.message));
-    const first = setTimeout(run, 20_000);
+    const first = setTimeout(run, 1_000);
     const daily = setInterval(run, DAY);
     first.unref?.(); daily.unref?.();
     return [first, daily];
