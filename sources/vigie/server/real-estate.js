@@ -19,6 +19,48 @@ export function latentGain(currentCents, purchaseCents) {
   return { gain_cents: diff, gain_pct: Math.round(diff / purchaseCents * 10000) / 100 };
 }
 
+
+export const ESTIMATION_NOTE_START = '[Estimation Vigie]';
+export const ESTIMATION_NOTE_END = '[/Estimation Vigie]';
+
+export function buildEstimateNote(result, params) {
+  const euro = (cents) => Math.round(cents / 100).toLocaleString('fr-FR') + ' €';
+  const n = (value) => Number(value).toLocaleString('fr-FR');
+  const method = result.method;
+  const type = params.type_local === 1 ? 'maisons' : 'appartements';
+  const confidence = { high: 'élevée', medium: 'moyenne', low: 'faible' }[result.confidence] || 'non précisée';
+  const lines = [
+    ESTIMATION_NOTE_START,
+    result.as_of + ' | ' + euro(result.estimate_cents) +
+      ' | fourchette ' + euro(result.low_cents) + ' à ' + euro(result.high_cents) +
+      ' | fiabilité ' + confidence + '.',
+    'Source : DVF (DGFiP) via GeoRegistry ; fournisseur unique, pas de recoupement indépendant.',
+  ];
+  if (method === 'dvf_local_price_m2' || method === 'dvf_median_nearby') {
+    const local = method === 'dvf_local_price_m2';
+    lines.push('Méthode : médiane de ' + result.comparables + ' ventes de ' + type +
+      ' à ' + n(result.radius_m / 1000) + ' km max. ' +
+      (local ? 'Prix local au m² sans exigence de surface équivalente' : 'Surfaces retenues : 55 à 180 % de celle du bien') +
+      ' ; ' + n(result.price_per_m2) + ' €/m² × ' + n(params.surface_bati) + ' m².');
+    if (result.sale_first && result.sale_last)
+      lines.push('Ventes retenues : ' + result.sale_first + ' à ' + result.sale_last +
+        ', surfaces ' + n(result.sale_surface_min) + ' à ' + n(result.sale_surface_max) + ' m².');
+    lines.push('Limites : fourchette de précaution ±' +
+      (local ? '35' : result.comparables < 7 ? '20' : '15') +
+      ' % fixée par Vigie (pas un intervalle statistique). Ventes anciennes ou atypiques, doublons et prix/m² invalides exclus.');
+    lines.push(local
+      ? 'Incertitude forte : tailles des ventes parfois très différentes ; terrain, DPE, état intérieur et travaux non corrigés.'
+      : 'Terrain, DPE, état intérieur et travaux non corrigés ; la proximité ne garantit pas l’équivalence.');
+  } else {
+    lines.push('Méthode : estimation du fournisseur sur ' + result.comparables +
+      ' ventes comparables ; adresse, type, ' + n(params.surface_bati) + ' m² et état transmis.');
+    lines.push('Limites : rayon, dates des ventes, filtres, coefficients et méthode de fourchette non détaillés par le fournisseur. Terrain, DPE et travaux non vérifiés.');
+  }
+  lines.push('Valeur indicative, non expertise immobilière ; prix d’achat et fiscalité non inclus.',
+    ESTIMATION_NOTE_END);
+  return lines.join('\n');
+}
+
 export class EstimateError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
@@ -51,6 +93,7 @@ export class RealEstateEstimator {
     if (cached && cached.until > Date.now()) return cached.value;
     if (this.pending.has(key)) return this.pending.get(key);
     const p = this.resolve(params).then((result) => {
+      result.estimation_note = buildEstimateNote(result, params);
       if (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value);
       this.cache.set(key, { value: result, until: Date.now() + 15 * 60_000 });
       return result;
@@ -79,7 +122,7 @@ export class RealEstateEstimator {
     };
     // Une médiane locale au m² sur des biens de tailles différentes est moins
     // probante qu'un comparable direct, même si elle utilise plus de ventes.
-    const makeResult = (prices, radius, areaPriceOnly) => {
+    const makeResult = (prices, radius, areaPriceOnly, records) => {
       const eurosPerM2 = median(prices);
       const estimate = Math.round(eurosPerM2 * surface);
       const variance = areaPriceOnly ? 0.35 : prices.length < 7 ? 0.20 : 0.15;
@@ -94,6 +137,10 @@ export class RealEstateEstimator {
         source_url: 'https://georegistry.fr/docs/api',
         method: areaPriceOnly ? 'dvf_local_price_m2' : 'dvf_median_nearby',
         radius_m: radius,
+        sale_first: records.map((r) => r.date).sort()[0],
+        sale_last: records.map((r) => r.date).sort().at(-1),
+        sale_surface_min: Math.min(...records.map((r) => r.size)),
+        sale_surface_max: Math.max(...records.map((r) => r.size)),
         as_of: today,
         disclaimer: areaPriceOnly
           ? 'Prix médian au m² des ventes locales du même type, appliqué à la surface du bien. Les surfaces des ventes peuvent différer fortement. Estimation très approximative, hors terrain, travaux, frais et fiscalité.'
@@ -156,7 +203,7 @@ export class RealEstateEstimator {
           : 'sale:' + date + '|' + size + '|' + unitPrice + '|' + String(row.adresse || '');
         if (seen.has(id)) continue;
         seen.add(id);
-        sales.push({ size, price: unitPrice });
+        sales.push({ size, price: unitPrice, date });
       }
 
       // Niveau 2 : ventes de maisons/appartements de surface voisine.
@@ -164,13 +211,15 @@ export class RealEstateEstimator {
         .filter((sale) => sale.size >= surface * 0.55 && sale.size <= surface * 1.8)
         .map((sale) => sale.price));
       lastCount = Math.max(lastCount, comparable.length);
-      if (comparable.length >= 3) return makeResult(comparable, radius, false);
+      if (comparable.length >= 3) return makeResult(comparable, radius, false,
+        sales.filter((sale) => sale.size >= surface * 0.55 && sale.size <= surface * 1.8 && comparable.includes(sale.price)));
 
       // Niveau 3 : prix local au m², même type de bien, sans imposer une
       // surface équivalente. Conserver le rayon le plus proche disponible.
       const localPrices = trimOutliers(sales.map((sale) => sale.price));
       if (!localPriceFallback && localPrices.length >= 3)
-        localPriceFallback = makeResult(localPrices, radius, true);
+        localPriceFallback = makeResult(localPrices, radius, true,
+          sales.filter((sale) => localPrices.includes(sale.price)));
     }
     if (localPriceFallback) return localPriceFallback;
     throw new EstimateError(422, lastCount > 0
