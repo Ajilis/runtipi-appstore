@@ -88,6 +88,38 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Diagnostiquer les échecs d'estimation DVF (0.9.5)
+
+La version 0.9.4 pouvait afficher « moins de trois ventes locales »
+lorsqu'en réalité la recherche d'adresse avait échoué, que le service était
+limité (HTTP 429), ou que sa réponse n'avait pas le format attendu.
+Ce message pouvait conduire à tort à supposer que la zone n'avait pas de
+transactions immobilières.
+
+La version 0.9.5 distingue explicitement :
+- **Adresse non reconnue** par le géocodeur BAN : vérifiez la saisie,
+  aucune vente ne peut être rattachée à un périmètre sûr.
+- **Service DVF indisponible ou limité** : erreur technique claire, pas de
+  prétendu manque de ventes.
+- **Réponse du fournisseur inexploitable** : erreur de format précise.
+- **Ventes insuffisantes après filtres** : détail du rayon (1,5, 5,
+  puis 10 km), du nombre de mutations retournées, des maisons ou
+  appartements du bon type et des ventes exploitables, pour comprendre
+  si les rejets viennent des prix/m² ou d'autres critères.
+
+À défaut de comparables de taille similaire à 5 km, la recherche peut
+encore s'élargir à **10 km** pour la médiane au m² du bon type de logement.
+Ce calcul n'est proposé que si au moins **3 mutations utilisables,
+distinctes, du bon type et récentes** sont présentes. Le résultat porte
+toujours une fiabilité **faible** et une fourchette de précaution **±50 %**,
+qui n'est pas un intervalle statistique. À 10 km, les quartiers peuvent
+présenter des marchés très différents : l'estimation est à considérer
+comme un ordre de grandeur, non comme un prix de vente précis.
+
+Aucune source externe ne reçoit le prix ou la date d'achat, ni la part
+détenue. Le résultat ne remplace jamais la valeur actuelle tant que
+l'utilisateur ne l'a pas explicitement appliqué et sauvegardé.
+
 ## Quote-part de propriété immobilière (0.9.4)
 
 Pour chaque bien immobilier, le champ **« Quote-part de propriété (%) »**
