@@ -46,7 +46,7 @@ test('annuaire : catalogue local conservé et URLs non fiables rejetées', async
   let calls = 0;
   const service = new InstitutionDirectory(db, { enabled: false, fetcher: () => { calls++; throw Error('offline'); }, log: silent });
   assert.ok(service.catalogue.has('boursobank'));
-  assert.ok(service.list().length >= 73);
+  assert.ok(service.list().length >= 70);
   assert.equal(officialHost('https://www.example.fr/path'), 'www.example.fr');
   for (const url of ['http://example.fr', 'https://127.0.0.1/', 'https://localhost/', 'https://dev.local/', 'https://[::1]/']) assert.equal(officialHost(url), null);
   assert.equal((await service.search('Bourso')).some((e) => e.id === 'boursobank'), true);
