@@ -88,6 +88,31 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Réglages → Sécurité modifiables depuis Vigie (0.9.4)
+
+L'onglet **Réglages → Sécurité** permet désormais à un **administrateur**
+de modifier directement, avec confirmation par son mot de passe actuel,
+les paramètres suivants : délai de déconnexion par inactivité, durée
+maximale d'une nouvelle session, seuil des échecs de connexion, durée
+de blocage, double authentification obligatoire, récupération externe
+des logos et service de secours pour les logos. Un compte éditeur ou
+lecteur ne peut pas les modifier.
+
+Les changements sont validés par le serveur, historisés dans le journal
+d'audit, actifs immédiatement et persistés dans **SQLite** pour être
+restaurés au prochain démarrage. Les sessions déjà créées conservent
+leur échéance absolue initiale, mais le délai d'inactivité est évalué
+avec la nouvelle durée. Les comptes bloqués avant un changement
+conservent leur heure de déblocage actuelle.
+
+**Protection Runtipi :** une obligation de double authentification
+imposée au démarrage par Runtipi ou `data/config/vigie.env` ne peut
+jamais être désactivée depuis l'interface, même si la base SQLite
+contient un réglage contraire. Si la 2FA est rendue obligatoire depuis
+Vigie, un utilisateur non équipé doit l'activer dans **Mon compte**
+avant de retrouver l'accès à ses données. Le secret cryptographique
+de l'application n'est pas modifiable depuis Vigie.
+
 ## Estimations immobilières avec peu de ventes DVF (0.9.4)
 
 Si le moteur GeoRegistry renvoie une estimation incomplète, incohérente ou
