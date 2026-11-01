@@ -90,7 +90,7 @@ test('quote-part : les droits détenus entrent dans le patrimoine, la valeur enr
 
     const json = await admin.get('/api/export.json');
     assert.equal(json.status, 200);
-    const saved = JSON.parse(json.data.toString('utf8'));
+    const saved = json.data;
     assert.equal(saved.real_estate.find((p) => p.holding_id === id).ownership_bp, 1250);
     const csv = await admin.get('/api/export/holdings.csv');
     assert.equal(csv.status, 200);
