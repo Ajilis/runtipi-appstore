@@ -1,6 +1,7 @@
 // Calculs du patrimoine : valeurs actuelles, conversions de devises, répartitions et historique.
 import { getSetting } from './db.js';
 import { loanSummary, loanValuations } from './loans.js';
+import { ownedCents, latentGain } from './real-estate.js';
 
 export const LIQUIDITY = ['immediate', 'short', 'locked'];
 
@@ -91,10 +92,11 @@ export function loadState(db, today = todayIso()) {
     byHolding.get(v.holding_id).push(v);
   }
   const schedules = getSchedules(db);
+  const properties = new Map(db.prepare('SELECT * FROM real_estate').all().map((p) => [p.holding_id, p]));
   for (const [hid, s] of schedules) byHolding.set(hid, mergeSchedule(byHolding.get(hid) || [], s, today));
   const catById = new Map(categories.map((c) => [c.id, c]));
   const { base, rates } = getRates(db);
-  return { categories, holdings, byHolding, catById, base, rates, schedules, today };
+  return { categories, holdings, byHolding, catById, base, rates, schedules, properties, today };
 }
 
 function lastOnOrBefore(list, date) {
@@ -117,8 +119,10 @@ export function holdingSnapshot(state, h, date = null) {
   const list = state.byHolding.get(h.id) || [];
   const v = date ? lastOnOrBefore(list, date) : list[list.length - 1] || null;
   const cents = v ? v.amount_cents : null;
-  const base = cents === null ? null : toBase(state, cents, h.currency);
-  return { valuation: v, cents, base, missingRate: cents !== null && base === null };
+  const ownershipBp = state.properties.get(h.id)?.ownership_bp ?? 10000;
+  const owned = cents === null ? null : ownedCents(cents, ownershipBp);
+  const base = owned === null ? null : toBase(state, owned, h.currency);
+  return { valuation: v, cents, owned, base, missingRate: cents !== null && base === null };
 }
 
 // Patrimoine à une date : somme des dernières valeurs connues à cette date.
@@ -249,7 +253,7 @@ export function holdingsView(db) {
   const today = todayIso();
   const state = loadState(db, today);
   const staleDays = Number(getSetting(db, 'stale_days', '45'));
-  const properties = new Map(db.prepare('SELECT * FROM real_estate').all().map((p) => [p.holding_id, p]));
+  const properties = state.properties;
   return {
     base_currency: state.base,
     stale_days: staleDays,
@@ -261,9 +265,10 @@ export function holdingsView(db) {
       const last = snap.valuation ? snap.valuation.valued_at : null;
       return {
         ...h,
-        value_cents: snap.cents,
+        value_cents: snap.cents, // valeur du bien entier, inchangée pour la saisie et l'historique
+        owned_cents: snap.owned, // valeur de la quote-part comptabilisée dans le patrimoine
         property: properties.get(h.id) || null,
-        latent_gain_cents: properties.has(h.id) && snap.cents !== null ? snap.cents - properties.get(h.id).purchase_cents : null,
+        latent_gain_cents: properties.has(h.id) ? latentGain(snap.cents, properties.get(h.id).purchase_cents, properties.get(h.id).ownership_bp)?.gain_cents ?? null : null,
         value_base: snap.base,
         missing_rate: snap.missingRate,
         last_date: last,
