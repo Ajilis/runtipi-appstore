@@ -27,6 +27,10 @@ test('baguette magique : moteur interrogé uniquement sur demande, sans envoyer 
   assert.equal(result.low_cents, 28000000);
   assert.equal(result.high_cents, 34000000);
   assert.equal(result.comparables, 12);
+  assert.match(result.estimation_note, /Source : DVF \(DGFiP\) via GeoRegistry/);
+  assert.match(result.estimation_note, /rayon, dates des ventes, filtres, coefficients/);
+  assert.match(result.estimation_note, /\[\/Estimation Vigie\]$/);
+  assert.ok(result.estimation_note.length <= 1000);
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].payload, { type_local: 2, surface_bati: 85, adresse: input.address, etat: 'bon' });
   assert.ok(!calls[0].opts.body.includes('250000'));
@@ -207,6 +211,15 @@ test('DVF : pour une maison de 180 m² sans équivalent, médiane locale au m² 
     purchase_amount: 425000, purchased_at: '2004-04-01',
   });
   assert.equal(value.method, 'dvf_local_price_m2');
+  assert.match(value.estimation_note, /Prix local au m² sans exigence de surface équivalente/);
+  assert.match(value.estimation_note, /3 ventes de maisons/);
+  assert.match(value.estimation_note, /4.200 €/);
+  assert.match(value.estimation_note, /180 m²/);
+  assert.match(value.estimation_note, /35 %/);
+  assert.match(value.estimation_note, /terrain, DPE, état intérieur et travaux non corrigés/);
+  assert.match(value.estimation_note, /75 à 90 m²/);
+  assert.match(value.estimation_note, /4.000 à 4.600 €/);
+  assert.ok(value.estimation_note.length <= 1000, 'le bilan tient dans la limite des notes');
   assert.equal(value.price_per_m2, 4200);
   assert.equal(value.estimate_cents, 75600000, '180 m² × 4200 €/m² = 756000 €');
   assert.equal(value.low_cents, 49140000);
@@ -239,6 +252,9 @@ test('DVF : un comparable réel à 5 km prime sur la moyenne locale au m²', asy
   const value = await estimator.estimate({ property_type: 'maison', surface_m2: 180,
     address: '128 avenue des Frères Lumière 69008 Lyon' });
   assert.equal(value.method, 'dvf_median_nearby');
+  assert.match(value.estimation_note, /Surfaces retenues : 55 à 180 %/);
+  assert.match(value.estimation_note, /20 % fixée par Vigie/);
+  assert.ok(value.estimation_note.length <= 1000);
   assert.equal(value.price_per_m2, 4300);
   assert.equal(value.estimate_cents, 77400000);
   assert.equal(value.radius_m, 5000);
