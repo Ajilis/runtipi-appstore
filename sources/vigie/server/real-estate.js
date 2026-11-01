@@ -59,6 +59,89 @@ export class RealEstateEstimator {
     return p;
   }
 
+  // Utiliser des mutations réelles auprès du même fournisseur quand le calcul
+  // principal est inexploitable. Ce n'est PAS une source indépendante.
+  async getComparableSales(params, initialError) {
+    const surface = params.surface_bati;
+    let lastCount = 0;
+    let lastRadius = 0;
+    for (const radius of [1500, 5000]) {
+      lastRadius = radius;
+      const search = new URLSearchParams({
+        adresse: params.adresse, type_local: String(params.type_local),
+        radius: String(radius), limit: '100',
+      });
+      let response;
+      try {
+        response = await this.fetcher('https://georegistry.fr/api/v1/dvf/ventes/address?' + search, {
+          method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8500),
+          headers: { accept: 'application/json', 'User-Agent': 'Vigie-Patrimoine/real-estate-estimation' },
+        });
+      } catch { break; }
+      if (!response.ok) break;
+      let payload;
+      try {
+        if (Number(response.headers?.get('content-length') || 0) > MAX_RESPONSE_BYTES) break;
+        const raw = await response.text();
+        if (Buffer.byteLength(raw) > MAX_RESPONSE_BYTES) break;
+        payload = JSON.parse(raw);
+      } catch { break; }
+      if (payload?.meta?.address === null) break;
+      if (!Array.isArray(payload?.data)) break;
+      const today = new Date();
+      const after = new Date(Date.UTC(today.getUTCFullYear() - 5, today.getUTCMonth(), today.getUTCDate())).toISOString().slice(0, 10);
+      const seen = new Set();
+      const prices = [];
+      for (const row of payload.data) {
+        if (!row || typeof row !== 'object') continue;
+        const type = String(row.type_local ?? '').toLowerCase();
+        if (type && type !== String(params.type_local) &&
+            !(params.type_local === 1 && type === 'maison') &&
+            !(params.type_local === 2 && type === 'appartement')) continue;
+        const date = String(row.mutation_date || row.date_mutation || '');
+        if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < after)) continue;
+        const nature = String(row.nature || row.nature_mutation || '');
+        if (nature && nature.toLowerCase() !== 'vente') continue;
+        const size = Number(row.surface_bati);
+        const price = Number(row.prix_m2) || Number(row.valeur_fonciere) / size;
+        const distance = Number(row.distance_m);
+        if (!Number.isFinite(size) || size < surface * 0.55 || size > surface * 1.8 ||
+            !Number.isFinite(price) || price < 400 || price > 30000 ||
+            (Number.isFinite(distance) && distance > radius)) continue;
+        const id = String(row.id_mutation || row.mutation_id || '') + '|' + date + '|' + size + '|' + Number(row.valeur_fonciere || 0);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        prices.push(price);
+      }
+      prices.sort((a, b) => a - b);
+      const median = (a) => a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
+      const center = prices.length ? median(prices) : 0;
+      const comparable = prices.filter((n) => n >= center * 0.6 && n <= center * 1.6);
+      lastCount = Math.max(lastCount, comparable.length);
+      if (comparable.length < 3) continue;
+      const euros = median(comparable) * surface;
+      const variance = comparable.length < 7 ? 0.2 : 0.15;
+      const low = Math.round(euros * (1 - variance));
+      const high = Math.round(euros * (1 + variance));
+      return {
+        estimate_cents: Math.round(euros * 100),
+        low_cents: low * 100,
+        high_cents: high * 100,
+        comparables: comparable.length,
+        confidence: comparable.length >= 10 && radius <= 1500 ? 'medium' : 'low',
+        source: 'GeoRegistry / DVF (DGFiP), médiane des ventes proches',
+        source_url: 'https://georegistry.fr/docs/api',
+        method: 'dvf_median_nearby',
+        radius_m: radius,
+        as_of: new Date().toISOString().slice(0, 10),
+        disclaimer: "Estimation indicative à partir des ventes voisines, non expertise. Calcul de secours sans validation indépendante. Prix d'achat et frais non inclus.",
+      };
+    }
+    throw new EstimateError(422, lastCount > 0
+      ? 'Estimation indisponible : ' + lastCount + ' vente(s) comparable(s) fiable(s) retenue(s) dans un rayon de ' + (lastRadius / 1000) + ' km (minimum 3 requis). Valeur actuelle inchangée.'
+      : initialError + ' Aucune vente suffisamment comparable et vérifiable trouvée à proximité. Vérifiez l’adresse et la surface ou saisissez une valeur manuelle.');
+  }
+
   async resolve(params) {
     let response;
     try {
@@ -71,12 +154,14 @@ export class RealEstateEstimator {
       throw new EstimateError(503, "Source immobilière inaccessible. Aucune valeur n'a été modifiée.");
     }
     if (!response.ok) {
-      const msg = response.status === 429 ? "Source temporairement limitée : réessayez plus tard."
-        : response.status === 422 ? 'Adresse ou caractéristiques non reconnues par la source.'
+      const msg = response.status === 429 ? 'Source temporairement limitée : réessayez plus tard.'
+        : response.status === 422 ? 'Le fournisseur n’a pas pu estimer ce bien.'
         : 'Estimation indisponible pour ce secteur.';
-      throw new EstimateError(response.status === 429 ? 503 : response.status === 422 ? 422 : 503, msg);
+      if (response.status === 422) return this.getComparableSales(params, msg);
+      throw new EstimateError(503, msg);
     }
-    if (Number(response.headers?.get('content-length') || 0) > MAX_RESPONSE_BYTES) throw new EstimateError(502, 'Réponse immobilière trop volumineuse.');
+    if (Number(response.headers?.get('content-length') || 0) > MAX_RESPONSE_BYTES)
+      throw new EstimateError(502, 'Réponse immobilière trop volumineuse.');
     let payload;
     try {
       const raw = await response.text();
@@ -89,11 +174,14 @@ export class RealEstateEstimator {
     const low = Number(result?.range?.low);
     const high = Number(result?.range?.high);
     const samples = Number(result?.comparables_count);
-    if (![estimate, low, high, samples].every(Number.isFinite) ||
+    if (!Number.isInteger(samples) || samples < 3)
+      return this.getComparableSales(params, Number.isInteger(samples) && samples >= 0
+        ? 'Le moteur principal a retenu ' + samples + ' vente(s) comparable(s).'
+        : 'Le moteur principal n’a pas fourni le nombre de ventes comparables.');
+    if (![estimate, low, high].every(Number.isFinite) ||
       estimate < 10000 || estimate > 100_000_000 || low <= 0 || low > estimate || high < estimate ||
-      high > estimate * 4 || !Number.isInteger(samples) || samples < 3) {
-      throw new EstimateError(422, "Données comparables insuffisantes ou incohérentes : estimation refusée.");
-    }
+      high > estimate * 4)
+      return this.getComparableSales(params, 'Le moteur principal a renvoyé une fourchette de prix inexploitable.');
     return {
       estimate_cents: Math.round(estimate * 100),
       low_cents: Math.round(low * 100),
@@ -102,6 +190,7 @@ export class RealEstateEstimator {
       confidence: ['high', 'medium', 'low'].includes(result.confidence) ? result.confidence : 'low',
       source: 'GeoRegistry / DVF (DGFiP)',
       source_url: 'https://georegistry.fr/docs/api',
+      method: 'georegistry_estimate',
       as_of: new Date().toISOString().slice(0, 10),
       disclaimer: "Estimation indicative sur ventes comparables, non expertise. Valeur d'achat et frais non inclus.",
     };
