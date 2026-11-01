@@ -11,6 +11,16 @@ try {
   console.log('PROBE_META_KEYS', Object.keys(body.meta || {}));
   for (const sale of (Array.isArray(body.data) ? body.data.slice(0, 4) : [])) {
     console.log('PROBE_FIELDS', Object.keys(sale));
+    console.log('PROBE_MUTATION_KEYS', Object.keys(sale.mutation || {}));
+    console.log('PROBE_MUTATION_VALUES', JSON.stringify({
+      id:sale.mutation?.id, date:sale.mutation?.date,
+      mutation_date:sale.mutation?.mutation_date,
+      date_mutation:sale.mutation?.date_mutation,
+      nature:sale.mutation?.nature,
+      nature_mutation:sale.mutation?.nature_mutation,
+      valeur_fonciere:sale.mutation?.valeur_fonciere,
+      distance_meters:sale.distance_meters, id:sale.id, lots:sale.lots,
+    }));
     console.log('PROBE_VALUES', JSON.stringify({
       type_local:sale.type_local, mutation_date:sale.mutation_date, date_mutation:sale.date_mutation,
       nature:sale.nature, nature_mutation:sale.nature_mutation, surface_bati:sale.surface_bati,
