@@ -819,7 +819,7 @@
     const groupLabels = { institution: 'Établissement', owner: 'Titulaire', currency: 'Devise' };
 
     el.innerHTML = part(html`
-      ${d.missing_rates.length ? html`<div class="notice">${icon('alert')}<div>Taux de change manquant pour ${d.missing_rates.join(', ')} : ces avoirs ne sont pas comptés dans les totaux.</div><a class="btn small" href="#/reglages">Saisir les taux</a></div>` : ''}
+      ${d.missing_rates.length ? html`<div class="notice">${icon('alert')}<div>Taux de change manquant pour ${d.missing_rates.join(', ')} : ces avoirs ne sont pas comptés dans les totaux.</div><a class="btn small" href="#/reglages/devises">Saisir les taux</a></div>` : ''}
       <section class="hero" aria-labelledby="net-label">${engraving()}
         <div class="hero-top">
           <div><p class="hero-label" id="net-label">Patrimoine net</p><p class="hero-value">${heroNumber}</p>
@@ -1577,6 +1577,7 @@
       }
       for (const [id, panel] of panels) panel.hidden = id !== key;
       store.set('settingsTab', key);
+      if (location.hash.startsWith('#/reglages')) history.replaceState(null, '', '#/reglages/' + key);
     };
     nav.addEventListener('click', (event) => {
       const btn = event.target.closest('[data-settings-tab]');
@@ -1593,7 +1594,8 @@
       activate(buttons[next].dataset.settingsTab, true);
     });
     const previous = store.get('settingsTab', 'general');
-    activate(panels.has(previous) ? previous : 'general');
+    const requested = route.arg && panels.has(route.arg) ? route.arg : null;
+    activate(requested || (panels.has(previous) ? previous : 'general'));
 
     if (mail) bindMailForm(mail);
     const sf = $('#settings-form');
@@ -1679,7 +1681,7 @@
   async function pageLogos(el, route, current) {
     let st = await api('GET', '/api/admin/logos');
     if (!current()) return;
-    setHeader('Logos des établissements', 'Logos récupérés sur OpenFinTech, Wikidata et les sites officiels, ou vos propres images', html`<a class="btn" href="#/reglages">${icon('settings')}Réglages</a>
+    setHeader('Logos des établissements', 'Logos récupérés sur OpenFinTech, Wikidata et les sites officiels, ou vos propres images', html`<a class="btn" href="#/reglages/etablissements">${icon('settings')}Réglages</a>
       ${st.enabled ? html`<button class="btn primary" type="button" id="logos-fetch-all">${icon('update')}Rechercher les logos manquants</button>` : ''}`);
     let filter = store.get('logoFilter', 'all');
     let q = '';
