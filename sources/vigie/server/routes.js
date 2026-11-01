@@ -169,9 +169,9 @@ export function registerRoutes(router, deps) {
       return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : null;
     } catch { return null; }
   }
-  function ownerCounts() {
+  function ownerCounts(userId = null) {
     const map = new Map();
-    for (const r of db.prepare("SELECT owner, COUNT(*) AS n FROM holdings WHERE owner IS NOT NULL AND owner <> '' GROUP BY owner").all()) {
+    for (const r of db.prepare("SELECT owner, COUNT(*) AS n FROM holdings WHERE owner IS NOT NULL AND owner <> '' AND (? IS NULL OR account_user_id = ?) GROUP BY owner").all(userId,userId)) {
       const k = r.owner.toLowerCase();
       const e = map.get(k) || { name: r.owner, count: 0 };
       e.count += r.n;
@@ -179,10 +179,10 @@ export function registerRoutes(router, deps) {
     }
     return map;
   }
-  function ownersList() {
+  function ownersList(userId = null) {
     const list = storedOwners() || [...DEFAULT_OWNERS];
     const seen = new Set(list.map((x) => x.toLowerCase()));
-    const counts = ownerCounts();
+    const counts = ownerCounts(userId);
     for (const [k, e] of [...counts].sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'))) if (!seen.has(k)) { list.push(e.name); seen.add(k); }
     return list.map((name) => ({ name, count: (counts.get(name.toLowerCase()) || { count: 0 }).count }));
   }
@@ -513,7 +513,7 @@ export function registerRoutes(router, deps) {
       db.prepare(`UPDATE real_estate_shares SET revoked_at = ?
         WHERE holding_id = ? AND accepted_at IS NULL AND declined_at IS NULL
         AND revoked_at IS NULL AND expires_at <= ?`).run(now, id, now);
-      const fresh = shareProperty(id);
+      const fresh = shareProperty(id,ctx.user.id);
       const left = 10000 - fresh.ownership_bp - sumReserved.get(id, now).bp;
       if (pct > left) fail(409, 'share_capacity', 'La quote-part disponible a changé. Rechargez la fiche.');
       if (db.prepare(`SELECT 1 FROM real_estate_shares WHERE holding_id = ? AND recipient_id = ?
@@ -566,7 +566,8 @@ export function registerRoutes(router, deps) {
     const id = intId(ctx.params.id);
     const data = transaction(db, () => {
       const row = shareRow.get(id);
-      if (!row || (ctx.user.role !== 'admin' && row.recipient_id !== ctx.user.id))
+      if (!row || (row.sender_id !== ctx.user.id && row.recipient_id !== ctx.user.id &&
+          !db.prepare('SELECT 1 FROM holdings WHERE id = ? AND account_user_id = ?').get(row.holding_id, ctx.user.id)))
         fail(404, 'not_found', 'Partage introuvable.');
       if (shareStatus(row) !== 'accepted' && shareStatus(row) !== 'pending')
         fail(409, 'share_inactive', 'Ce partage n’est plus actif.');
@@ -721,7 +722,7 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Titulaires -----------------------------------------------------------------------------------------------
-  router.get('/api/owners', { auth: 'viewer' }, () => ({ owners: ownersList() }));
+  router.get('/api/owners', { auth: 'viewer' }, (ctx) => ({ owners: ownersList(ctx.user.id) }));
 
   router.post('/api/owners', { auth: 'editor' }, (ctx) => {
     const name = ownerName(ctx.body.name);
@@ -735,29 +736,29 @@ export function registerRoutes(router, deps) {
   router.post('/api/owners/rename', { auth: 'editor' }, (ctx) => {
     const from = ownerName(ctx.body.from);
     const to = ownerName(ctx.body.to);
-    const list = ownersList().map((o) => o.name);
+    const list = ownersList(ctx.user.id).map((o) => o.name);
     const idx = list.findIndex((x) => x.toLowerCase() === from.toLowerCase());
     if (idx < 0) fail(404, 'not_found', 'Titulaire introuvable.');
     const target = list.find((x, i) => i !== idx && x.toLowerCase() === to.toLowerCase());
     const original = list[idx];
     transaction(db, () => {
       const finalName = target || to;
-      db.prepare('UPDATE holdings SET owner = ?, updated_at = ? WHERE lower(owner) = lower(?)').run(finalName, Date.now(), list[idx]);
+      db.prepare('UPDATE holdings SET owner = ?, updated_at = ? WHERE lower(owner) = lower(?) AND account_user_id = ?').run(finalName, Date.now(), list[idx],ctx.user.id);
       if (target) list.splice(idx, 1); else list[idx] = to;
       saveOwners(list);
     });
     audit(ctx, 'titulaire_renomme', `${original} → ${target || to}${target ? ' (fusion)' : ''}`);
-    return { owners: ownersList(), merged: Boolean(target) };
+    return { owners: ownersList(ctx.user.id), merged: Boolean(target) };
   });
 
   router.post('/api/owners/delete', { auth: 'editor' }, (ctx) => {
     const name = ownerName(ctx.body.name);
-    const entry = ownersList().find((o) => o.name.toLowerCase() === name.toLowerCase());
+    const entry = ownersList(ctx.user.id).find((o) => o.name.toLowerCase() === name.toLowerCase());
     if (!entry) fail(404, 'not_found', 'Titulaire introuvable.');
     if (entry.count > 0) fail(409, 'owner_in_use', `Ce titulaire est indiqué sur ${entry.count} avoir(s) : renommez-le ou modifiez ces avoirs d'abord.`);
-    saveOwners(ownersList().map((o) => o.name).filter((x) => x.toLowerCase() !== name.toLowerCase()));
+    saveOwners(ownersList(ctx.user.id).map((o) => o.name).filter((x) => x.toLowerCase() !== name.toLowerCase()));
     audit(ctx, 'titulaire_supprime', entry.name);
-    return { owners: ownersList() };
+    return { owners: ownersList(ctx.user.id) };
   });
 
   // --- Catégories ---------------------------------------------------------------------------------------------
@@ -997,8 +998,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/holdings/:id/valuations', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     if (getSchedule(id)) fail(409, 'scheduled', "Cet avoir suit un échéancier automatique : modifiez l'échéancier ou repassez en saisie manuelle.");
     const cents = amount(ctx.body.amount, 'Valeur');
     const date = valuationDate(ctx.body.date);
