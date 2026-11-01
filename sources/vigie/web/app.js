@@ -1683,7 +1683,7 @@
     };
     const schedule = () => {
       clearTimeout(timer);
-      if (st.batch) timer = setTimeout(() => { if (current()) load().catch(() => {}); }, 2000);
+      if (st.batch || Object.values(st.catalogue).some((r) => r.status === 'fetching')) timer = setTimeout(() => { if (current()) load().catch(() => {}); }, 2000);
     };
     const load = async () => {
       st = await api('GET', '/api/admin/logos');
