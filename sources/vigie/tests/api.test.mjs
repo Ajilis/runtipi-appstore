@@ -332,11 +332,6 @@ test('application installable : manifeste, service worker et icônes', async () 
   assert.ok(page.includes('rel="manifest"') && page.includes('apple-touch-icon'));
 });
 
-test('déconnexion', async () => {
-  const r = await admin.post('/api/auth/logout');
-  assert.equal(r.status, 200);
-  assert.equal((await admin.get('/api/dashboard')).status, 401);
-});
 
 test('plus-values latentes multi-actifs : création, mise à jour et suppression', async () => {
   const cats = (await admin.get('/api/categories')).data.categories;
@@ -364,4 +359,10 @@ test('plus-values latentes multi-actifs : création, mise à jour et suppression
   holding = (await admin.get('/api/holdings')).data.holdings.find(h => h.id === id);
   assert.equal(holding.latent_gain_cents, null);
   assert.equal((await admin.del('/api/holdings/' + id)).status, 200);
+});
+
+test('déconnexion', async () => {
+  const r = await admin.post('/api/auth/logout');
+  assert.equal(r.status, 200);
+  assert.equal((await admin.get('/api/dashboard')).status, 401);
 });
