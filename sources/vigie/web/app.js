@@ -1648,7 +1648,8 @@
         const small = s.width && Math.min(s.width, s.height) < 64;
         let from = '';
         try { from = new URL(s.source).host; } catch { from = s.source || ''; }
-        return html`<span class="tag brand">${icon('check')}Logo officiel</span><span class="sub">${s.width ? `${s.width} × ${s.height} px` : 'taille inconnue'}${from ? `, ${from}` : ''}, le ${msDate(s.fetched_at)}</span>${small ? html`<span class="sub warn">${icon('alert')}Petite icône : une image plus grande sera plus nette</span>` : ''}`;
+        const provenance = s.source === 'commons.wikimedia.org' ? 'Wikimedia Commons' : s.source === 'static.openfintech.io' ? 'OpenFinTech' : 'Logo trouvé';
+        return html`<span class="tag brand">${icon('check')}${provenance}</span><span class="sub">${s.width ? `${s.width} × ${s.height} px` : 'taille inconnue'}${from ? `, ${from}` : ''}, le ${msDate(s.fetched_at)}</span>${small ? html`<span class="sub warn">${icon('alert')}Petite icône : une image plus grande sera plus nette</span>` : ''}`;
       }
       if (s.status === 'fetching') return html`<span class="tag">${icon('clock')}Recherche en cours…</span>`;
       if (s.status === 'failed') return html`<span class="tag stale">${icon('alert')}Introuvable</span><span class="sub">Site inaccessible ou sans icône. Nouvel essai automatique le ${msDate(s.retry_after)}</span>`;
