@@ -293,6 +293,24 @@ export const templates = {
     };
   },
 
+  propertyShare({ firstName, inviter, propertyName, ownershipPct, url, expiresAt }) {
+    const hello = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
+    const percent = Number(ownershipPct).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+    const title = 'Demande de partage immobilier sur Vigie Patrimoine';
+    return {
+      subject: `${inviter} propose de partager un bien sur Vigie Patrimoine`,
+      text: `${hello}\n\n${inviter} vous propose d'approuver une quote-part de ${percent} % sur le bien immobilier « ${propertyName} » dans Vigie.\n\nConnectez-vous avec votre compte habituel sur le même serveur puis ouvrez cette page pour accepter ou refuser :\n${url}\n\nCette proposition expire le ${frDateTime(expiresAt)}. Vous ne devenez pas co-titulaire dans Vigie sans avoir accepté.\n\nCe partage organise le suivi patrimonial dans Vigie et ne constitue pas un acte de transfert de propriété.\n`,
+      html: layout({
+        title,
+        paragraphs: [escHtml(hello),
+          `${escHtml(inviter)} propose une quote-part de <b>${escHtml(percent)} %</b> sur le bien <b>${escHtml(propertyName)}</b>.`,
+          'Connectez-vous à votre compte sur le même serveur pour accepter ou refuser. Aucune quote-part ne vous est attribuée avant acceptation.'],
+        button: { label: 'Examiner la demande de partage', url },
+        footer: `Demande valable jusqu'au ${escHtml(frDateTime(expiresAt))}. Un partage dans Vigie ne constitue pas un acte juridique de transfert de propriété.`,
+      }),
+    };
+  },
+
   invitation({ firstName, inviter, role, url, expiresAt }) {
     const hello = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
     return {
