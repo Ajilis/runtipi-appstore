@@ -895,7 +895,7 @@
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${when}</span>
               <span class="amount"><b>${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency)}</b>
-                ${h.property && h.total_ownership_bp < 10000 ? html`<span class="muted">Quote-part commune : ${h.total_ownership_bp / 100} % du bien (${money(h.value_cents, h.currency)})</span>` : ''}
+                ${h.property && h.total_ownership_bp < 10000 ? html`<span class="muted">Votre quote-part : ${h.total_ownership_bp / 100} % du bien (${money(h.value_cents, h.currency)})</span>` : ''}
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
                 ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
                 ${h.latent_gain_cents !== null && h.latent_gain_cents !== undefined ? html`<span class="${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}">Plus-value latente : ${money(h.latent_gain_cents, h.currency, { sign: true })}</span>` : ''}
@@ -927,7 +927,7 @@
       <section class="section"><div class="section-head">${h2i('mail', 'Demandes reçues')}</div>
         ${inbox.invitations.length ? inbox.invitations.map((p) => html`<div class="panel form" style="margin-bottom:12px">
           <h3>${p.property_name}</h3>
-          <p>${p.sender_name || 'Un administrateur'} vous propose <b>${(p.ownership_bp / 100).toLocaleString('fr-FR')} %</b> du bien immobilier dans le patrimoine commun.</p>
+          <p>${p.sender_name || 'Un administrateur'} vous propose <b>${(p.ownership_bp / 100).toLocaleString('fr-FR')} %</b> de ce bien immobilier. Après acceptation, votre quote-part apparaîtra dans vos avoirs Vigie.</p>
           <p class="small muted">Valable jusqu'au ${dateTime(p.expires_at)}. Aucune quote-part n'est ajoutée avant votre approbation.</p>
           <div class="form-actions" style="justify-content:flex-start">
             <button class="btn primary" data-action="share-decision" data-id="${p.id}" data-decision="accept">${icon('check')}Accepter</button>
@@ -937,13 +937,13 @@
       <section class="section"><div class="section-head">${h2i('users', 'Quote-parts approuvées')}</div>
         ${inbox.accepted.length ? inbox.accepted.map((p) => html`<div class="panel">
           <b>${p.property_name} — ${(p.ownership_bp / 100).toLocaleString('fr-FR')} %</b>
-          <p class="small muted">Accepter une part ne crée pas un second bien : une seule fiche et une seule estimation pour le patrimoine commun.</p>
+          <p class="small muted">Cette quote-part figure dans votre compte Vigie avec sa propre valeur patrimoniale. La source reste la fiche et l’estimation du propriétaire initial.</p>
           <div class="form-actions" style="justify-content:flex-start">
             <button class="btn" data-action="open-holding" data-id="${p.holding_id}">${icon('house')}Consulter le bien</button>
             <button class="btn danger" data-action="share-revoke" data-id="${p.id}" data-no-dialog="1">${icon('close')}Renoncer à ma part</button>
           </div></div>`) : html`<div class="panel"><p class="muted">Aucun partage accepté.</p></div>`}
       </section>
-      <p class="small muted">Vigie est un patrimoine commun : les comptes autorisés peuvent déjà consulter les avoirs. L'approbation attribue une quote-part de suivi financier, pas un droit de propriété légal.</p>
+      <p class="small muted">Chaque compte Vigie conserve ses propres avoirs. Le bien partagé apparaît ici uniquement après acceptation, à hauteur de votre part. L’accord n’est pas un transfert juridique de propriété.</p>
     `);
   }
 
@@ -954,7 +954,7 @@
     ]);
     const percent = (x) => (x / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
     const dialog = openDialog(html`<div class="dialog-body form">
-      ${dialogHead('Partager le bien immobilier', 'L’autre personne doit posséder un compte sur ce serveur et approuver le partage par e-mail.')}
+      ${dialogHead('Partager le bien immobilier', 'Le bien apparaîtra dans les avoirs du compte destinataire après son accord, sans lui ouvrir l’accès à vos autres biens.')}
       <p class="muted">Quote-part initiale : <b>${percent(data.ownership_bp)} %</b> · Déjà acceptée : <b>${percent(data.accepted_bp)} %</b> · Complément disponible : <b>${percent(data.available_bp)} %</b>.</p>
       ${data.shares.length ? html`<div class="panel"><h3>Demandes et approbations</h3>
         ${data.shares.map((share) => html`<div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap">
@@ -1368,6 +1368,7 @@
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
     const { holding: h, valuations, schedule: sc, base_currency: base, property, latent_gain: latent } = data;
+    const mayEdit = canEdit() && !h.shared_with_me;
     const cats = holdingsCache ? holdingsCache.categories : (await api('GET', '/api/categories')).categories;
     const cat = cats.find((c) => c.id === h.category_id) || {};
     const asc = [...valuations].reverse();
@@ -1380,21 +1381,20 @@
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
-        <p class="muted">${property ? 'Valeur de la quote-part commune du serveur' : ''}${property ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
+        <p class="muted">${property ? 'Valeur de votre quote-part sur votre compte Vigie' : ''}${property ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${property ? html`<div class="panel"><dl class="kv">
-        <dt>Quote-part déclarée initialement</dt><dd>${(property.ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
-        <dt>Partages approuvés sur le serveur</dt><dd>${((h.total_ownership_bp - property.ownership_bp) / 100).toLocaleString('fr-FR')} %</dd>
-        <dt>Quote-part commune comptabilisée</dt><dd>${(h.total_ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
+        <dt>Votre quote-part</dt><dd>${(h.total_ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
+        <dt>Origine du bien</dt><dd>${h.shared_with_me ? 'Bien reçu par partage approuvé' : 'Bien enregistré sur votre compte'}</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
-        <dt>Prix d'achat de la quote-part commune</dt><dd>${money(Math.round(property.purchase_cents * h.total_ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
+        <dt>Prix d'achat de votre quote-part</dt><dd>${money(Math.round(property.purchase_cents * h.total_ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
         <dt>Date d'achat</dt><dd>${dateFr(property.purchased_at)}</dd>
         <dt>Valeur actuelle (bien entier)</dt><dd>${h.value_cents !== null ? money(h.value_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
-        <dt>Valeur de la quote-part commune</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
-        <dt>Plus-value latente de la part commune</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
+        <dt>Valeur de votre quote-part</dt><dd>${h.owned_cents !== null ? money(h.owned_cents, h.currency, { digits: 2 }) : 'Non renseignée'}</dd>
+        <dt>Plus-value latente de votre quote-part</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? money(latent.gain_cents, h.currency, { digits: 2, sign: true }) + ' (' + String(latent.gain_pct).replace('.', ',') + ' %)' : '—'}</dd>
       </dl><p class="small muted">Gain brut théorique, hors frais, travaux, crédit restant dû et fiscalité.</p></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${sc ? loanPanel(h, sc, w) : ''}
-      ${canEdit() && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
+      ${mayEdit && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
         ${h3i('plus', 'Nouvelle valeur')}
         <div class="grid-2"><label class="field"><span>${property ? 'Valeur du bien entier' : 'Valeur'} en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
@@ -1410,17 +1410,17 @@
         ${h.notes ? html`<dt>${icon('journal')}Notes</dt><dd style="white-space:pre-wrap">${h.notes}</dd>` : ''}
       </dl>
       ${sc && !shown.length ? '' : html`<section class="section">${h3i('clock', sc ? "Valeurs saisies avant l'échéancier" : 'Historique des valeurs')}
-        ${shown.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
+        ${shown.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${mayEdit ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${shown.map((v, i) => {
             const prev = shown[i + 1];
             const diff = prev ? v.amount_cents - prev.amount_cents : null;
             return html`<tr><td>${dateFr(v.valued_at)}${v.note ? html`<br><span class="small muted">${v.note}</span>` : ''}</td><td class="num">${exact(v.amount_cents, h.currency)}</td>
               <td class="num ${!diff ? 'muted' : (diff > 0) !== (cat.kind === 'liability') ? 'pos' : 'neg'}">${diff === null ? '' : money(diff, h.currency, { sign: true })}</td>
-              ${canEdit() ? html`<td class="num"><button class="btn icon ghost small" type="button" data-action="delete-valuation" data-id="${v.id}" data-holding="${h.id}" aria-label="Supprimer la valeur du ${dateFr(v.valued_at)}">${icon('trash')}</button></td>` : ''}</tr>`;
+              ${mayEdit ? html`<td class="num"><button class="btn icon ghost small" type="button" data-action="delete-valuation" data-id="${v.id}" data-holding="${h.id}" aria-label="Supprimer la valeur du ${dateFr(v.valued_at)}">${icon('trash')}</button></td>` : ''}</tr>`;
           })}</tbody></table></div>` : html`<p class="muted">Aucune valeur.</p>`}
       </section>`}
-      ${property && isAdmin() ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-property" data-id="${h.id}">${icon('users')}Partager ce bien</button></div>` : ''}
-      ${canEdit() ? html`<div class="form-actions" style="justify-content:flex-start">
+      ${property && isAdmin() && !h.shared_with_me ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-property" data-id="${h.id}">${icon('users')}Partager ce bien</button></div>` : ''}
+      ${mayEdit ? html`<div class="form-actions" style="justify-content:flex-start">
         <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier</button>
         ${h.closed_at ? html`<button class="btn" type="button" data-action="reopen-holding" data-id="${h.id}">${icon('unlock')}Rouvrir</button>` : html`<button class="btn" type="button" data-action="close-holding" data-id="${h.id}">${icon('lock')}Clôturer</button>`}
         <button class="btn danger" type="button" data-action="delete-holding" data-id="${h.id}" data-name="${h.name}">${icon('trash')}Supprimer</button></div>` : ''}
