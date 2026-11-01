@@ -162,3 +162,81 @@ test('immobilier partagé : interface, courriel et consentement ne sont pas une 
   assert.match(ui,/share-request-form/);
   assert.match(ui,/En attente/);
 });
+
+test('comptes Vigie indépendants : patrimoines et exports séparés, contrôle des URL et de la mise à jour rapide', async () => {
+  const srv=await startServer();
+  try {
+    const admin=client(srv.base), editor=client(srv.base), viewer=client(srv.base);
+    assert.equal((await admin.post('/api/auth/setup',{
+      username:'indep_admin',first_name:'Alice',last_name:'Privée',
+      password:PASSWORD,base_currency:'EUR',
+    })).status,200);
+    assert.equal((await admin.post('/api/users',{
+      username:'indep_editor',first_name:'Bruno',last_name:'Privé',
+      email:'bruno@exemple.fr',role:'editor',password:PASSWORD,
+    })).status,200);
+    assert.equal((await admin.post('/api/users',{
+      username:'indep_viewer',first_name:'Claire',last_name:'Privée',
+      email:'claire@exemple.fr',role:'viewer',password:PASSWORD,
+    })).status,200);
+    assert.equal((await editor.post('/api/auth/login',{username:'indep_editor',password:PASSWORD})).status,200);
+    assert.equal((await viewer.post('/api/auth/login',{username:'indep_viewer',password:PASSWORD})).status,200);
+    const cats=(await admin.get('/api/categories')).data.categories;
+    const courant=cats.find(x=>x.name==='Comptes courants').id;
+    const epargne=cats.find(x=>x.name==='Épargne réglementée').id;
+    const privateA=await admin.post('/api/holdings',{
+      category_id:courant,name:'Compte Alice privé',institution:'Banque privée Alice',
+      owner:'Titulaire Alice unique',amount:10000,date:todayIso(),
+    });
+    const privateB=await editor.post('/api/holdings',{
+      category_id:epargne,name:'Livret Bruno privé',institution:'Banque privée Bruno',
+      owner:'Titulaire Bruno unique',amount:25000,date:todayIso(),
+    });
+    assert.equal(privateA.status,200,JSON.stringify(privateA.data));
+    assert.equal(privateB.status,200,JSON.stringify(privateB.data));
+    const aid=privateA.data.id,bid=privateB.data.id;
+    assert.deepEqual((await admin.get('/api/holdings')).data.holdings.map(x=>x.id),[aid]);
+    assert.deepEqual((await editor.get('/api/holdings')).data.holdings.map(x=>x.id),[bid]);
+    assert.deepEqual((await viewer.get('/api/holdings')).data.holdings,[]);
+    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,1000000);
+    assert.equal((await editor.get('/api/dashboard')).data.totals.assets,2500000);
+    assert.equal((await viewer.get('/api/dashboard')).data.totals.assets,0);
+    assert.equal((await admin.get('/api/holdings/'+bid)).status,404);
+    assert.equal((await editor.get('/api/holdings/'+aid)).status,404);
+    assert.equal((await viewer.get('/api/holdings/'+aid)).status,404);
+    assert.equal((await viewer.get('/api/holdings/'+bid)).status,404);
+    assert.equal((await editor.patch('/api/holdings/'+aid,{name:'usurpation'})).status,404);
+    assert.equal((await admin.patch('/api/holdings/'+bid,{name:'usurpation'})).status,404);
+    assert.equal((await editor.del('/api/holdings/'+aid)).status,404);
+    assert.equal((await admin.post('/api/holdings/'+bid+'/valuations',{amount:999999})).status,404);
+    assert.equal((await editor.post('/api/valuations/bulk',{
+      date:todayIso(),items:[{holding_id:aid,amount:'999999'}],
+    })).status,400);
+    const detail=(await admin.get('/api/holdings/'+aid)).data;
+    assert.equal((await editor.del('/api/valuations/'+detail.valuations[0].id)).status,404);
+    const adminSettings=(await admin.get('/api/settings')).data;
+    const editorSettings=(await editor.get('/api/settings')).data;
+    assert.ok(adminSettings.institutions.includes('Banque privée Alice'));
+    assert.ok(!adminSettings.institutions.includes('Banque privée Bruno'));
+    assert.ok(editorSettings.institutions.includes('Banque privée Bruno'));
+    assert.ok(!editorSettings.institutions.includes('Banque privée Alice'));
+    const names=(await editor.get('/api/owners')).data.owners.map(x=>x.name);
+    assert.ok(names.includes('Titulaire Bruno unique'));
+    assert.ok(!names.includes('Titulaire Alice unique'));
+    const expAdmin=(await admin.get('/api/export.json')).data;
+    const expEditor=(await editor.get('/api/export.json')).data;
+    assert.deepEqual(expAdmin.holdings.map(x=>x.id),[aid]);
+    assert.deepEqual(expEditor.holdings.map(x=>x.id),[bid]);
+    assert.ok(!JSON.stringify(expEditor).includes('Compte Alice privé'));
+    assert.ok(!JSON.stringify(expAdmin).includes('Livret Bruno privé'));
+    const csvEditor=(await editor.get('/api/export/holdings.csv')).data.toString('utf8');
+    assert.match(csvEditor,/Livret Bruno privé/);
+    assert.doesNotMatch(csvEditor,/Compte Alice privé/);
+    const csvHistory=(await viewer.get('/api/export/history.csv')).data.toString('utf8');
+    assert.doesNotMatch(csvHistory,/Compte Alice privé|Livret Bruno privé/);
+    assert.equal((await admin.post('/api/admin/import',expAdmin)).status,409,
+      'import global destructeur interdit en présence du compte Bruno');
+    assert.equal((await editor.get('/api/holdings/'+bid)).status,200,
+      'l’import refusé n’a effacé aucun avoir');
+  } finally { await srv.stop(); }
+});
