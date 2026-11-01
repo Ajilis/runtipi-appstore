@@ -249,6 +249,7 @@ export function holdingsView(db) {
   const today = todayIso();
   const state = loadState(db, today);
   const staleDays = Number(getSetting(db, 'stale_days', '45'));
+  const properties = new Map(db.prepare('SELECT * FROM real_estate').all().map((p) => [p.holding_id, p]));
   return {
     base_currency: state.base,
     stale_days: staleDays,
@@ -261,6 +262,8 @@ export function holdingsView(db) {
       return {
         ...h,
         value_cents: snap.cents,
+        property: properties.get(h.id) || null,
+        latent_gain_cents: properties.has(h.id) && snap.cents !== null ? snap.cents - properties.get(h.id).purchase_cents : null,
         value_base: snap.base,
         missing_rate: snap.missingRate,
         last_date: last,
