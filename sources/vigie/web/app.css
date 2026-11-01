@@ -568,6 +568,52 @@ details.amort > p { margin-top: 8px; }
   .panel.loan { padding: 14px 12px; }
 }
 
+
+/* --- Réglages : onglets par thème ------------------------------------------------------------------------------- */
+.settings-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 3px 2px 10px;
+  overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--line);
+  overscroll-behavior-x: contain;
+}
+.settings-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.settings-tabs button svg { width: 17px; height: 17px; flex: none; }
+.settings-tabs button:hover { color: var(--ink); background: var(--panel-2); }
+.settings-tabs button[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--line-strong);
+}
+.settings-tab-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; min-width: 0; }
+@media (max-width: 640px) {
+  .settings-tabs { margin-inline: -4px; gap: 3px; }
+  .settings-tabs button { gap: 6px; padding: 9px 11px; }
+  .settings-tab-panel { gap: 20px; }
+}
+
 /* --- Mode application (PWA) : bandeau hors ligne et zones sûres (encoche, barre d'accueil) ------------------------ */
 .netbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: flex; align-items: center; gap: 9px;
   width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); box-shadow: var(--shadow); font-size: 0.875rem; }
