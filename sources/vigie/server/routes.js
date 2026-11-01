@@ -566,7 +566,7 @@ export function registerRoutes(router, deps) {
     const id = intId(ctx.params.id);
     const data = transaction(db, () => {
       const row = shareRow.get(id);
-      if (!row || (row.sender_id !== ctx.user.id && row.recipient_id !== ctx.user.id &&
+      if (!row || (row.recipient_id !== ctx.user.id &&
           !db.prepare('SELECT 1 FROM holdings WHERE id = ? AND account_user_id = ?').get(row.holding_id, ctx.user.id)))
         fail(404, 'not_found', 'Partage introuvable.');
       if (shareStatus(row) !== 'accepted' && shareStatus(row) !== 'pending')
@@ -1514,7 +1514,7 @@ export function registerRoutes(router, deps) {
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       real_estate_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp FROM real_estate_shares
-        WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all(),
+        WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all().filter((p) => owned.has(p.holding_id)),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
     };
   }
@@ -1529,10 +1529,10 @@ export function registerRoutes(router, deps) {
   router.get('/api/export/holdings.csv', { auth: 'viewer' }, (ctx) => {
     const v = holdingsView(db,ctx.user.id);
     const cats = new Map(v.categories.map((c) => [c.id, c]));
-    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur du patrimoine commun en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente du patrimoine commun', 'Quote-part initiale (%)', 'Valeur de la part commune', "Prix d'achat de la part commune", 'Quote-part approuvée des autres (%)', 'Quote-part commune totale (%)']];
+    const rows = [['Catégorie', 'Type', 'Avoir', 'Établissement', 'Titulaire', 'Liquidité', 'Devise', 'Valeur du bien entier', `Valeur de votre part en ${v.base_currency}`, 'Date de la valeur', 'Clôturé le', "Prix d'achat du bien entier", "Date d'achat", 'Plus-value latente de votre part', 'Quote-part du propriétaire initial (%)', 'Valeur de votre part', "Prix d'achat de votre part", 'Part reçue par partage (%)', 'Votre quote-part totale (%)']];
     for (const h of v.holdings) {
       const c = cats.get(h.category_id) || {};
-      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.property.ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.total_ownership_bp)) : '', h.property ? String((h.total_ownership_bp - h.property.ownership_bp) / 100).replace('.', ',') : '', h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '']);
+      rows.push([c.name, c.kind === 'liability' ? 'Passif' : 'Actif', h.name, h.institution, h.owner, LIQ_LABEL[h.liquidity], h.currency, frNumber(h.value_cents), frNumber(h.value_base), h.last_date, h.closed_at, h.property ? frNumber(h.property.purchase_cents) : '', h.property?.purchased_at || '', frNumber(h.latent_gain_cents), h.property ? String(h.property.ownership_bp / 100).replace('.', ',') : '', h.property ? frNumber(h.owned_cents) : '', h.property ? frNumber(ownedCents(h.property.purchase_cents, h.total_ownership_bp)) : '', h.property ? String(h.shared_with_me ? h.total_ownership_bp / 100 : 0).replace('.', ',') : '', h.property ? String(h.total_ownership_bp / 100).replace('.', ',') : '']);
     }
     audit(ctx, 'export', 'CSV des avoirs');
     ctx.sendRaw(200, Buffer.from('﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-avoirs-${stampName()}.csv`);
