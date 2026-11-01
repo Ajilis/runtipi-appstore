@@ -1562,11 +1562,11 @@
       panel.setAttribute('role', 'tabpanel');
       panel.setAttribute('aria-labelledby', 'settings-tab-' + key);
       panel.setAttribute('tabindex', '0');
-      for (const section of $('[data-settings-group="' + key + '"]', el)) panel.appendChild(section);
+      for (const section of $$('[data-settings-group="' + key + '"]', el)) panel.appendChild(section);
       el.appendChild(panel);
       panels.set(key, panel);
     }
-    const buttons = $('[data-settings-tab]', nav);
+    const buttons = $$('[data-settings-tab]', nav);
     const activate = (key, focus = false) => {
       if (!panels.has(key)) return;
       for (const btn of buttons) {
