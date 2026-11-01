@@ -88,6 +88,37 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Biens immobiliers : achat et valeur actuelle (0.9.3)
+
+Dans le formulaire **Avoirs → Immobilier**, Vigie distingue **Valeur d'achat** et
+**Date d'achat** (stables), de la **Valeur actuelle** (mise à jour et historisée).
+La plus-value latente brute est calculée par
+`valeur_actuelle - valeur_achat` (et en pourcentage du prix d'achat).
+Elle n'est pas une plus-value fiscale : frais d'acquisition, travaux,
+intérêts, crédit restant et fiscalité ne sont pas déduits.
+
+La **baguette magique** située dans le **champ Valeur actuelle** utilise,
+seulement sur demande de l'utilisateur, le moteur de ventes comparables DVF
+de [GeoRegistry](https://georegistry.fr/docs/api) : adresse, type de bien,
+surface habitable et état général. Un résultat valide présente une valeur
+centrale, une fourchette, un indice de confiance et le nombre de comparables.
+La proposition ne remplit la Valeur actuelle qu'après confirmation.
+L'enregistrement du formulaire reste nécessaire pour modifier l'avoir.
+Une indisponibilité, moins de trois ventes comparables ou une réponse incohérente
+ne modifient pas la valeur.
+
+GeoRegistry est un **intermédiaire tiers** : l'adresse est transmise à son
+service uniquement après avoir cliqué sur la baguette magique, jamais
+automatiquement. Le prix d'achat, sa date, le propriétaire et les avoirs ne
+lui sont pas transmis. Sans accès à Internet, aucune estimation n'est affichée
+et la saisie manuelle reste disponible. La source DVF de GeoRegistry n'est
+pas une expertise ni une validation croisée par plusieurs sources indépendantes.
+
+Les champs immobiliers sont conservés dans une table SQLite séparée de
+l'historique des valeurs, et sont présents dans l'export JSON, la restauration
+et l'export CSV des avoirs. Les anciennes fiches immobilières restent
+consultables sans devoir renseigner immédiatement ces nouveaux champs.
+
 ## Développement
 
 ```bash
