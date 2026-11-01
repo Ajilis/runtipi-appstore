@@ -44,3 +44,109 @@ test('réglages : gestion des données et formulaires existants conservés', () 
   assert.match(settings, /\['securite', 'Sécurité'/);
   assert.match(settings, /\.appendChild\(section\)/);
 });
+
+ 
+// Régression de 0.9.1 : querySelector() renvoie un seul élément, pas une liste.
+// Exécuter le code réel d'initialisation avec un DOM minimal permet de vérifier
+// la sélection, les sections multiples, le clavier et les droits sans navigateur.
+import { runInNewContext } from 'node:vm';
+
+const tabsStart = settings.indexOf("    const nav = $('#settings-tabs', el);");
+const tabsEnd = settings.indexOf('    if (mail) bindMailForm(mail);', tabsStart);
+assert.ok(tabsStart >= 0 && tabsEnd > tabsStart, 'initialisation des onglets introuvable');
+const tabInitialization = settings.slice(tabsStart, tabsEnd);
+
+function simulateSettingsTabs(keys, requested = null) {
+  const nav = {
+    handlers: {},
+    addEventListener(type, handler) { this.handlers[type] = handler; },
+    contains(button) { return buttons.includes(button); },
+  };
+  const buttons = keys.map((key) => ({
+    dataset: { settingsTab: key },
+    attributes: {},
+    tabIndex: -1,
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    focus() { this.focused = true; },
+  }));
+  const sections = [
+    { group: 'general', name: 'preferences' },
+    { group: 'titulaires', name: 'owners' },
+    { group: 'devises', name: 'rates' },
+    { group: 'donnees', name: 'export' },
+    { group: 'donnees', name: 'import' },
+    { group: 'donnees', name: 'backups' },
+    { group: 'etablissements', name: 'logos' },
+    { group: 'emails', name: 'smtp' },
+    { group: 'securite', name: 'security' },
+  ];
+  const el = { children: [], appendChild(panel) { this.children.push(panel); } };
+  const storeData = {};
+  const location = { hash: requested ? '#/reglages/' + requested : '#/reglages' };
+  const context = {
+    el, route: { arg: requested }, location,
+    history: { replaceState(_state, _title, hash) { location.hash = hash; } },
+    store: { get(k, fallback) { return storeData[k] ?? fallback; }, set(k, v) { storeData[k] = v; } },
+    settingsTabs: keys.map((key) => [key, key, 'icon']),
+    document: { createElement() { return {
+      children: [], attributes: {}, hidden: false,
+      setAttribute(name, value) { this.attributes[name] = String(value); },
+      appendChild(child) { this.children.push(child); },
+    }; } },
+    $: (selector, root) => {
+      assert.equal(selector, '#settings-tabs');
+      assert.equal(root, el);
+      return nav;
+    },
+    $$: (selector, root) => {
+      if (selector === '[data-settings-tab]') {
+        assert.equal(root, nav);
+        return buttons;
+      }
+      const match = /^\[data-settings-group="([^"]+)"\]$/.exec(selector);
+      if (!match) throw Error('Unexpected selector: ' + selector);
+      assert.equal(root, el);
+      return sections.filter((section) => section.group === match[1]);
+    },
+  };
+  const output = runInNewContext('(() => {\n' + tabInitialization + '\nreturn {panels,buttons};\n})()', context);
+  return { ...output, nav, el, buttons, storeData, location };
+}
+
+test('réglages : monte les sections avec querySelectorAll sans TypeError', () => {
+  const result = simulateSettingsTabs(['general', 'titulaires', 'devises', 'donnees', 'etablissements', 'emails', 'securite']);
+  assert.equal(result.el.children.length, 7);
+  assert.deepEqual(Array.from(result.panels.get('donnees').children, (x) => x.name), ['export', 'import', 'backups']);
+  assert.deepEqual(Array.from(result.panels.get('etablissements').children, (x) => x.name), ['logos']);
+  assert.equal(result.panels.get('general').hidden, false);
+  assert.equal(result.panels.get('securite').hidden, true);
+  assert.equal(result.buttons[0].attributes['aria-selected'], 'true');
+  assert.equal(result.buttons[0].tabIndex, 0);
+});
+
+test('réglages : sélection d’un onglet et contrôle clavier fonctionnels', () => {
+  const result = simulateSettingsTabs(['general', 'titulaires', 'devises', 'donnees']);
+  result.nav.handlers.click({ target: { closest: () => result.buttons[2] } });
+  assert.equal(result.panels.get('devises').hidden, false);
+  assert.equal(result.panels.get('general').hidden, true);
+  assert.equal(result.storeData.settingsTab, 'devises');
+  assert.equal(result.location.hash, '#/reglages/devises');
+
+  let prevented = false;
+  result.nav.handlers.keydown({
+    key: 'ArrowRight', target: { closest: () => result.buttons[2] },
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(result.panels.get('donnees').hidden, false);
+  assert.equal(result.buttons[3].attributes['aria-selected'], 'true');
+  assert.equal(result.buttons[3].focused, true);
+});
+
+test('réglages : un lien direct ouvre le bon onglet, même sans droits administrateur', () => {
+  const result = simulateSettingsTabs(['general', 'titulaires', 'devises', 'donnees'], 'devises');
+  assert.equal(result.panels.get('devises').hidden, false);
+  assert.equal(result.panels.get('general').hidden, true);
+  assert.equal(result.el.children.length, 4);
+  assert.equal(result.panels.get('securite'), undefined);
+});
