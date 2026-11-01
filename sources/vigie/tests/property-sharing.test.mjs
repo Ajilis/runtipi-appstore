@@ -53,7 +53,8 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
     assert.ok(recipients.data.recipients.some(x=>x.id===lea.id));
     assert.ok(!recipients.data.recipients.some(x=>x.id===noEmail.id));
     assert.equal((await leaClient.get('/api/property-shares/recipients')).status,403);
-    assert.equal((await lucClient.post('/api/holdings/'+id+'/shares',{recipient_id:lea.id})).status,403);
+    assert.equal((await lucClient.get('/api/property-shares/recipients')).status,200);
+    assert.equal((await lucClient.post('/api/holdings/'+id+'/shares',{recipient_id:lea.id})).status,404, 'éditeur non propriétaire interdit');
     assert.equal((await admin.post('/api/holdings/'+id+'/shares',{recipient_id:noEmail.id})).status,400);
     assert.equal((await admin.post('/api/holdings/'+id+'/shares',{recipient_id:lea.id,ownership_pct:41})).status,400);
     r = await admin.post('/api/holdings/'+id+'/shares',{recipient_id:lea.id});
