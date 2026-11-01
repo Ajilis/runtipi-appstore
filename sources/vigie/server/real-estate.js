@@ -13,10 +13,29 @@ export function isRealEstateCategory(cat) {
     /immobilier|maison|appartement|immeuble|résidence/i.test(cat.name)));
 }
 
-export function latentGain(currentCents, purchaseCents) {
-  if (!Number.isSafeInteger(currentCents) || !Number.isSafeInteger(purchaseCents) || purchaseCents <= 0) return null;
-  const diff = currentCents - purchaseCents;
-  return { gain_cents: diff, gain_pct: Math.round(diff / purchaseCents * 10000) / 100 };
+// La valeur enregistrée est celle du bien ENTIER ; le patrimoine ne retient
+// que les parts possédées, arrondies une fois au centime.
+export function ownedCents(fullCents, ownershipBp = 10000) {
+  if (!Number.isSafeInteger(fullCents) || !Number.isSafeInteger(ownershipBp) ||
+      ownershipBp < 1 || ownershipBp > 10000) return null;
+  const result = Math.round(fullCents * ownershipBp / 10000);
+  return Number.isSafeInteger(result) ? result : null;
+}
+
+export function ownershipBasisPoints(value) {
+  const raw = String(value ?? '100').trim();
+  if (!/^\d{1,3}(?:[.,]\d{1,2})?$/.test(raw)) return null;
+  const n = Number(raw.replace(',', '.'));
+  const bp = Math.round(n * 100);
+  return bp >= 1 && bp <= 10000 ? bp : null;
+}
+
+export function latentGain(currentCents, purchaseCents, ownershipBp = 10000) {
+  const current = ownedCents(currentCents, ownershipBp);
+  const purchase = ownedCents(purchaseCents, ownershipBp);
+  if (current === null || purchase === null || purchase <= 0) return null;
+  const diff = current - purchase;
+  return { gain_cents: diff, gain_pct: Math.round(diff / purchase * 10000) / 100 };
 }
 
 
