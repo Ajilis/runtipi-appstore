@@ -1032,7 +1032,10 @@
           address: form.property_address.value, condition: form.property_condition.value,
         });
         const sampleText = result.comparables + ' ventes comparables, fiabilité ' + (result.confidence === 'high' ? 'élevée' : result.confidence === 'medium' ? 'moyenne' : 'faible');
-        output.textContent = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '.';
+        const methodText = result.method === 'dvf_median_nearby'
+          ? 'Calcul de secours : médiane des ventes DVF proches (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km). Ce n’est pas une seconde source indépendante.'
+          : 'Moteur GeoRegistry sur ventes DVF.';
+        output.textContent = 'Estimation ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
         const accepted = await confirmDialog({ title: 'Appliquer cette estimation ?', message: output.textContent + ' La valeur d’achat restera inchangée. Vous devrez enregistrer le formulaire pour sauvegarder la nouvelle valeur.', confirm: 'Remplir la valeur actuelle' });
         if (accepted) { amountInput.value = centsInput(result.estimate_cents); amountInput.dispatchEvent(new Event('input', { bubbles: true })); }
       } catch (err) { output.textContent = err.message; }
