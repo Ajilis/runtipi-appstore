@@ -74,6 +74,20 @@ Les logos de référence sont récupérés sous forme d'image PNG auprès de Wik
 - **N26** : [N26 logo.svg](https://commons.wikimedia.org/wiki/File:N26_logo.svg), auteur N26, domaine public selon Wikimedia Commons (marque enregistrée).
 - **Vivid** : [Vivid-money-logo.svg](https://commons.wikimedia.org/wiki/File:Vivid-money-logo.svg), auteur *ThisUserIsVivid*, licence [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Conversion en miniature PNG par Wikimedia Commons ; les crédits restent associés à la source originale.
 
+## Navigation dans les réglages (0.9.1)
+
+La page **Réglages** dispose d'onglets thématiques : **Général** (devise et rappels),
+**Titulaires**, **Devises**, **Établissements** (gestion des logos),
+**Données** (exports, restauration et sauvegardes), **E-mails** (SMTP)
+et **Sécurité** (configuration du serveur). Les rubriques d'administration
+restent invisibles aux rôles non administrateurs. Les formulaires, validations,
+contrôles d'accès et API existants sont conservés.
+
+La barre d'onglets est défilable sur mobile, utilisable au clavier avec
+les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
+dans le navigateur et chaque thème peut être ouvert directement,
+par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
+
 ## Développement
 
 ```bash
