@@ -5,7 +5,7 @@ export const REAL_ESTATE_TYPES = ['maison', 'appartement'];
 export const REAL_ESTATE_CONDITIONS = ['a_renover', 'travaux', 'correct', 'bon', 'renove', 'neuf'];
 
 const ENDPOINT = 'https://georegistry.fr/api/v1/dvf/estimate';
-const MAX_RESPONSE_BYTES = 80_000;
+const MAX_RESPONSE_BYTES = 512_000;
 
 export function isRealEstateCategory(cat) {
   return Boolean(cat && cat.kind === 'asset' &&
@@ -66,8 +66,10 @@ export function buildEstimateNote(result, params) {
         ', surfaces ' + n(result.sale_surface_min) + ' à ' + n(result.sale_surface_max) + ' m² ; prix retenus ' +
         n(result.sale_price_m2_min) + ' à ' + n(result.sale_price_m2_max) + ' €/m².');
     lines.push('Limites : fourchette de précaution ±' +
-      (local ? '35' : result.comparables < 7 ? '20' : '15') +
+      (result.radius_m > 5000 ? '50' : local ? '35' : result.comparables < 7 ? '20' : '15') +
       ' % fixée par Vigie (pas un intervalle statistique). Ventes anciennes ou atypiques, doublons et prix/m² invalides exclus.');
+    if (result.radius_m > 5000)
+      lines.push('Incertitude géographique très forte : recherche élargie à 10 km ; les quartiers peuvent avoir des marchés immobiliers très différents.');
     lines.push(local
       ? 'Incertitude forte : tailles des ventes parfois très différentes ; terrain, DPE, état intérieur et travaux non corrigés.'
       : 'Terrain, DPE, état intérieur et travaux non corrigés ; la proximité ne garantit pas l’équivalence.');
@@ -145,7 +147,7 @@ export class RealEstateEstimator {
     const makeResult = (prices, radius, areaPriceOnly, records) => {
       const eurosPerM2 = median(prices);
       const estimate = Math.round(eurosPerM2 * surface);
-      const variance = areaPriceOnly ? 0.35 : prices.length < 7 ? 0.20 : 0.15;
+      const variance = radius > 5000 ? 0.50 : areaPriceOnly ? 0.35 : prices.length < 7 ? 0.20 : 0.15;
       return {
         estimate_cents: estimate * 100,
         low_cents: Math.round(estimate * (1 - variance)) * 100,
@@ -173,7 +175,12 @@ export class RealEstateEstimator {
     let lastCount = 0;
     let lastRadius = 0;
     let localPriceFallback = null;
-    for (const radius of [1500, 5000]) {
+    const diagnostics = [];
+    let successfulLookups = 0;
+    let sourceFailure = null;
+    // Dernier recours: un rayon plus large n'est pas un marché strictement local.
+    // La fourchette passe alors à ±50 % et la confiance reste faible.
+    for (const radius of [1500, 5000, 10000]) {
       lastRadius = radius;
       const search = new URLSearchParams({
         adresse: params.adresse, type_local: String(params.type_local),
@@ -185,20 +192,42 @@ export class RealEstateEstimator {
           method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8500),
           headers: { accept: 'application/json', 'User-Agent': 'Vigie-Patrimoine/real-estate-estimation' },
         });
-      } catch { break; }
-      if (!response.ok) break;
+      } catch {
+        sourceFailure = 'Le service de recherche des ventes DVF est inaccessible.';
+        break;
+      }
+      if (!response.ok) {
+        sourceFailure = response.status === 429
+          ? 'Le service DVF limite les requêtes (HTTP 429). Réessayez plus tard.'
+          : 'La recherche des ventes DVF a répondu HTTP ' + response.status + '.';
+        break;
+      }
       let payload;
       try {
-        if (Number(response.headers?.get('content-length') || 0) > MAX_RESPONSE_BYTES) break;
+        if (Number(response.headers?.get('content-length') || 0) > MAX_RESPONSE_BYTES)
+          throw new Error('oversize');
         const raw = await response.text();
-        if (Buffer.byteLength(raw) > MAX_RESPONSE_BYTES) break;
+        if (Buffer.byteLength(raw) > MAX_RESPONSE_BYTES) throw new Error('oversize');
         payload = JSON.parse(raw);
-      } catch { break; }
+      } catch {
+        sourceFailure = 'La recherche DVF a renvoyé une réponse illisible ou trop volumineuse.';
+        break;
+      }
       // Si la BAN ne reconnaît pas l'adresse, il ne faut pas se rabattre
       // silencieusement sur un autre quartier ou une autre commune.
-      if (payload?.meta?.address === null) break;
-      if (!Array.isArray(payload?.data)) break;
+      if (payload?.meta?.address === null) {
+        throw new EstimateError(422,
+          'Adresse non reconnue par le géocodage (Base Adresse Nationale). ' +
+          'Vérifiez le numéro, la rue, le code postal et la commune ; aucune valeur n’a été changée.');
+      }
+      if (!Array.isArray(payload?.data)) {
+        sourceFailure = 'Le fournisseur DVF a renvoyé un format inattendu (liste des ventes absente).';
+        break;
+      }
+      successfulLookups++;
 
+      let typedSales = 0;
+      let rejectedPrice = 0;
       const seen = new Set();
       const sales = [];
       for (const row of payload.data) {
@@ -206,6 +235,7 @@ export class RealEstateEstimator {
         const type = String(row.type_local ?? '').trim().toLowerCase();
         const expected = params.type_local === 1 ? 'maison' : 'appartement';
         if (type !== String(params.type_local) && type !== expected) continue;
+        typedSales++;
         const date = String(row.mutation_date || row.date_mutation || '');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < after || date > today) continue;
         const nature = String(row.nature || row.nature_mutation || '').trim().toLowerCase();
@@ -218,7 +248,10 @@ export class RealEstateEstimator {
           ? null : Number(row.distance_m);
         if (!Number.isFinite(size) || size < 25 || size > 600 ||
             !Number.isFinite(unitPrice) || unitPrice < 400 || unitPrice > 30000 ||
-            (distance !== null && (!Number.isFinite(distance) || distance > radius))) continue;
+            (distance !== null && (!Number.isFinite(distance) || distance > radius))) {
+          rejectedPrice++;
+          continue;
+        }
         const mutation = String(row.id_mutation || row.mutation_id || '').trim();
         const id = mutation
           ? 'mutation:' + mutation
@@ -227,6 +260,12 @@ export class RealEstateEstimator {
         seen.add(id);
         sales.push({ size, price: unitPrice, date });
       }
+
+      const geoCount = payload.data.length;
+      diagnostics.push((radius / 1000).toLocaleString('fr-FR') + ' km : ' +
+        geoCount + ' transaction(s) retournée(s), ' + typedSales +
+        ' du bon type, ' + sales.length + ' vente(s) exploitable(s)' +
+        (rejectedPrice ? ' (' + rejectedPrice + ' rejet(s) : prix/m², surface ou distance)' : '') + '.');
 
       // Niveau 2 : ventes de maisons/appartements de surface voisine.
       const comparable = trimOutliers(sales
@@ -244,9 +283,18 @@ export class RealEstateEstimator {
           sales.filter((sale) => localPrices.includes(sale.price)));
     }
     if (localPriceFallback) return localPriceFallback;
-    throw new EstimateError(422, lastCount > 0
-      ? 'Estimation indisponible : ' + lastCount + ' vente(s) comparable(s) de surface voisine retenue(s), et moins de 3 ventes locales fiables du même type à ' + (lastRadius / 1000) + ' km. Valeur actuelle inchangée.'
-      : initialError + ' Moins de 3 ventes locales fiables du même type ont été trouvées. Vérifiez l’adresse et la surface ou saisissez une valeur manuelle.');
+    if (successfulLookups === 0) {
+      throw new EstimateError(503, initialError + ' ' +
+        (sourceFailure || 'Le fournisseur de ventes DVF n’a pas pu être interrogé.') +
+        ' Il est impossible de calculer un prix au m² vérifiable.');
+    }
+    if (sourceFailure) {
+      throw new EstimateError(503, initialError + ' Recherche partielle : ' + diagnostics.join(' ') +
+        ' ' + sourceFailure + ' Pas de prix proposé sans données suffisantes.');
+    }
+    throw new EstimateError(422, initialError + ' Recherche DVF : ' + diagnostics.join(' ') +
+      ' Moins de 3 ventes vérifiables du même type : aucun prix automatique fiable à appliquer. ' +
+      'La valeur actuelle reste inchangée.');
   }
 
   async resolve(params) {
