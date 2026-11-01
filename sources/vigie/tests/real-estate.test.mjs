@@ -170,9 +170,10 @@ test('DVF : élargit modérément le rayon sans inventer de valeur quand les ven
   await assert.rejects(estimator.estimate({
     address: '8 boulevard du Roi René, Angers', property_type: 'maison', surface_m2: 100,
   }), (err) => err instanceof EstimateError && err.status === 422 &&
-     err.message.includes('1 vente(s)') && err.message.includes('moins de 3 ventes locales'));
-  assert.deepEqual(calls.map((x) => x.method), ['POST', 'GET', 'GET']);
+     err.message.includes('1 vente(s) exploitable(s)') && err.message.includes('Moins de 3 ventes'));
+  assert.deepEqual(calls.map((x) => x.method), ['POST', 'GET', 'GET', 'GET']);
   assert.equal(new URL(calls[2].url).searchParams.get('radius'), '5000');
+  assert.equal(new URL(calls[3].url).searchParams.get('radius'), '10000');
 });
 
 test('DVF : refuse adresse non reconnue et mutation manifestement atypique', async () => {
@@ -273,4 +274,85 @@ test('DVF : n’utilise jamais des ventes d’appartements pour estimer une mais
     })) })) });
   await assert.rejects(estimator.estimate({ property_type: 'maison', surface_m2: 180,
     address: '128 avenue des Frères Lumière 69008 Lyon' }), (err) => err.status === 422);
+});
+
+
+test('DVF : ne confond pas 429, erreur du fournisseur et absence de ventes', async () => {
+  const input = { property_type: 'maison', surface_m2: 180,
+    address: '128 avenue des Frères Lumière 69008 Lyon' };
+  const limited = new RealEstateEstimator({ fetcher: async (_url, options) => options.method === 'POST'
+    ? new Response(JSON.stringify({ data: { message: 'unknown result' } }))
+    : new Response(JSON.stringify({ message: 'too many requests' }), { status: 429 }) });
+  await assert.rejects(limited.estimate(input),
+    (e) => e.status === 503 && e.message.includes('HTTP 429') &&
+      !e.message.includes('Moins de 3 ventes locales fiables'));
+
+  const broken = new RealEstateEstimator({ fetcher: async (_url, options) => options.method === 'POST'
+    ? new Response(JSON.stringify({ data: { result: {} } }))
+    : new Response(JSON.stringify({ not_data: true })) });
+  await assert.rejects(broken.estimate(input),
+    (e) => e.status === 503 && e.message.includes('format inattendu'));
+});
+
+test('DVF : distingue adresse non géocodée et manque de transactions', async () => {
+  const requests = [];
+  const estimator = new RealEstateEstimator({ fetcher: async (_url, options) => {
+    requests.push(options.method);
+    if (options.method === 'POST')
+      return new Response(JSON.stringify({ data: { comparables_count: null } }));
+    return new Response(JSON.stringify({ data: [], meta: { address: null } }));
+  } });
+  await assert.rejects(estimator.estimate({ property_type: 'maison',
+    surface_m2: 180, address: '128 avenue des Frères Lumière 69008 Lyon' }),
+  (e) => e.status === 422 && e.message.includes('Adresse non reconnue') &&
+    e.message.includes('Base Adresse Nationale'));
+  assert.deepEqual(requests, ['POST', 'GET'], 'aucun élargissement autour d’une adresse non reconnue');
+});
+
+test('DVF : le rayon de 10 km est un dernier secours à très forte incertitude', async () => {
+  const calls = [];
+  const sales = [
+    { id_mutation: 'maison-1', type_local: 'Maison', surface_bati: 70,
+      mutation_date: '2025-09-12', prix_m2: 4100, distance_m: 6500, nature: 'Vente' },
+    { id_mutation: 'maison-2', type_local: 'Maison', surface_bati: 85,
+      mutation_date: '2025-08-11', prix_m2: 4500, distance_m: 7800, nature: 'Vente' },
+    { id_mutation: 'maison-3', type_local: 'Maison', surface_bati: 90,
+      mutation_date: '2024-03-09', prix_m2: 4300, distance_m: 8100, nature: 'Vente' },
+  ];
+  const estimator = new RealEstateEstimator({ fetcher: async (url, options) => {
+    calls.push({ method: options.method, url: String(url) });
+    if (options.method === 'POST')
+      return new Response(JSON.stringify({ data: { comparables_count: null } }));
+    const radius = Number(new URL(url).searchParams.get('radius'));
+    return new Response(JSON.stringify({ data: radius === 10000 ? sales : [], meta: { address: { label: 'Lyon' } } }));
+  } });
+  const result = await estimator.estimate({ property_type: 'maison', surface_m2: 180,
+    address: '128 avenue des Frères Lumière 69008 Lyon' });
+  assert.equal(result.method, 'dvf_local_price_m2');
+  assert.equal(result.radius_m, 10000);
+  assert.equal(result.estimate_cents, 77400000);
+  assert.equal(result.low_cents, 38700000);
+  assert.equal(result.high_cents, 116100000);
+  assert.equal(result.comparables, 3);
+  assert.equal(result.confidence, 'low');
+  assert.match(result.estimation_note, /±50 %/);
+  assert.match(result.estimation_note, /élargie à 10 km/);
+  assert.ok(result.estimation_note.length <= 1000, 'la note reste compatible avec le formulaire');
+  assert.equal(calls.length, 4);
+});
+
+test('DVF : sans ventes exploitables, explique quelle étape a rejeté les résultats', async () => {
+  const sales = [
+    { type_local: 'Appartement', surface_bati: 80, prix_m2: 5000, mutation_date: '2025-01-01' },
+    { type_local: 'Maison', surface_bati: 80, prix_m2: null, mutation_date: '2025-01-01' },
+    { type_local: 'Maison', surface_bati: 80, prix_m2: 4500, mutation_date: '2025-01-01' },
+  ];
+  const estimator = new RealEstateEstimator({ fetcher: async (_url, opts) => opts.method === 'POST'
+    ? new Response(JSON.stringify({ data: {} }))
+    : new Response(JSON.stringify({ data: sales, meta: { address: { label: 'Lyon' } } })) });
+  await assert.rejects(estimator.estimate({ property_type: 'maison', surface_m2: 180,
+    address: '128 avenue des Frères Lumière 69008 Lyon' }), (e) => e.status === 422 &&
+      e.message.includes('3 transaction(s) retournée(s)') &&
+      e.message.includes('2 du bon type') &&
+      e.message.includes('1 vente(s) exploitable(s)'));
 });
