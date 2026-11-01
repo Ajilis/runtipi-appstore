@@ -419,6 +419,24 @@ export function registerRoutes(router, deps) {
     return { ok: true };
   });
 
+  // Confidentialité : tous les comptes ont leurs propres avoirs.
+  // Une part immobilière acceptée donne lecture seule de CE bien, pas du reste.
+  function canReadHolding(id, userId) {
+    return Boolean(db.prepare(`SELECT 1 FROM holdings h WHERE h.id = ? AND
+      (h.account_user_id = ? OR EXISTS (
+        SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id AND
+        s.recipient_id = ? AND s.accepted_at IS NOT NULL AND
+        s.revoked_at IS NULL AND s.declined_at IS NULL))`).get(id,userId,userId));
+  }
+  function ownedHolding(id, userId) {
+    const h = db.prepare('SELECT * FROM holdings WHERE id = ? AND account_user_id = ?').get(id,userId);
+    if (!h) fail(404, 'not_found', 'Avoir introuvable dans votre compte Vigie.');
+    return h;
+  }
+  function readableHolding(id, userId) {
+    if (!canReadHolding(id,userId)) fail(404,'not_found','Avoir introuvable dans votre compte Vigie.');
+    return db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
+  }
   // --- Partage immobilier entre comptes du même serveur --------------------------------------------
   // Le patrimoine est un registre partagé par les comptes, pas un espace privé
   // par utilisateur. Une seule fiche, des droits distincts, consentement exprès.
@@ -441,10 +459,10 @@ export function registerRoutes(router, deps) {
       ownership_bp: row.ownership_bp, status: shareStatus(row), created_at: row.created_at,
       expires_at: row.expires_at, accepted_at: row.accepted_at, sent_at: row.sent_at };
   }
-  function shareProperty(holdingId) {
-    const h = db.prepare(`SELECT h.id, h.name, p.ownership_bp FROM holdings h
+  function shareProperty(holdingId, ownerId = null) {
+    const h = db.prepare(`SELECT h.id, h.name, h.account_user_id, p.ownership_bp FROM holdings h
       JOIN real_estate p ON p.holding_id = h.id WHERE h.id = ?`).get(holdingId);
-    if (!h) fail(404, 'not_found', 'Bien immobilier introuvable.');
+    if (!h || (ownerId !== null && h.account_user_id !== ownerId)) fail(404, 'not_found', 'Bien immobilier introuvable dans votre compte.');
     return h;
   }
   router.get('/api/property-shares/recipients', { auth: 'admin' }, (ctx) => ({
@@ -463,7 +481,7 @@ export function registerRoutes(router, deps) {
   }));
   router.get('/api/holdings/:id/shares', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const property = shareProperty(id);
+    const property = shareProperty(id, ctx.user.id);
     const list = db.prepare('SELECT id FROM real_estate_shares WHERE holding_id = ? ORDER BY created_at DESC').all(id);
     const reserved = sumReserved.get(id, Date.now()).bp;
     return { holding_id: id, ownership_bp: property.ownership_bp,
@@ -473,7 +491,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/holdings/:id/shares', { auth: 'admin' }, async (ctx) => {
     const id = intId(ctx.params.id);
-    const property = shareProperty(id);
+    const property = shareProperty(id, ctx.user.id);
     const targetId = intId(ctx.body.recipient_id, 'Destinataire');
     if (targetId === ctx.user.id) fail(400, 'invalid_field', 'Choisissez un autre utilisateur.');
     const recipient = getUser(targetId);
@@ -560,21 +578,20 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Lecture du patrimoine -----------------------------------------------------------------------------
-  router.get('/api/dashboard', { auth: 'viewer' }, () => dashboard(db));
+  router.get('/api/dashboard', { auth: 'viewer' }, (ctx) => dashboard(db, { userId: ctx.user.id }));
 
   router.get('/api/history', { auth: 'viewer' }, (ctx) => {
     const range = ctx.query.get('range') || '1y';
-    return history(db, ['3m', '6m', '1y', '3y', '5y', 'all'].includes(range) ? range : '1y');
+    return history(db, ['3m', '6m', '1y', '3y', '5y', 'all'].includes(range) ? range : '1y', { userId: ctx.user.id });
   });
 
-  router.get('/api/holdings', { auth: 'viewer' }, () => holdingsView(db));
+  router.get('/api/holdings', { auth: 'viewer' }, (ctx) => holdingsView(db, ctx.user.id));
 
   router.get('/api/holdings/:id', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const h = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!h) fail(404, 'not_found', 'Avoir introuvable.');
+    const h = readableHolding(id, ctx.user.id);
     const today = todayIso();
-    const state = loadState(db, today);
+    const state = loadState(db, today, ctx.user.id);
     const snap = holdingSnapshot(state, h);
     let valuations = db.prepare(`SELECT v.id, v.valued_at, v.amount_cents, v.note, v.created_at, u.display_name AS created_by
       FROM valuations v LEFT JOIN users u ON u.id = v.created_by WHERE v.holding_id = ? ORDER BY v.valued_at DESC`).all(id);
@@ -592,14 +609,17 @@ export function registerRoutes(router, deps) {
       valuations, schedule, base_currency: state.base };
   });
 
-  router.get('/api/categories', { auth: 'viewer' }, () => {
-    const rows = db.prepare('SELECT c.*, (SELECT COUNT(*) FROM holdings h WHERE h.category_id = c.id) AS holding_count FROM categories c ORDER BY sort_order, id').all();
+  router.get('/api/categories', { auth: 'viewer' }, (ctx) => {
+    const rows = db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM holdings h WHERE h.category_id = c.id AND
+      (h.account_user_id = ? OR EXISTS (SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id
+        AND s.recipient_id = ? AND s.accepted_at IS NOT NULL AND s.revoked_at IS NULL AND s.declined_at IS NULL)))
+      AS holding_count FROM categories c ORDER BY sort_order, id`).all(ctx.user.id,ctx.user.id);
     return { categories: rows };
   });
 
   router.get('/api/settings', { auth: 'viewer' }, (ctx) => {
     const base = getSetting(db, 'base_currency', 'EUR');
-    const used = db.prepare('SELECT DISTINCT currency FROM holdings').all().map((r) => r.currency);
+    const used = loadState(db, todayIso(), ctx.user.id).holdings.map((r) => r.currency);
     const rates = db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates ORDER BY currency').all();
     const out = {
       base_currency: base,
@@ -611,7 +631,7 @@ export function registerRoutes(router, deps) {
       ecb_enabled: cfg.ECB_RATES_ENABLED,
       logos_enabled: cfg.INSTITUTION_LOGOS,
       owners: ownersList().map((o) => o.name),
-      institutions: db.prepare("SELECT DISTINCT institution FROM holdings WHERE institution IS NOT NULL AND institution <> '' ORDER BY institution").all().map((r) => r.institution),
+      institutions: [...new Set(loadState(db, todayIso(), ctx.user.id).holdings.map((r) => r.institution).filter(Boolean))].sort(),
     };
     if (ctx.user.role === 'admin') {
       out.security = { ...securitySettings.view(),
@@ -896,9 +916,9 @@ export function registerRoutes(router, deps) {
     const date = valuationDate(ctx.body.date);
     const id = transaction(db, () => {
       const now = Date.now();
-      const order = (db.prepare('SELECT MAX(sort_order) AS m FROM holdings WHERE category_id = ?').get(f.category_id).m || 0) + 10;
-      const r = db.prepare(`INSERT INTO holdings (category_id, name, institution, owner, currency, liquidity, notes, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(f.category_id, f.name, f.institution, f.owner, f.currency, f.liquidity, f.notes, order, now, now);
+      const order = (db.prepare('SELECT MAX(sort_order) AS m FROM holdings WHERE category_id = ? AND account_user_id = ?').get(f.category_id,ctx.user.id).m || 0) + 10;
+      const r = db.prepare(`INSERT INTO holdings (category_id, name, institution, owner, currency, liquidity, notes, sort_order, created_at, updated_at, account_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(f.category_id, f.name, f.institution, f.owner, f.currency, f.liquidity, f.notes, order, now, now, ctx.user.id);
       const newId = Number(r.lastInsertRowid);
       if (cents !== null) upsertValuation.run(newId, date, cents, '', ctx.user.id, now);
       if (schedule) saveSchedule(newId, schedule);
@@ -911,8 +931,7 @@ export function registerRoutes(router, deps) {
 
   router.patch('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     const f = holdingFields(ctx.body, existing);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency, id);
@@ -949,8 +968,7 @@ export function registerRoutes(router, deps) {
 
   router.delete('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     db.prepare('DELETE FROM holdings WHERE id = ?').run(id);
     audit(ctx, 'avoir_supprime', `${existing.name} et son historique`);
     return { ok: true };
@@ -958,8 +976,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/holdings/:id/close', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     const date = valuationDate(ctx.body.date);
     transaction(db, () => {
       materializeSchedule(id, ctx.user.id, date);
@@ -972,8 +989,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/holdings/:id/reopen', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-    if (!existing) fail(404, 'not_found', 'Avoir introuvable.');
+    const existing = ownedHolding(id, ctx.user.id);
     db.prepare('UPDATE holdings SET closed_at = NULL, updated_at = ? WHERE id = ?').run(Date.now(), id);
     audit(ctx, 'avoir_rouvert', existing.name);
     return { ok: true };
@@ -995,7 +1011,7 @@ export function registerRoutes(router, deps) {
 
   router.delete('/api/valuations/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const v = db.prepare('SELECT v.*, h.name, h.currency FROM valuations v JOIN holdings h ON h.id = v.holding_id WHERE v.id = ?').get(id);
+    const v = db.prepare('SELECT v.*, h.name, h.currency, h.account_user_id FROM valuations v JOIN holdings h ON h.id = v.holding_id WHERE v.id = ? AND h.account_user_id = ?').get(id,ctx.user.id);
     if (!v) fail(404, 'not_found', 'Valeur introuvable.');
     db.prepare('DELETE FROM valuations WHERE id = ?').run(id);
     audit(ctx, 'valeur_supprimee', `${v.name} : ${frNumber(v.amount_cents)} ${v.currency} au ${v.valued_at}`);
@@ -1009,7 +1025,7 @@ export function registerRoutes(router, deps) {
     if (items.length > 1000) fail(400, 'invalid_field', '1000 valeurs au maximum par envoi.');
     const parsed = items.map((it, i) => {
       const hid = intId(it.holding_id, `Ligne ${i + 1}`);
-      if (!db.prepare('SELECT 1 FROM holdings WHERE id = ?').get(hid)) fail(400, 'invalid_field', `Ligne ${i + 1} : avoir introuvable.`);
+      if (!db.prepare('SELECT 1 FROM holdings WHERE id = ? AND account_user_id = ?').get(hid,ctx.user.id)) fail(400, 'invalid_field', `Ligne ${i + 1} : avoir introuvable dans votre compte.`);
       if (getSchedule(hid)) fail(400, 'scheduled', `Ligne ${i + 1} : cet avoir suit un échéancier automatique.`);
       return { hid, cents: amount(it.amount, `Ligne ${i + 1}`) };
     });
