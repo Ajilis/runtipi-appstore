@@ -908,9 +908,9 @@
       $('#closed-toggle').hidden = closedCount === 0;
       $('#closed-count').textContent = closedCount;
     };
-    const gainRows = v.holdings.filter(h => !h.closed_at && h.latent_gain_cents !== null && h.latent_gain_cents !== undefined && h.latent_basis_cents > 0 && h.value_base !== null);
-    const gainBase = gainRows.reduce((s,h) => s + Math.round(h.latent_gain_cents * h.value_base / (h.owned_cents || 1)), 0);
-    const basisBase = gainRows.reduce((s,h) => s + Math.round(h.latent_basis_cents * h.value_base / (h.owned_cents || 1)), 0);
+    const gainRows = v.holdings.filter(h => !h.closed_at && h.latent_gain_cents !== null && h.latent_gain_cents !== undefined && h.latent_basis_cents > 0 && h.value_base !== null && (h.owned_cents !== 0 || h.currency === v.base_currency));
+    const gainBase = gainRows.reduce((s,h) => s + Math.round(h.latent_gain_cents * (h.owned_cents === 0 ? 1 : h.value_base / h.owned_cents)), 0);
+    const basisBase = gainRows.reduce((s,h) => s + Math.round(h.latent_basis_cents * (h.owned_cents === 0 ? 1 : h.value_base / h.owned_cents)), 0);
     el.innerHTML = part(html`<div class="panel"><h2>Plus-values latentes</h2><p class="hero-value ${gainBase >= 0 ? 'pos' : 'neg'}">${money(gainBase, v.base_currency, { sign: true })}</p><p class="muted">${gainRows.length} avoir(s) · ${basisBase ? (gainBase / basisBase * 100).toLocaleString('fr-FR', {maximumFractionDigits:2})+' %' : '—'} · montant brut</p><p class="small muted">Hors fiscalité et mouvements. Les avoirs sans prix de revient ou taux de change sont exclus.</p></div><div class="toolbar">
         <input class="input" type="search" id="holding-search" placeholder="Rechercher un avoir, un établissement…" value="${state.filter}" aria-label="Rechercher">
         <label class="check" id="closed-toggle"><input type="checkbox" id="show-closed" ${state.showClosed ? 'checked' : ''}><span>Afficher les avoirs clôturés (<span id="closed-count"></span>)</span></label>
