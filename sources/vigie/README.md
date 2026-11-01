@@ -88,6 +88,35 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
+## Quote-part de propriété immobilière (0.9.4)
+
+Pour chaque bien immobilier, le champ **« Quote-part de propriété (%) »**
+permet d'indiquer de **0,01 % à 100 %** de détention, avec une précision
+de deux décimales. Par défaut, la quote-part vaut **100 %**, y compris
+pour tous les biens créés avant cette version et tous les anciens exports.
+
+Les champs **Valeur d'achat** et **Valeur actuelle** concernent toujours
+le **bien immobilier entier**. Le moteur DVF estime lui aussi le bien
+entier. En revanche, le tableau de bord, le patrimoine net, les
+répartitions, les courbes d'évolution et la liste des avoirs
+comptabilisent uniquement **la valeur du bien × la quote-part détenue**.
+La plus-value latente est la différence entre la valeur de la part détenue
+et le prix d'achat correspondant à cette même part (hors frais, crédits,
+fiscalité et éventuels changements de détention dans le temps).
+La fiche de détail expose à la fois les deux valeurs du bien entier
+et celles de la quote-part, afin de ne pas mélanger les montants.
+
+Les saisies d'historique et la mise à jour rapide attendent toujours la
+**valeur du bien entier** ; leur aperçu du patrimoine net tient compte
+de la quote-part. L'export JSON, la restauration et le CSV des avoirs
+incluent le pourcentage ; les anciens exports sans champ de quote-part
+restent compatibles, avec la valeur **100 %**.
+
+La quote-part est un paramètre *actuel* appliqué à l'ensemble de l'historique
+pour la lecture du patrimoine. En cas de changement de quote-part au fil
+du temps, Vigie ne modélise pas encore l'historique juridique de ces
+transferts : les anciennes valorisations restent celles du bien entier.
+
 ## Réglages → Sécurité modifiables depuis Vigie (0.9.4)
 
 L'onglet **Réglages → Sécurité** permet désormais à un **administrateur**
