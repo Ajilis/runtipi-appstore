@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { startServer, client } from './helpers.mjs';
 import { ownedCents, ownershipBasisPoints, latentGain } from '../server/real-estate.js';
-import { todayIso } from '../server/portfolio.js';
+import { todayIso, addDays } from '../server/portfolio.js';
 
 test('quote-part : 100 % par défaut, 33,33 % précis et pourcentages invalides refusés', () => {
   assert.equal(ownershipBasisPoints(undefined), 10000);
@@ -24,6 +24,7 @@ test('quote-part : 100 % par défaut, 33,33 % précis et pourcentages invalides 
 test('quote-part : les droits détenus entrent dans le patrimoine, la valeur enregistrée reste celle du bien entier', async () => {
   const srv = await startServer();
   const today = todayIso();
+  const yesterday = addDays(today, -1);
   try {
     const admin = client(srv.base);
     assert.equal((await admin.post('/api/auth/setup', {
@@ -39,7 +40,7 @@ test('quote-part : les droits détenus entrent dans le patrimoine, la valeur enr
     };
     const created = await admin.post('/api/holdings', {
       name: 'Maison en indivision', category_id: immobilier,
-      amount: 800000, date: today, property: house,
+      amount: 800000, date: yesterday, property: house,
     });
     assert.equal(created.status, 200, JSON.stringify(created.data));
     const id = created.data.id;
@@ -72,6 +73,9 @@ test('quote-part : les droits détenus entrent dans le patrimoine, la valeur enr
     assert.equal(detail.latent_gain.gain_cents, 20000000);
     board = (await admin.get('/api/dashboard')).data;
     assert.equal(board.totals.assets, 40000000);
+    let trend = (await admin.get('/api/history?range=all')).data;
+    assert.equal(trend.points[0].net, 32000000);
+    assert.equal(trend.points.at(-1).net, 40000000);
 
     const updated = await admin.patch('/api/holdings/' + id, {
       category_id: immobilier, name: 'Maison en indivision', property: { ...house, ownership_pct: '12,5' },
@@ -82,7 +86,10 @@ test('quote-part : les droits détenus entrent dans le patrimoine, la valeur enr
     assert.equal(detail.holding.value_cents, 100000000);
     assert.equal(detail.holding.owned_cents, 12500000);
     assert.equal(detail.latent_gain.gain_cents, 6250000);
-    assert.equal(detail.valuations.length, 1, 'changer la quote-part ne crée pas une estimation');
+    assert.equal(detail.valuations.length, 2, 'changer la quote-part ne crée pas une estimation');
+    trend = (await admin.get('/api/history?range=all')).data;
+    assert.equal(trend.points[0].net, 10000000, 'la quote-part actuelle s’applique au patrimoine historique');
+    assert.equal(trend.points.at(-1).net, 12500000);
     assert.equal((await admin.get('/api/dashboard')).data.totals.assets, 12500000);
     list = (await admin.get('/api/holdings')).data.holdings;
     found = list.find((x) => x.id === id);
