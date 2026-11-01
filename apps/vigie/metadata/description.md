@@ -1,5 +1,11 @@
 # Vigie Patrimoine
 
+## Nouveauté 0.9.9 — Plus-values latentes multi-actifs
+
+Pour les actifs non immobiliers éligibles (or, métaux précieux, cryptomonnaies, bourse et autres placements), renseignez facultativement le **prix de revient total** et la **date d'acquisition** dans la fiche de l'avoir. Vigie affiche le gain ou la perte latent(e) brut(e) dans le détail de l'avoir et dans une synthèse sur la page **Avoirs**. Les montants sont inclus dans les exports CSV et les sauvegardes/restaurations JSON. L'immobilier conserve son calcul par quote-part.
+
+Les résultats restent indicatifs : aucun calcul fiscal, aucun mouvement d'achat/vente, et aucun prix de revient supposé pour les anciens avoirs.
+
 **Version du catalogue Runtipi : 8** · **Version de Vigie : 0.8.0** · **Runtipi minimum : 4.9.1**
 
 ## Nouveautés de la version 0.8.0 : e-mails, invitations et mot de passe oublié

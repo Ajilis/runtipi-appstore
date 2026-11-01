@@ -263,10 +263,15 @@ test('sessions : liste et fermeture des autres sessions', async () => {
 });
 
 test('export, sauvegarde et import', async () => {
+  const acquisition = { purchase_amount: 42000, purchased_at: addDays(today, -365) };
+  const up = await admin.patch(`/api/holdings/${ids.pea}`, { acquisition });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
   const before = (await admin.get('/api/dashboard')).data;
+  const previousPea = (await admin.get('/api/holdings')).data.holdings.find(h => h.id === ids.pea);
   const exp = await admin.get('/api/export.json');
   assert.equal(exp.status, 200);
   assert.equal(exp.data.format, 'vigie-export');
+  assert.equal(exp.data.holding_acquisitions.find(a => a.holding_id === ids.pea).purchase_cents, 4200000);
   const csv = await admin.get('/api/export/holdings.csv');
   assert.equal(csv.status, 200);
   assert.match(csv.data.toString('utf8'), /Livret A;Banque Postale/);
@@ -286,6 +291,9 @@ test('export, sauvegarde et import', async () => {
   assert.equal(imp.status, 200, JSON.stringify(imp.data));
   const restored = (await admin.get('/api/dashboard')).data;
   assert.deepEqual(restored.totals, before.totals);
+  const restoredPea = (await admin.get('/api/holdings')).data.holdings.find(h => h.id === ids.pea);
+  assert.equal(restoredPea.acquisition.purchase_cents, 4200000);
+  assert.equal(restoredPea.latent_gain_cents, previousPea.latent_gain_cents);
 });
 
 test('en-têtes de sécurité sur la page', async () => {
