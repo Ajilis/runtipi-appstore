@@ -209,6 +209,10 @@ export const MIGRATIONS = [
   );
   CREATE INDEX idx_institution_directory_name ON institution_directory(name);
   `,
+  // 0.9.1 : nouveaux logos de référence pour N26 et Vivid ; réessayer les échecs sans attendre 3 jours.
+  `
+  DELETE FROM logo_cache WHERE ok = 0 AND host IN ('n26.com', 'vivid.money');
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).
