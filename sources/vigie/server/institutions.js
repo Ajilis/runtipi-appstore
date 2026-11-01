@@ -123,7 +123,6 @@ export class InstitutionDirectory {
         if (!/^[a-z0-9][a-z0-9._-]{1,62}$/.test(code)) continue;
         const name = short(v.name?.fr || v.name?.en);
         const host = officialHost(v.links?.website);
-        if (!host) continue;
         const id = 'oft-' + code.replace(/[^a-z0-9]+/g, '-').replace(/-+$/g, '');
         if (this.accept({ id, name, host, kind: 'Services financiers', source: 'OpenFinTech',
           aliases: [v.name?.en, v.name?.fr].filter(Boolean),
@@ -132,6 +131,7 @@ export class InstitutionDirectory {
       }
       this.db.prepare("INSERT INTO settings(key,value) VALUES('institutions_oft_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(desc.version);
       this.lastSync = Date.now();
+      this.onUpdated?.();
       this.log.info?.('Annuaire OpenFinTech : ' + added + ' fiches mises à jour (' + desc.version + ')');
       return { added, version: desc.version };
     })().finally(() => { this.syncPending = null; });
