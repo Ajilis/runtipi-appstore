@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 20** · **Version de Vigie : 0.9.11** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 21** · **Version de Vigie : 0.10.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -13,7 +13,7 @@ Vigie prend le parti inverse :
 - **Pas de mouvements à saisir.** On ne gère ni opérations ni budget : pour chaque avoir, on note simplement sa valeur à une date (relevé, estimation). Vigie conserve chaque valeur et en tire l'historique, les tendances et les répartitions. Une mise à jour mensuelle prend quelques minutes.
 - **Privé et auto-hébergé.** Les données restent sur votre serveur, dans votre installation Runtipi. Aucun identifiant bancaire n'est demandé et aucun montant ne quitte votre serveur. Les seuls échanges avec l'extérieur (nom d'un établissement recherché, logos, taux de la BCE, adresse d'un bien quand vous demandez son estimation) sont décrits plus bas. L'application s'ouvre sur le réseau local ou à distance par Cloudflare Tunnel, avec double authentification.
 - **Une vue globale et utile.** Patrimoine net (passifs déduits), évolution dans le temps, répartition par catégorie, établissement, titulaire, devise et liquidité, écart à l'allocation visée : de quoi décider d'un rééquilibrage, d'une épargne de précaution ou d'un remboursement anticipé.
-- **Pensé pour un foyer.** Plusieurs comptes, avec des rôles ; invitations par e-mail ; partage d'un bien immobilier détenu à plusieurs.
+- **Pensé pour un foyer.** Plusieurs comptes, avec des rôles ; invitations par e-mail ; partage de n'importe quel avoir détenu à plusieurs (compte joint, bien en indivision, crédit à deux), chacun ne comptant que sa part.
 
 Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou fiscal : les estimations et plus-values affichées sont indicatives.
 
@@ -75,7 +75,8 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Un patrimoine par compte** : chaque avoir appartient au compte Vigie qui l'a créé ; tableau de bord, historique et exports sont personnels.
 - **Rôles** : administrateur (tout, y compris les comptes, les sauvegardes et la restauration), éditeur (avoirs, valeurs, catégories, taux) et lecture seule.
 - **Invitations par e-mail** : la personne reçoit un lien valable 7 jours et à usage unique, choisit son identifiant et son mot de passe, puis arrive connectée. Sans e-mail, un lien peut être transmis à la main ; l'ajout direct avec un mot de passe provisoire reste possible.
-- **Partage d'un bien immobilier** avec un autre compte : le propriétaire propose une quote-part, le destinataire l'accepte ou la refuse dans **Partages immobiliers**, puis voit le bien pour sa part, en lecture seule. Le partage est révocable.
+- **Partage d'un avoir** avec un autre compte du serveur (compte joint, livret, assurance-vie, bien immobilier, crédit…) : bouton **Partager cet avoir** dans le détail de l'avoir, quote-part proposée (la moitié par défaut, ou la part non attribuée d'un bien en indivision). Le destinataire voit la demande **en haut de ses Avoirs et de son tableau de bord**, avec **Accepter** et **Refuser** (et un e-mail si l'envoi est configuré). Chaque avoir indique s'il est **partagé ou non**, avec qui, **depuis quand** et si le destinataire **a approuvé**, est **en attente** ou **a refusé** ; une étiquette le résume dans la liste. Après accord, chacun ne compte que sa part ; le destinataire voit l'avoir en lecture seule. Le partage se retire à tout moment.
+- **Quote-part** : pour un compte joint ou un placement à deux, indiquez votre part (100 % par défaut) ; seule celle-ci entre dans votre patrimoine.
 - **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes.
 
 ### Sécurité et contrôle d'accès
@@ -91,7 +92,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 ### E-mails
 
 - **Serveur SMTP** au choix (STARTTLS, SSL/TLS ou relais local), préréglages Gmail, iCloud, OVHcloud, Free, Orange, SFR et Brevo, et **e-mail de test** avant d'enregistrer, avec des erreurs expliquées en clair.
-- Messages envoyés : invitations, liens « Mot de passe oublié », avis de changement de mot de passe, propositions de partage immobilier. Les liens utilisent toujours l'adresse publique enregistrée.
+- Messages envoyés : invitations, liens « Mot de passe oublié », avis de changement de mot de passe, propositions de partage. Les liens utilisent toujours l'adresse publique enregistrée.
 
 ### Données, exports et sauvegardes
 
@@ -113,6 +114,16 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Nouveautés de la version 0.10.0 : partage de tout avoir, sans menu dédié
+
+- Le menu **Partages immobiliers** disparaît. Le partage se gère **depuis l'avoir lui-même**, et il n'est plus réservé à l'immobilier : compte joint, livret, assurance-vie, bourse, crédit… tout avoir se partage avec un autre compte du serveur.
+- Le détail de chaque avoir a une section **Partage** : **Partagé** oui ou non (ou « Pas encore : en attente de l'accord de… »), votre quote-part, et pour chaque personne la part proposée, la **date de la proposition**, l'envoi de l'e-mail et l'état : **Approuvé le…**, **En attente de son accord** (avec la date d'expiration), **Refusé le…** ou **Expiré**. Les partages terminés restent consultables dans **Partages précédents**.
+- La liste des Avoirs affiche une étiquette sur les avoirs concernés : **Partagé, approuvé**, **Partage en attente d'accord**, **Partage refusé** ; chez le destinataire, **Partagé par…**.
+- Les **demandes reçues** s'affichent en bandeau **en haut des Avoirs et du tableau de bord**, avec le nom de l'avoir, sa catégorie, la part proposée et sa valeur du jour, et les boutons **Accepter** et **Refuser**. L'e-mail de proposition y mène ; les liens des anciens e-mails aussi.
+- **L'e-mail devient facultatif** : un compte sans adresse, ou un serveur sans SMTP, reçoit la demande dans Vigie à sa prochaine connexion.
+- **Quote-part du titulaire** : une part proposée par défaut à 50 % pour un avoir détenu à 100 %. À l'acceptation, votre part est réduite d'autant (100 % → 50 %) et vous est **rendue** si le partage prend fin. Pour un bien en indivision déjà déclaré à 60 %, le complément de 40 % est proposé sans toucher à votre part. Le formulaire d'un avoir non immobilier a un champ **Votre quote-part (%)**.
+- Migration automatique : les partages immobiliers existants, acceptés ou non, sont repris tels quels. L'export JSON inclut les quote-parts et les partages acceptés de tous les avoirs ; les exports des versions précédentes restent importables.
 
 ### Nouveautés de la version 0.9.11 : point des milliers
 
@@ -155,7 +166,7 @@ Les résultats restent indicatifs : aucun calcul fiscal, aucun mouvement d'achat
 #### Un patrimoine par compte, partage d'un bien immobilier (0.9.8)
 
 - **Changement important :** chaque avoir appartient désormais au **compte Vigie qui l'a créé**. Tableau de bord, avoirs, historique et exports sont personnels. À la mise à jour vers 0.9.8, tous les avoirs existants ont été attribués au **premier administrateur** : les autres comptes (par exemple un conjoint en lecture seule) ne voient plus ce patrimoine.
-- **Partager ce bien** : le propriétaire d'un bien immobilier propose une quote-part à un autre compte du serveur ayant une adresse e-mail. Le destinataire reçoit un e-mail, puis accepte ou refuse dans **Partages immobiliers** ; le bien apparaît alors dans son patrimoine pour sa part, en lecture seule. La proposition expire après 7 jours et le partage est révocable.
+- **Partager ce bien** : le propriétaire d'un bien immobilier propose une quote-part à un autre compte du serveur ayant une adresse e-mail. Le destinataire reçoit un e-mail, puis accepte ou refuse dans **Partages immobiliers** ; le bien apparaît alors dans son patrimoine pour sa part, en lecture seule. La proposition expire après 7 jours et le partage est révocable. Depuis 0.10.0, le partage concerne tous les avoirs et se gère depuis l'avoir (voir plus haut).
 - La **restauration d'un export JSON** est refusée si d'autres comptes ont des avoirs : utilisez alors les sauvegardes du serveur.
 
 ### Nouveautés de la version 0.8.0 : e-mails, invitations et mot de passe oublié

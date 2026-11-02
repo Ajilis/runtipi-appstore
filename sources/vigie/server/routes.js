@@ -11,9 +11,10 @@ import { ROLES, publicUser, getDummyHash, isPrivateIp, cameThroughCloudflare, is
 import { sendMail, buildMessage, templates, isEmail, SmtpError, SECURITY_MODES } from './mail.js';
 import {
   LIQUIDITY, dashboard, history, holdingsView, loadState, holdingSnapshot, parseAmountToCents, isIsoDate, todayIso, addDays,
+  SHARE_ROW_SQL, shareView, shareStatus, sharingByHolding,
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
-import { formatCents } from './format.js';
+import { formatCents, formatNumber } from './format.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
 import { TRANSPARENT_PNG, CUSTOM_KEY, sniffImage, imageSize } from './logos.js';
 import { LOAN_KINDS, amortization, loanSummary, loanValuations } from './loans.js';
@@ -425,11 +426,11 @@ export function registerRoutes(router, deps) {
   });
 
   // Confidentialité : tous les comptes ont leurs propres avoirs.
-  // Une part immobilière acceptée donne lecture seule de CE bien, pas du reste.
+  // Une part acceptée donne lecture seule de CET avoir, pas du reste.
   function canReadHolding(id, userId) {
     return Boolean(db.prepare(`SELECT 1 FROM holdings h WHERE h.id = ? AND
       (h.account_user_id = ? OR EXISTS (
-        SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id AND
+        SELECT 1 FROM holding_shares s WHERE s.holding_id = h.id AND
         s.recipient_id = ? AND s.accepted_at IS NOT NULL AND
         s.revoked_at IS NULL AND s.declined_at IS NULL))`).get(id,userId,userId));
   }
@@ -442,110 +443,119 @@ export function registerRoutes(router, deps) {
     if (!canReadHolding(id,userId)) fail(404,'not_found','Avoir introuvable dans votre compte Vigie.');
     return db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
   }
-  // --- Partage immobilier entre comptes du même serveur --------------------------------------------
-  // Le patrimoine est un registre partagé par les comptes, pas un espace privé
-  // par utilisateur. Une seule fiche, des droits distincts, consentement exprès.
+  // --- Partage d'un avoir entre comptes du même serveur ----------------------------------------------------
+  // N'importe quel avoir (compte, placement, bien, crédit…) : une seule fiche, une quote-part par compte,
+  // consentement exprès du destinataire. Si la part acceptée ne tient pas dans le complément du titulaire,
+  // la quote-part du titulaire est réduite d'autant (deducted_bp) et lui est rendue quand le partage prend fin.
   const SHARE_TTL = 7 * 86400_000;
-  const shareRow = db.prepare(`SELECT s.*, h.name AS property_name, u.display_name AS sender_name,
-    r.display_name AS recipient_name, r.email AS recipient_email
-    FROM real_estate_shares s JOIN holdings h ON h.id = s.holding_id
-    LEFT JOIN users u ON u.id = s.sender_id
-    JOIN users r ON r.id = s.recipient_id WHERE s.id = ?`);
-  const sumReserved = db.prepare(`SELECT COALESCE(SUM(ownership_bp),0) AS bp FROM real_estate_shares
+  const shareRow = db.prepare(SHARE_ROW_SQL + ' WHERE s.id = ?');
+  const sumReserved = db.prepare(`SELECT COALESCE(SUM(ownership_bp),0) AS bp FROM holding_shares
     WHERE holding_id = ? AND declined_at IS NULL AND revoked_at IS NULL
     AND (accepted_at IS NOT NULL OR expires_at > ?)`);
-  const sumAccepted = db.prepare(`SELECT COALESCE(SUM(ownership_bp),0) AS bp FROM real_estate_shares
+  const sumAccepted = db.prepare(`SELECT COALESCE(SUM(ownership_bp),0) AS bp FROM holding_shares
     WHERE holding_id = ? AND accepted_at IS NOT NULL AND declined_at IS NULL AND revoked_at IS NULL`);
-  const shareStatus = (r, now = Date.now()) => r.revoked_at ? 'revoked' : r.declined_at ? 'declined'
-    : r.accepted_at ? 'accepted' : r.expires_at <= now ? 'expired' : 'pending';
-  function shareView(row) {
-    return { id: row.id, holding_id: row.holding_id, property_name: row.property_name,
-      sender_name: row.sender_name, recipient_id: row.recipient_id, recipient_name: row.recipient_name,
-      ownership_bp: row.ownership_bp, status: shareStatus(row), created_at: row.created_at,
-      expires_at: row.expires_at, accepted_at: row.accepted_at, sent_at: row.sent_at };
+  function setOwnerBp(holdingId, bp) {
+    db.prepare('UPDATE holdings SET ownership_bp = ? WHERE id = ?').run(bp, holdingId);
+    db.prepare('UPDATE real_estate SET ownership_bp = ? WHERE holding_id = ?').run(bp, holdingId);
   }
-  function shareProperty(holdingId, ownerId = null) {
-    const h = db.prepare(`SELECT h.id, h.name, h.account_user_id, p.ownership_bp FROM holdings h
-      JOIN real_estate p ON p.holding_id = h.id WHERE h.id = ?`).get(holdingId);
-    if (!h || (ownerId !== null && h.account_user_id !== ownerId)) fail(404, 'not_found', 'Bien immobilier introuvable dans votre compte.');
+  function sharedHolding(holdingId, ownerId = null) {
+    const h = db.prepare(`SELECT h.*, c.name AS category_name FROM holdings h
+      LEFT JOIN categories c ON c.id = h.category_id WHERE h.id = ?`).get(holdingId);
+    if (!h || (ownerId !== null && h.account_user_id !== ownerId)) fail(404, 'not_found', 'Avoir introuvable dans votre compte Vigie.');
     return h;
   }
-  router.get('/api/property-shares/recipients', { auth: 'editor' }, (ctx) => ({
+  // Le titulaire garde toujours au moins 0,01 % : au plus 99,99 % moins les parts déjà proposées ou acceptées.
+  const shareCapacity = (holdingId, now = Date.now()) => Math.max(0, 9999 - sumReserved.get(holdingId, now).bp);
+  // Part proposée par défaut : le complément non attribué s'il existe (bien en indivision), sinon la moitié.
+  function defaultShareBp(h, now = Date.now()) {
+    const complement = 10000 - h.ownership_bp - sumReserved.get(h.id, now).bp;
+    return Math.min(shareCapacity(h.id, now), complement > 0 ? complement : Math.max(1, Math.floor(h.ownership_bp / 2)));
+  }
+  const pctText = (bp) => formatNumber(bp / 100) + ' %';
+  router.get('/api/shares/recipients', { auth: 'editor' }, (ctx) => ({
     recipients: db.prepare(`SELECT id, display_name, email FROM users
-      WHERE id <> ? AND disabled = 0 AND email IS NOT NULL AND email <> '' ORDER BY display_name`).all(ctx.user.id),
+      WHERE id <> ? AND disabled = 0 ORDER BY display_name`).all(ctx.user.id)
+      .map((u) => ({ id: u.id, display_name: u.display_name, email: u.email || null })),
     mail_ready: Boolean(mailReady() && mailConf()),
   }));
-  router.get('/api/property-shares/inbox', { auth: 'viewer' }, (ctx) => ({
-    invitations: db.prepare(`SELECT s.id FROM real_estate_shares s
-      WHERE s.recipient_id = ? AND s.declined_at IS NULL AND s.revoked_at IS NULL
-      AND s.accepted_at IS NULL AND s.expires_at > ? ORDER BY s.created_at DESC`)
-      .all(ctx.user.id, Date.now()).map((r) => shareView(shareRow.get(r.id))),
-    accepted: db.prepare(`SELECT s.id FROM real_estate_shares s
-      WHERE s.recipient_id = ? AND s.accepted_at IS NOT NULL AND s.revoked_at IS NULL
-      ORDER BY s.accepted_at DESC`).all(ctx.user.id).map((r) => shareView(shareRow.get(r.id))),
-  }));
+  // Demandes reçues : affichées en bandeau dans les Avoirs et le tableau de bord du destinataire.
+  router.get('/api/shares/inbox', { auth: 'viewer' }, (ctx) => {
+    const now = Date.now();
+    const pending = db.prepare(SHARE_ROW_SQL + ` WHERE s.recipient_id = ? AND s.declined_at IS NULL
+      AND s.revoked_at IS NULL AND s.accepted_at IS NULL AND s.expires_at > ? ORDER BY s.created_at DESC`).all(ctx.user.id, now);
+    const accepted = db.prepare(SHARE_ROW_SQL + ` WHERE s.recipient_id = ? AND s.accepted_at IS NOT NULL
+      AND s.revoked_at IS NULL ORDER BY s.accepted_at DESC`).all(ctx.user.id);
+    // Aperçu pour décider en connaissance de cause : catégorie et valeur de la part proposée.
+    const state = pending.length ? loadState(db, todayIso()) : null;
+    const preview = (row) => {
+      const h = state.holdings.find((x) => x.id === row.holding_id);
+      const cat = h && state.catById.get(h.category_id);
+      const snap = h ? holdingSnapshot(state, h) : null;
+      return { ...shareView(row, now), category_name: cat?.name || null, category_kind: cat?.kind || 'asset',
+        currency: h?.currency || null, part_cents: snap && snap.cents !== null ? ownedCents(snap.cents, row.ownership_bp) : null };
+    };
+    return { invitations: pending.map(preview), accepted: accepted.map((r) => shareView(r, now)) };
+  });
   router.get('/api/holdings/:id/shares', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const property = shareProperty(id, ctx.user.id);
-    const list = db.prepare('SELECT id FROM real_estate_shares WHERE holding_id = ? ORDER BY created_at DESC').all(id);
-    const reserved = sumReserved.get(id, Date.now()).bp;
-    return { holding_id: id, ownership_bp: property.ownership_bp,
-      available_bp: Math.max(0, 10000 - property.ownership_bp - reserved),
-      accepted_bp: sumAccepted.get(id).bp, shares: list.map((r) => shareView(shareRow.get(r.id))) };
+    const h = sharedHolding(id, ctx.user.id);
+    const now = Date.now();
+    const list = db.prepare(SHARE_ROW_SQL + ' WHERE s.holding_id = ? ORDER BY s.created_at DESC, s.id DESC').all(id);
+    return { holding_id: id, name: h.name, ownership_bp: h.ownership_bp, closed: Boolean(h.closed_at),
+      complement_bp: Math.max(0, 10000 - h.ownership_bp - sumReserved.get(id, now).bp),
+      available_bp: shareCapacity(id, now), default_bp: defaultShareBp(h, now),
+      accepted_bp: sumAccepted.get(id).bp, shares: list.map((r) => shareView(r, now)) };
   });
 
   router.post('/api/holdings/:id/shares', { auth: 'editor' }, async (ctx) => {
     const id = intId(ctx.params.id);
-    const property = shareProperty(id, ctx.user.id);
+    const h = sharedHolding(id, ctx.user.id);
+    if (h.closed_at) fail(409, 'holding_closed', 'Rouvrez cet avoir avant de le partager.');
     const targetId = intId(ctx.body.recipient_id, 'Destinataire');
     if (targetId === ctx.user.id) fail(400, 'invalid_field', 'Choisissez un autre utilisateur.');
     const recipient = getUser(targetId);
-    if (!recipient || recipient.disabled || !recipient.email)
-      fail(400, 'invalid_field', 'Choisissez un compte actif possédant une adresse e-mail.');
-    if (!mailReady() || !mailConf()) fail(409, 'mail_not_configured',
-      'Configurez le serveur SMTP et une URL publique dans Réglages → Envoi d’e-mails avant le partage.');
-    // Permet la proposition automatique du complément à 100 %, mais ne
-    // transmet pas une quote-part nulle ou supérieure aux parts disponibles.
-    const reserved = sumReserved.get(id, Date.now()).bp;
-    const complement = 10000 - property.ownership_bp - reserved;
-    const pct = ctx.body.ownership_pct === undefined || ctx.body.ownership_pct === null || ctx.body.ownership_pct === ''
-      ? complement : ownershipBasisPoints(ctx.body.ownership_pct);
-    if (pct === null || pct < 1 || pct > complement)
-      fail(400, 'invalid_field', 'Quote-part proposée invalide ou supérieure au complément disponible (' + (complement / 100) + ' %).');
+    if (!recipient || recipient.disabled) fail(400, 'invalid_field', 'Choisissez un compte actif de ce serveur.');
     const now = Date.now();
+    const empty = ctx.body.ownership_pct === undefined || ctx.body.ownership_pct === null || ctx.body.ownership_pct === '';
+    const pct = empty ? defaultShareBp(h, now) : ownershipBasisPoints(ctx.body.ownership_pct);
+    const capacity = shareCapacity(id, now);
+    if (pct === null || pct < 1 || pct > capacity)
+      fail(400, 'invalid_field', capacity ? `Quote-part proposée : de 0,01 à ${pctText(capacity)}.` : 'Aucune quote-part disponible : révoquez d’abord une proposition.');
     const invitationId = transaction(db, () => {
       // Libérer les invitations expirées avant l'index d'unicité.
-      db.prepare(`UPDATE real_estate_shares SET revoked_at = ?
+      db.prepare(`UPDATE holding_shares SET revoked_at = ?
         WHERE holding_id = ? AND accepted_at IS NULL AND declined_at IS NULL
         AND revoked_at IS NULL AND expires_at <= ?`).run(now, id, now);
-      const fresh = shareProperty(id,ctx.user.id);
-      const left = 10000 - fresh.ownership_bp - sumReserved.get(id, now).bp;
-      if (pct > left) fail(409, 'share_capacity', 'La quote-part disponible a changé. Rechargez la fiche.');
-      if (db.prepare(`SELECT 1 FROM real_estate_shares WHERE holding_id = ? AND recipient_id = ?
+      if (pct > shareCapacity(id, now)) fail(409, 'share_capacity', 'La quote-part disponible a changé. Rechargez la fiche.');
+      if (db.prepare(`SELECT 1 FROM holding_shares WHERE holding_id = ? AND recipient_id = ?
           AND declined_at IS NULL AND revoked_at IS NULL`).get(id, targetId))
-        fail(409, 'already_shared', 'Ce compte a déjà un partage en attente ou accepté sur ce bien.');
-      const r = db.prepare(`INSERT INTO real_estate_shares
+        fail(409, 'already_shared', 'Ce compte a déjà un partage en attente ou accepté sur cet avoir.');
+      const r = db.prepare(`INSERT INTO holding_shares
         (holding_id, sender_id, recipient_id, ownership_bp, created_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)`).run(id, ctx.user.id, targetId, pct, now, now + SHARE_TTL);
       return Number(r.lastInsertRowid);
     });
-    const url = String(mailSettings().public_url).replace(/\/$/, '') + '/#/partages';
-    try {
-      await deliver(recipient.email, 'propertyShare', {
-        firstName: recipient.first_name, inviter: ctx.user.display_name,
-        propertyName: property.name, ownershipPct: pct / 100, url, expiresAt: now + SHARE_TTL,
-      });
-    } catch (err) {
-      db.prepare('DELETE FROM real_estate_shares WHERE id = ? AND accepted_at IS NULL').run(invitationId);
-      if (err instanceof SmtpError) fail(502, 'smtp_error', 'Demande non envoyée : ' + err.message);
-      throw err;
+    // L'e-mail prévient le destinataire ; la demande l'attend de toute façon en haut de ses Avoirs.
+    let sent = false, mailError = null;
+    if (recipient.email && mailReady() && mailConf()) {
+      try {
+        await deliver(recipient.email, 'holdingShare', {
+          firstName: recipient.first_name, inviter: ctx.user.display_name, holdingName: h.name,
+          categoryName: h.category_name, ownershipPct: pct / 100,
+          url: String(mailSettings().public_url).replace(/\/$/, '') + '/#/avoirs', expiresAt: now + SHARE_TTL,
+        });
+        sent = true;
+        db.prepare('UPDATE holding_shares SET sent_at = ? WHERE id = ?').run(Date.now(), invitationId);
+      } catch (err) {
+        if (!(err instanceof SmtpError) && !err.status) throw err;
+        mailError = err.message;
+      }
     }
-    db.prepare('UPDATE real_estate_shares SET sent_at = ? WHERE id = ?').run(Date.now(), invitationId);
-    audit(ctx, 'partage_immobilier_envoye', property.name + ' : ' + (pct / 100) + ' % à ' + recipient.display_name);
-    return { invitation: shareView(shareRow.get(invitationId)), sent: true };
+    audit(ctx, 'partage_envoye', `${h.name} : ${pctText(pct)} proposé à ${recipient.display_name}${sent ? ', prévenu par e-mail' : ''}`);
+    return { invitation: shareView(shareRow.get(invitationId)), sent, mail_error: mailError };
   });
 
-  router.post('/api/property-shares/:id/decision', { auth: 'viewer' }, (ctx) => {
+  router.post('/api/shares/:id/decision', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
     const decision = oneOf(ctx.body.decision, ['accept', 'decline'], 'Décision');
     const data = transaction(db, () => {
@@ -554,32 +564,39 @@ export function registerRoutes(router, deps) {
       if (shareStatus(row) !== 'pending') fail(409, 'share_inactive', 'Cette proposition est déjà traitée ou a expiré.');
       const now = Date.now();
       if (decision === 'accept') {
-        const property = shareProperty(row.holding_id);
-        const total = sumAccepted.get(row.holding_id).bp;
-        if (property.ownership_bp + total + row.ownership_bp > 10000)
-          fail(409, 'share_capacity', 'Les quote-parts dépasseraient 100 %. Contactez l’administrateur.');
-        db.prepare('UPDATE real_estate_shares SET accepted_at = ? WHERE id = ?').run(now, id);
-      } else db.prepare('UPDATE real_estate_shares SET declined_at = ? WHERE id = ?').run(now, id);
+        const h = sharedHolding(row.holding_id);
+        const accepted = sumAccepted.get(row.holding_id).bp;
+        if (accepted + row.ownership_bp > 9999)
+          fail(409, 'share_capacity', 'Les quote-parts dépasseraient 100 %. Demandez au titulaire de vous renvoyer une proposition.');
+        // Faire de la place si la part ne tient pas dans le complément du titulaire.
+        const need = Math.max(0, h.ownership_bp + accepted + row.ownership_bp - 10000);
+        if (need) setOwnerBp(h.id, h.ownership_bp - need);
+        db.prepare('UPDATE holding_shares SET accepted_at = ?, deducted_bp = ? WHERE id = ?').run(now, need, id);
+      } else db.prepare('UPDATE holding_shares SET declined_at = ? WHERE id = ?').run(now, id);
       return shareView(shareRow.get(id));
     });
-    audit(ctx, decision === 'accept' ? 'partage_immobilier_accepte' : 'partage_immobilier_refuse',
-      data.property_name + ' : ' + (data.ownership_bp / 100) + ' %');
+    audit(ctx, decision === 'accept' ? 'partage_accepte' : 'partage_refuse',
+      `${data.holding_name} : ${pctText(data.ownership_bp)}, proposé par ${data.sender_name || data.owner_name || 'un autre compte'}`);
     return { invitation: data, ok: true };
   });
 
-  router.delete('/api/property-shares/:id', { auth: 'viewer' }, (ctx) => {
+  // Le titulaire retire une proposition ou un partage ; le destinataire renonce à sa part.
+  router.delete('/api/shares/:id', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
     const data = transaction(db, () => {
       const row = shareRow.get(id);
-      if (!row || (row.recipient_id !== ctx.user.id &&
-          !db.prepare('SELECT 1 FROM holdings WHERE id = ? AND account_user_id = ?').get(row.holding_id, ctx.user.id)))
+      if (!row || (row.recipient_id !== ctx.user.id && row.holding_owner_id !== ctx.user.id))
         fail(404, 'not_found', 'Partage introuvable.');
-      if (shareStatus(row) !== 'accepted' && shareStatus(row) !== 'pending')
-        fail(409, 'share_inactive', 'Ce partage n’est plus actif.');
-      db.prepare('UPDATE real_estate_shares SET revoked_at = ? WHERE id = ?').run(Date.now(), id);
+      const status = shareStatus(row);
+      if (status !== 'accepted' && status !== 'pending') fail(409, 'share_inactive', 'Ce partage n’est plus actif.');
+      db.prepare('UPDATE holding_shares SET revoked_at = ? WHERE id = ?').run(Date.now(), id);
+      if (status === 'accepted' && row.deducted_bp > 0) {
+        const h = sharedHolding(row.holding_id);
+        setOwnerBp(h.id, Math.min(10000 - sumAccepted.get(h.id).bp, h.ownership_bp + row.deducted_bp));
+      }
       return shareView(shareRow.get(id));
     });
-    audit(ctx, 'partage_immobilier_revoque', data.property_name + ' : ' + (data.ownership_bp / 100) + ' %');
+    audit(ctx, 'partage_revoque', `${data.holding_name} : ${pctText(data.ownership_bp)} (${data.recipient_name})`);
     return { ok: true };
   });
 
@@ -608,18 +625,22 @@ export function registerRoutes(router, deps) {
         .sort((a, b) => (a.valued_at < b.valued_at ? 1 : -1));
       schedule = { ...loanSummary(sched, today), rows: amortization(sched) };
     }
-    const property = db.prepare('SELECT * FROM real_estate WHERE holding_id = ?').get(id) || null;
+    const property = state.properties.get(id) || null;
+    const acquisition = !property ? state.acquisitions.get(id) || null : null;
     return { holding: { ...h, value_cents: snap.cents, owned_cents: snap.owned, owner_owned_cents: snap.owner_owned_cents,
       total_ownership_bp: snap.ownership_bp, shared_with_me: snap.shared_with_me,
       value_base: snap.base, missing_rate: snap.missingRate },
-      property, acquisition: !property ? state.acquisitions.get(id) || null : null,
-      latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp) : state.acquisitions.has(id) && snap.cents !== null ? { gain_cents: snap.cents - state.acquisitions.get(id).purchase_cents, gain_pct: Math.round((snap.cents / state.acquisitions.get(id).purchase_cents - 1) * 10000) / 100 } : null,
+      property, acquisition,
+      // Plus-value de la quote-part détenue par ce compte (bien immobilier ou autre avoir avec prix de revient).
+      latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp)
+        : acquisition && snap.cents !== null ? latentGain(snap.cents, acquisition.purchase_cents, snap.ownership_bp) : null,
+      sharing: sharingByHolding(db, state).get(id) || null,
       valuations, schedule, base_currency: state.base };
   });
 
   router.get('/api/categories', { auth: 'viewer' }, (ctx) => {
     const rows = db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM holdings h WHERE h.category_id = c.id AND
-      (h.account_user_id = ? OR EXISTS (SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id
+      (h.account_user_id = ? OR EXISTS (SELECT 1 FROM holding_shares s WHERE s.holding_id = h.id
         AND s.recipient_id = ? AND s.accepted_at IS NOT NULL AND s.revoked_at IS NULL AND s.declined_at IS NULL)))
       AS holding_count FROM categories c ORDER BY sort_order, id`).all(ctx.user.id,ctx.user.id);
     return { categories: rows };
@@ -877,15 +898,26 @@ export function registerRoutes(router, deps) {
       ? null : Number(p.surface_m2);
     if (surface !== null && (!Number.isInteger(surface) || surface < 9 || surface > 10000))
       fail(400, 'invalid_field', 'Surface habitable : 9 à 10 000 m².');
-    const old = holdingId ? db.prepare('SELECT ownership_bp FROM real_estate WHERE holding_id = ?').get(holdingId)?.ownership_bp : null;
+    const old = holdingId ? db.prepare('SELECT ownership_bp FROM holdings WHERE id = ?').get(holdingId)?.ownership_bp : null;
     const ownership = ownershipBasisPoints(p.ownership_pct ?? (old === null || old === undefined ? 100 : old / 100));
     if (ownership === null) fail(400, 'invalid_field', 'Quote-part de propriété : pourcentage de 0,01 à 100, avec 2 décimales maximum.');
-    if (holdingId && ownership + sumReserved.get(holdingId, Date.now()).bp > 10000)
-      fail(409, 'share_capacity', 'La nouvelle quote-part dépasserait 100 % avec les partages en attente ou acceptés. Révoquez un partage avant de modifier ce pourcentage.');
+    if (holdingId && ownership + sumAccepted.get(holdingId).bp > 10000)
+      fail(409, 'share_capacity', 'La nouvelle quote-part dépasserait 100 % avec les partages acceptés. Révoquez un partage avant de modifier ce pourcentage.');
     return { purchase, date, type, condition, address, surface, ownership };
+  }
+  // Quote-part du titulaire d'un avoir non immobilier (compte joint, placement à deux…) ;
+  // pour l'immobilier, elle est saisie avec les informations du bien (property.ownership_pct).
+  function holdingOwnership(b, prop, holdingId = null) {
+    if (prop || b.ownership_pct === undefined || b.ownership_pct === null || b.ownership_pct === '') return null;
+    const bp = ownershipBasisPoints(b.ownership_pct);
+    if (bp === null) fail(400, 'invalid_field', 'Quote-part : pourcentage de 0,01 à 100, avec 2 décimales maximum.');
+    if (holdingId && bp + sumAccepted.get(holdingId).bp > 10000)
+      fail(409, 'share_capacity', 'La quote-part dépasserait 100 % avec les partages acceptés. Révoquez un partage avant de modifier ce pourcentage.');
+    return bp;
   }
   function writeProperty(id, p) {
     saveProperty.run(id, p.purchase, p.date, p.type, p.address, p.surface, p.condition, p.ownership, Date.now());
+    db.prepare('UPDATE holdings SET ownership_bp = ? WHERE id = ?').run(p.ownership, id);
   }
 
   function parseAcquisition(body, cat, prop, schedule) {
@@ -940,6 +972,7 @@ export function registerRoutes(router, deps) {
     const schedule = ctx.body.schedule ? parseSchedule(ctx.body.schedule) : null;
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency);
+    const ownBp = holdingOwnership(ctx.body, prop);
     const acquisition = parseAcquisition(ctx.body, cat, prop, schedule);
     const hasInitial = !schedule && ctx.body.amount !== undefined && ctx.body.amount !== null && ctx.body.amount !== '';
     const cents = hasInitial ? amount(ctx.body.amount, 'Valeur actuelle') : null;
@@ -953,6 +986,7 @@ export function registerRoutes(router, deps) {
       if (cents !== null) upsertValuation.run(newId, date, cents, '', ctx.user.id, now);
       if (schedule) saveSchedule(newId, schedule);
       if (prop) writeProperty(newId, prop);
+      else if (ownBp !== null) setOwnerBp(newId, ownBp);
       if (acquisition) saveAcquisition(newId, acquisition);
       return newId;
     });
@@ -966,6 +1000,7 @@ export function registerRoutes(router, deps) {
     const f = holdingFields(ctx.body, existing,ctx.user.id);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency, id);
+    const ownBp = holdingOwnership(ctx.body, prop, id);
     const amountChange = ctx.body.amount !== undefined && ctx.body.amount !== ''
       ? amount(ctx.body.amount, 'Valeur actuelle') : null;
     const valuationOn = amountChange !== null ? valuationDate(ctx.body.date) : null;
@@ -984,6 +1019,7 @@ export function registerRoutes(router, deps) {
       }
       if (prop) writeProperty(id, prop);
       else if (!isRealEstateCategory(cat)) db.prepare('DELETE FROM real_estate WHERE holding_id = ?').run(id);
+      if (!prop && ownBp !== null) setOwnerBp(id, ownBp);
       if (acquisition === null || cat.kind !== 'asset' || isRealEstateCategory(cat) || scheduleChange || (had && scheduleChange !== null)) db.prepare('DELETE FROM holding_acquisitions WHERE holding_id = ?').run(id);
       if (acquisition) saveAcquisition(id, acquisition);
       if (amountChange !== null) {
@@ -1238,7 +1274,16 @@ export function registerRoutes(router, deps) {
     if (u.role === 'admin' && !u.disabled && activeAdmins(id) === 0) fail(400, 'last_admin', 'Il doit rester au moins un administrateur actif.');
     if (db.prepare('SELECT 1 FROM holdings WHERE account_user_id = ? LIMIT 1').get(id))
       fail(409,'account_has_holdings','Ce compte possède encore des avoirs. Supprimez ou transférez ses biens avant de supprimer le compte : aucun patrimoine ne sera effacé automatiquement.');
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    transaction(db, () => {
+      // Ses parts acceptées prennent fin : la part retirée à chaque titulaire lui est rendue.
+      for (const s of db.prepare(`SELECT * FROM holding_shares WHERE recipient_id = ? AND accepted_at IS NOT NULL
+          AND revoked_at IS NULL AND declined_at IS NULL AND deducted_bp > 0`).all(id)) {
+        db.prepare('UPDATE holding_shares SET revoked_at = ? WHERE id = ?').run(Date.now(), s.id);
+        const owner = db.prepare('SELECT ownership_bp FROM holdings WHERE id = ?').get(s.holding_id);
+        if (owner) setOwnerBp(s.holding_id, Math.min(10000 - sumAccepted.get(s.holding_id).bp, owner.ownership_bp + s.deducted_bp));
+      }
+      db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    });
     audit(ctx, 'utilisateur_supprime', u.username);
     return { ok: true };
   });
@@ -1543,12 +1588,12 @@ export function registerRoutes(router, deps) {
       settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList(userId).map((o) => o.name) },
       fx_rates: db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates').all(),
       categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories ORDER BY sort_order, id').all(),
-      holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, account_user_id FROM holdings ORDER BY id').all().filter((h) => owned.has(h.id)),
+      holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, account_user_id, ownership_bp FROM holdings ORDER BY id').all().filter((h) => owned.has(h.id)),
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all().filter((v) => owned.has(v.holding_id)),
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       holding_acquisitions: db.prepare('SELECT holding_id,purchase_cents,purchased_at FROM holding_acquisitions ORDER BY holding_id').all().filter(p => owned.has(p.holding_id)),
-      real_estate_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp FROM real_estate_shares
+      holding_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp,deducted_bp FROM holding_shares
         WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all().filter((p) => owned.has(p.holding_id)),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
     };
@@ -1608,10 +1653,12 @@ export function registerRoutes(router, deps) {
       }
       for (const h of d.holdings) {
         if (h.closed_at && !isIsoDate(h.closed_at)) fail(400, 'invalid_import', `Date de clôture invalide pour ${h.name}.`);
-        db.prepare('INSERT INTO holdings (id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at, account_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        const ownerBp = h.ownership_bp === undefined || h.ownership_bp === null ? 10000 : h.ownership_bp;
+        if (!Number.isInteger(ownerBp) || ownerBp < 1 || ownerBp > 10000) fail(400, 'invalid_import', `Quote-part invalide pour ${h.name}.`);
+        db.prepare('INSERT INTO holdings (id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at, account_user_id, ownership_bp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .run(intId(h.id), intId(h.category_id), text(h.name, 'Avoir', { required: true, max: 80 }), text(h.institution || '', 'Établissement', { max: 80 }), text(h.owner || '', 'Titulaire', { max: 40 }),
             currency(h.currency), oneOf(h.liquidity, LIQUIDITY, 'Liquidité'), longText(h.notes || '', 'Notes'), h.closed_at || null, Number(h.sort_order) || 0, now, now,
-            getUser(h.account_user_id)?.id ?? ctx.user.id);
+            getUser(h.account_user_id)?.id ?? ctx.user.id, ownerBp);
       }
       for (const v of d.valuations) {
         if (!isIsoDate(v.valued_at) || !Number.isInteger(v.amount_cents)) fail(400, 'invalid_import', 'Valeur historique invalide.');
@@ -1643,17 +1690,20 @@ export function registerRoutes(router, deps) {
       }
       // Export JSON : seuls les partages déjà approuvés sont restaurés ;
       // les invitations non acceptées ne sont pas réémises silencieusement.
-      for (const share of Array.isArray(d.real_estate_shares) ? d.real_estate_shares : []) {
+      // Les exports antérieurs à 0.10.0 nomment cette section real_estate_shares.
+      const importedShares = Array.isArray(d.holding_shares) ? d.holding_shares : Array.isArray(d.real_estate_shares) ? d.real_estate_shares : [];
+      for (const share of importedShares) {
         const hid = intId(share.holding_id), target = intId(share.recipient_id);
-        const property = db.prepare('SELECT ownership_bp FROM real_estate WHERE holding_id = ?').get(hid);
-        if (!property || !getUser(target) || target === ctx.user.id)
-          fail(400, 'invalid_import', 'Partage immobilier invalide ou destinataire absent sur ce serveur.');
+        const holding = db.prepare('SELECT ownership_bp FROM holdings WHERE id = ?').get(hid);
+        if (!holding || !getUser(target) || target === ctx.user.id)
+          fail(400, 'invalid_import', 'Partage invalide ou destinataire absent sur ce serveur.');
+        const deducted = Number.isInteger(share.deducted_bp) && share.deducted_bp > 0 ? share.deducted_bp : 0;
         if (!Number.isInteger(share.ownership_bp) || share.ownership_bp < 1 ||
-            property.ownership_bp + sumAccepted.get(hid).bp + share.ownership_bp > 10000)
-          fail(400, 'invalid_import', 'Quote-parts immobilières supérieures à 100 %.');
-        db.prepare(`INSERT INTO real_estate_shares
-          (holding_id,sender_id,recipient_id,ownership_bp,created_at,expires_at,accepted_at,sent_at)
-          VALUES (?,?,?,?,?,?,?,?)`).run(hid,ctx.user.id,target,share.ownership_bp,now,now,now,now);
+            holding.ownership_bp + sumAccepted.get(hid).bp + share.ownership_bp > 10000)
+          fail(400, 'invalid_import', 'Quote-parts supérieures à 100 %.');
+        db.prepare(`INSERT INTO holding_shares
+          (holding_id,sender_id,recipient_id,ownership_bp,deducted_bp,created_at,expires_at,accepted_at,sent_at)
+          VALUES (?,?,?,?,?,?,?,?,?)`).run(hid,ctx.user.id,target,share.ownership_bp,deducted,now,now,now,now);
       }
       for (const sc of Array.isArray(d.loan_schedules) ? d.loan_schedules : []) {
         if (!LOAN_KINDS.includes(sc.kind) || !Number.isInteger(sc.principal_cents) || sc.principal_cents <= 0 || !Number.isInteger(sc.months) || sc.months < 1 || sc.months > 600

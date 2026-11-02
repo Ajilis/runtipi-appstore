@@ -95,11 +95,11 @@ export function mergeSchedule(list, schedule, today) {
 
 export function loadState(db, today = todayIso(), userId = null) {
   const categories = db.prepare('SELECT * FROM categories ORDER BY sort_order, id').all();
-  // Le destinataire ne voit que ses biens et les parts explicitement acceptées.
+  // Chaque compte ne voit que ses avoirs et les parts d'avoirs d'autrui qu'il a explicitement acceptées.
   const holdings = userId === null
     ? db.prepare('SELECT * FROM holdings ORDER BY sort_order, id').all()
     : db.prepare(`SELECT h.* FROM holdings h WHERE h.account_user_id = ?
-        OR EXISTS (SELECT 1 FROM real_estate_shares s WHERE s.holding_id = h.id
+        OR EXISTS (SELECT 1 FROM holding_shares s WHERE s.holding_id = h.id
           AND s.recipient_id = ? AND s.accepted_at IS NOT NULL
           AND s.revoked_at IS NULL AND s.declined_at IS NULL)
         ORDER BY h.sort_order,h.id`).all(userId,userId);
@@ -113,9 +113,11 @@ export function loadState(db, today = todayIso(), userId = null) {
   }
   const schedules = getSchedules(db);
   const acquisitions = new Map(db.prepare('SELECT * FROM holding_acquisitions').all().filter(p => visibleIds.has(p.holding_id)).map(p => [p.holding_id,p]));
+  // La quote-part du titulaire est portée par l'avoir (holdings.ownership_bp), pour tous les avoirs.
+  const ownerBp = new Map(holdings.map((h) => [h.id, h.ownership_bp ?? 10000]));
   const properties = new Map(db.prepare('SELECT * FROM real_estate').all()
-    .filter((p) => visibleIds.has(p.holding_id)).map((p) => [p.holding_id, p]));
-  const shares = db.prepare(`SELECT holding_id, recipient_id, ownership_bp FROM real_estate_shares
+    .filter((p) => visibleIds.has(p.holding_id)).map((p) => [p.holding_id, { ...p, ownership_bp: ownerBp.get(p.holding_id) }]));
+  const shares = db.prepare(`SELECT holding_id, recipient_id, ownership_bp FROM holding_shares
     WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL`)
     .all().filter((p) => visibleIds.has(p.holding_id));
   const acceptedByHolding = new Map();
@@ -148,9 +150,9 @@ export function holdingSnapshot(state, h, date = null) {
   const list = state.byHolding.get(h.id) || [];
   const v = date ? lastOnOrBefore(list, date) : list[list.length - 1] || null;
   const cents = v ? v.amount_cents : null;
-  // Pour chacun des comptes Vigie, une seule valeur du bien entier mais
+  // Pour chacun des comptes Vigie, une seule valeur de l'avoir entier mais
   // uniquement sa propre quote-part ; aucun transfert des autres avoirs.
-  const ownerBp = state.properties.get(h.id)?.ownership_bp ?? 10000;
+  const ownerBp = h.ownership_bp ?? state.properties.get(h.id)?.ownership_bp ?? 10000;
   const ownershipBp = state.userId !== null && h.account_user_id !== state.userId
     ? (state.acceptedByHolding.get(h.id) || 0) : ownerBp;
   const owned = cents === null ? null : ownedCents(cents, ownershipBp);
@@ -283,12 +285,48 @@ export function history(db, range = '1y', options = {}) {
   return { base_currency: state.base, range, points };
 }
 
+// --- Partage d'un avoir entre comptes du même serveur -------------------------------------------------
+export const shareStatus = (r, now = Date.now()) => r.revoked_at ? 'revoked' : r.declined_at ? 'declined'
+  : r.accepted_at ? 'accepted' : r.expires_at <= now ? 'expired' : 'pending';
+export const SHARE_ROW_SQL = `SELECT s.*, h.name AS holding_name, h.account_user_id AS holding_owner_id,
+    u.display_name AS sender_name, r.display_name AS recipient_name, o.display_name AS owner_name
+  FROM holding_shares s JOIN holdings h ON h.id = s.holding_id
+  LEFT JOIN users u ON u.id = s.sender_id
+  JOIN users r ON r.id = s.recipient_id
+  LEFT JOIN users o ON o.id = h.account_user_id`;
+export function shareView(row, now = Date.now()) {
+  return { id: row.id, holding_id: row.holding_id, holding_name: row.holding_name,
+    sender_name: row.sender_name, owner_name: row.owner_name, recipient_id: row.recipient_id, recipient_name: row.recipient_name,
+    ownership_bp: row.ownership_bp, deducted_bp: row.deducted_bp, status: shareStatus(row, now),
+    created_at: row.created_at, sent_at: row.sent_at, expires_at: row.expires_at,
+    accepted_at: row.accepted_at, declined_at: row.declined_at, revoked_at: row.revoked_at };
+}
+// État du partage de chaque avoir visible : le titulaire voit toutes ses propositions, le destinataire seulement la sienne.
+export function sharingByHolding(db, state) {
+  const out = new Map();
+  const visible = new Map(state.holdings.map((h) => [h.id, h]));
+  const now = Date.now();
+  for (const row of db.prepare(SHARE_ROW_SQL + ' ORDER BY s.created_at DESC, s.id DESC').all()) {
+    const h = visible.get(row.holding_id);
+    if (!h) continue;
+    const mine = state.userId === null || h.account_user_id === state.userId;
+    if (mine) {
+      if (!out.has(h.id)) out.set(h.id, { role: 'owner', owner_bp: h.ownership_bp ?? 10000, shares: [] });
+      out.get(h.id).shares.push(shareView(row, now));
+    } else if (row.recipient_id === state.userId && shareStatus(row, now) === 'accepted') {
+      out.set(h.id, { role: 'recipient', owner_name: row.owner_name, share: shareView(row, now) });
+    }
+  }
+  return out;
+}
+
 // Liste des avoirs avec leur valeur actuelle et une mini-série pour l'aperçu.
 export function holdingsView(db, userId = null) {
   const today = todayIso();
   const state = loadState(db, today, userId);
   const staleDays = Number(getSetting(db, 'stale_days', '45'));
   const properties = state.properties;
+  const sharing = sharingByHolding(db, state);
   return {
     base_currency: state.base,
     stale_days: staleDays,
@@ -307,8 +345,12 @@ export function holdingsView(db, userId = null) {
         shared_with_me: snap.shared_with_me,
         property: properties.get(h.id) || null,
         acquisition: state.acquisitions.get(h.id) || null,
-        latent_basis_cents: properties.has(h.id) ? Math.round(properties.get(h.id).purchase_cents * snap.ownership_bp / 10000) : state.acquisitions.get(h.id)?.purchase_cents ?? null,
-        latent_gain_cents: properties.has(h.id) ? latentGain(snap.cents, properties.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null : state.acquisitions.has(h.id) && snap.cents !== null && !h.closed_at ? snap.cents - state.acquisitions.get(h.id).purchase_cents : null,
+        // Prix de revient et plus-value latente ramenés à la quote-part détenue par ce compte.
+        latent_basis_cents: properties.has(h.id) ? Math.round(properties.get(h.id).purchase_cents * snap.ownership_bp / 10000)
+          : state.acquisitions.has(h.id) ? Math.round(state.acquisitions.get(h.id).purchase_cents * snap.ownership_bp / 10000) : null,
+        latent_gain_cents: properties.has(h.id) ? latentGain(snap.cents, properties.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null
+          : state.acquisitions.has(h.id) && snap.cents !== null && !h.closed_at ? latentGain(snap.cents, state.acquisitions.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null : null,
+        sharing: sharing.get(h.id) || null,
         value_base: snap.base,
         missing_rate: snap.missingRate,
         last_date: last,

@@ -293,6 +293,39 @@ export const MIGRATIONS = [
   DELETE FROM logo_cache WHERE ok = 1 AND width > 0 AND height > 0
     AND (width * 1.0 / height > 1.5 OR height * 1.0 / width > 1.5);
   `,
+  // 0.10.0 : tout avoir se partage, plus seulement l'immobilier. La quote-part du titulaire est portée par
+  // holdings (copiée depuis real_estate). Les partages sont rattachés à l'avoir ; deducted_bp mémorise la part
+  // retirée au titulaire à l'acceptation, rendue si le partage prend fin.
+  `
+  ALTER TABLE holdings ADD COLUMN ownership_bp INTEGER NOT NULL DEFAULT 10000
+    CHECK (ownership_bp BETWEEN 1 AND 10000);
+  UPDATE holdings SET ownership_bp = (SELECT r.ownership_bp FROM real_estate r WHERE r.holding_id = holdings.id)
+    WHERE id IN (SELECT holding_id FROM real_estate);
+  CREATE TABLE holding_shares (
+    id INTEGER PRIMARY KEY,
+    holding_id INTEGER NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+    sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ownership_bp INTEGER NOT NULL CHECK (ownership_bp BETWEEN 1 AND 10000),
+    deducted_bp INTEGER NOT NULL DEFAULT 0 CHECK (deducted_bp BETWEEN 0 AND 10000),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    sent_at INTEGER,
+    accepted_at INTEGER,
+    declined_at INTEGER,
+    revoked_at INTEGER,
+    CHECK (accepted_at IS NULL OR declined_at IS NULL)
+  );
+  INSERT INTO holding_shares (id, holding_id, sender_id, recipient_id, ownership_bp, created_at, expires_at,
+      sent_at, accepted_at, declined_at, revoked_at)
+    SELECT id, holding_id, sender_id, recipient_id, ownership_bp, created_at, expires_at,
+      sent_at, accepted_at, declined_at, revoked_at FROM real_estate_shares;
+  DROP TABLE real_estate_shares;
+  CREATE INDEX idx_holding_shares_holding ON holding_shares(holding_id);
+  CREATE INDEX idx_holding_shares_recipient ON holding_shares(recipient_id, accepted_at);
+  CREATE UNIQUE INDEX idx_holding_shares_active ON holding_shares(holding_id, recipient_id)
+    WHERE declined_at IS NULL AND revoked_at IS NULL;
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

@@ -658,3 +658,31 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
   .rail, .tools, .btn { display: none !important; }
   .shell { display: block; }
 }
+
+/* Partage d'un avoir avec un autre compte (0.10.0) : étiquettes, section du panneau, bandeau des demandes reçues. */
+.tag.share.ok { background: var(--brand-soft); border-color: transparent; color: var(--ink); }
+.tag.share.ok > svg { color: var(--brand); }
+.tag.share.wait { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.tag.share.bad { color: var(--bad); border-color: currentColor; background: transparent; }
+.holding .meta .tag.share { font-size: 0.75rem; }
+.share-panel .panel { display: grid; gap: 12px; }
+.share-panel .kv { margin: 0; }
+.share-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.share-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.share-line:first-child { border-top: 0; }
+.share-line .share-who { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.share-line .state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; }
+.share-line > .btn { align-self: center; }
+.share-history summary { cursor: pointer; color: var(--muted); font-size: 0.875rem; }
+.share-history .share-list { margin-top: 6px; opacity: 0.85; }
+.share-inbox { display: grid; gap: 10px; margin-bottom: 18px; }
+.share-request { align-items: center; }
+.share-request > svg { color: var(--brand); }
+.share-request .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.share-request .grow p { margin: 0; }
+.share-request .share-actions { display: flex; gap: 8px; flex-wrap: wrap; flex: none; }
+.share-request .share-actions .btn { margin-left: 0; }
+@media (max-width: 640px) {
+  .share-request { flex-wrap: wrap; }
+  .share-request .share-actions { width: 100%; padding-left: 30px; }
+}

@@ -139,3 +139,28 @@ test('migration plus-values : ajout non destructif, prix de revient lié à un a
   reopened.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('base 0.9.11 : partages immobiliers repris comme partages d’avoirs, quote-part portée par l’avoir', () => {
+  const dir = legacyDatabase(16, (raw) => {
+    const u = raw.prepare("INSERT INTO users (username, display_name, password_hash, role, created_at) VALUES (?, ?, 'x', ?, 0)");
+    u.run('camille', 'Camille Dupont', 'admin'); u.run('lea', 'Léa Martin', 'viewer');
+    raw.prepare("INSERT INTO categories (id, name, kind, icon, sort_order, created_at) VALUES (1, 'Immobilier', 'asset', 'house', 0, 0)").run();
+    raw.prepare("INSERT INTO categories (id, name, kind, icon, sort_order, created_at) VALUES (2, 'Comptes courants', 'asset', 'wallet', 0, 0)").run();
+    const h = raw.prepare("INSERT INTO holdings (id, category_id, name, currency, liquidity, sort_order, created_at, updated_at, account_user_id) VALUES (?, ?, ?, 'EUR', 'locked', 0, 0, 0, 1)");
+    h.run(1, 1, 'Maison indivise'); h.run(2, 2, 'Compte courant');
+    raw.prepare("INSERT INTO real_estate (holding_id, purchase_cents, purchased_at, property_type, ownership_bp, updated_at) VALUES (1, 100, '2004-04-01', 'maison', 6000, 0)").run();
+    raw.prepare(`INSERT INTO real_estate_shares (id, holding_id, sender_id, recipient_id, ownership_bp, created_at, expires_at, sent_at, accepted_at)
+      VALUES (7, 1, 1, 2, 4000, 10, 20, 11, 15)`).run();
+  });
+  const db = openDatabase(dir);
+  assert.equal(db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v, schemaVersion());
+  assert.deepEqual(db.prepare('SELECT id, ownership_bp FROM holdings ORDER BY id').all().map((r) => ({ ...r })),
+    [{ id: 1, ownership_bp: 6000 }, { id: 2, ownership_bp: 10000 }]);
+  const share = { ...db.prepare('SELECT * FROM holding_shares').get() };
+  assert.deepEqual([share.id, share.holding_id, share.recipient_id, share.ownership_bp, share.deducted_bp, share.accepted_at], [7, 1, 2, 4000, 0, 15]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'real_estate_shares'").get().n, 0);
+  // Un compte courant peut désormais être partagé.
+  db.prepare('INSERT INTO holding_shares (holding_id, sender_id, recipient_id, ownership_bp, created_at, expires_at) VALUES (2, 1, 2, 5000, 0, 1)').run();
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -1,5 +1,6 @@
 // Envoi d'e-mails sans dépendance : client SMTP minimal (STARTTLS, SSL/TLS implicite ou connexion simple ;
 // authentification PLAIN ou LOGIN), message MIME UTF-8 texte + HTML, et modèles des messages de Vigie.
+import { formatNumber } from './format.js';
 import net from 'node:net';
 import tls from 'node:tls';
 import crypto from 'node:crypto';
@@ -293,19 +294,21 @@ export const templates = {
     };
   },
 
-  propertyShare({ firstName, inviter, propertyName, ownershipPct, url, expiresAt }) {
+  // Proposition de partage d'un avoir (compte, placement, bien, crédit…) avec un autre compte du serveur.
+  holdingShare({ firstName, inviter, holdingName, categoryName, ownershipPct, url, expiresAt }) {
     const hello = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
-    const percent = Number(ownershipPct).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
-    const title = 'Demande de partage immobilier sur Vigie Patrimoine';
+    const percent = formatNumber(ownershipPct);
+    const what = categoryName ? `l'avoir « ${holdingName} » (${categoryName})` : `l'avoir « ${holdingName} »`;
+    const title = 'Demande de partage sur Vigie Patrimoine';
     return {
-      subject: `${inviter} propose de partager un bien sur Vigie Patrimoine`,
-      text: `${hello}\n\n${inviter} vous propose d'approuver une quote-part de ${percent} % sur le bien immobilier « ${propertyName} » dans Vigie.\n\nConnectez-vous avec votre compte habituel sur le même serveur puis ouvrez cette page pour accepter ou refuser :\n${url}\n\nCette proposition expire le ${frDateTime(expiresAt)}. Vous ne devenez pas co-titulaire dans Vigie sans avoir accepté.\n\nCe partage organise le suivi patrimonial dans Vigie et ne constitue pas un acte de transfert de propriété.\n`,
+      subject: `${inviter} propose de partager un avoir avec vous sur Vigie Patrimoine`,
+      text: `${hello}\n\n${inviter} vous propose une quote-part de ${percent} % sur ${what} dans Vigie.\n\nConnectez-vous avec votre compte habituel sur le même serveur : la demande s'affiche en haut de vos Avoirs, avec les boutons Accepter et Refuser.\n${url}\n\nCette proposition expire le ${frDateTime(expiresAt)}. Rien n'est ajouté à votre patrimoine sans votre accord.\n\nCe partage organise le suivi patrimonial dans Vigie et ne constitue pas un acte de transfert de propriété.\n`,
       html: layout({
         title,
         paragraphs: [escHtml(hello),
-          `${escHtml(inviter)} propose une quote-part de <b>${escHtml(percent)} %</b> sur le bien <b>${escHtml(propertyName)}</b>.`,
-          'Connectez-vous à votre compte sur le même serveur pour accepter ou refuser. Aucune quote-part ne vous est attribuée avant acceptation.'],
-        button: { label: 'Examiner la demande de partage', url },
+          `${escHtml(inviter)} vous propose une quote-part de <b>${escHtml(percent)} %</b> sur ${escHtml(what)}.`,
+          'Connectez-vous à votre compte sur le même serveur : la demande s\'affiche en haut de vos Avoirs. Rien n\'est ajouté à votre patrimoine avant votre accord.'],
+        button: { label: 'Voir la demande de partage', url },
         footer: `Demande valable jusqu'au ${escHtml(frDateTime(expiresAt))}. Un partage dans Vigie ne constitue pas un acte juridique de transfert de propriété.`,
       }),
     };
