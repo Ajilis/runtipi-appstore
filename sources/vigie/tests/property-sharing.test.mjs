@@ -272,7 +272,9 @@ test('partage : plus de menu dédié, état affiché sur les avoirs, demandes en
   assert.match(ui,/if \(name === 'partages'\) \{ name = 'avoirs'/,'anciens liens redirigés vers les Avoirs');
   assert.equal((ui.match(/\$\{shareBanner\(inbox\)\}/g) || []).length,3,'bandeau dans les Avoirs et le tableau de bord (vide ou non)');
   assert.match(ui,/\$\{shareTag\(h\)\}/,'étiquette dans la liste des avoirs');
-  assert.match(ui,/\$\{sharePanel\(h, sharing, mayEdit\)\}/,'section Partage dans chaque avoir');
+  assert.match(ui,/\$\{sharePanel\(h, sharing, mayEdit, property\)\}/,'section Partage dans chaque avoir');
+  assert.match(ui,/\$\{shareTop\(h, sharing, mayEdit, property\)\}/,'bouton Partager en tête du détail');
+  assert.match(ui,/'Partager ce bien'/);
   assert.match(ui,/<dt>Partagé<\/dt>/);
   assert.match(ui,/Approuvé le/);
   assert.match(ui,/En attente de son accord/);
@@ -280,7 +282,7 @@ test('partage : plus de menu dédié, état affiché sur les avoirs, demandes en
   assert.match(ui,/data-action="share-decision"/);
   assert.match(ui,/share-request-form/);
   assert.match(ui,/name="holding_pct"/);
-  assert.match(ui,/\$\{shareHeadline\(sharing\)\}/,'état du partage en tête du détail de l’avoir');
+  assert.match(ui,/const status = shareHeadline\(sharing\)/,'état du partage en tête du détail de l’avoir');
   assert.match(ui,/En attente de validation par/);
   assert.match(ui,/Partage refusé par/);
 });

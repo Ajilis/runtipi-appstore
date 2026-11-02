@@ -1008,6 +1008,14 @@
     return tags.length ? html`<button type="button" class="share-headline" data-action="goto-share" aria-label="Voir le détail du partage">${tags}</button>` : '';
   }
 
+  // En tête du détail d'un avoir : l'état du partage et, pour le titulaire, le bouton Partager, sans avoir à faire défiler.
+  function shareTop(h, sharing, mayEdit, property) {
+    const status = shareHeadline(sharing);
+    const button = mayEdit && !h.closed_at
+      ? html`<button class="btn small" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${property ? 'Partager ce bien' : 'Partager cet avoir'}</button>` : '';
+    return status || button ? html`<div class="share-top">${status}${button}</div>` : '';
+  }
+
   // « Partagé » : oui seulement après l'accord du destinataire ; une demande en attente est dite comme telle.
   function sharedText(active) {
     const names = (list) => list.map((x) => x.recipient_name).join(', ');
@@ -1018,7 +1026,7 @@
   }
 
   // Section « Partage » du panneau d'un avoir : partagé oui ou non, avec qui, quand, approuvé ou non.
-  function sharePanel(h, sharing, mayEdit) {
+  function sharePanel(h, sharing, mayEdit, property = null) {
     if (sharing && sharing.role === 'recipient') {
       const s = sharing.share;
       return html`<section class="section share-panel" id="share-section">${h3i('users', 'Partage')}<div class="panel">
@@ -1053,7 +1061,7 @@
       </dl>
       ${current.length ? html`<ul class="share-list">${current.map(line)}</ul>` : ''}
       ${history.length ? html`<details class="share-history"><summary>Partages précédents (${history.length})</summary><ul class="share-list">${history.map(line)}</ul></details>` : ''}
-      ${mayEdit && !h.closed_at ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${active.length ? 'Partager avec une autre personne' : 'Partager cet avoir'}</button></div>` : ''}
+      ${mayEdit && !h.closed_at ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${active.length ? 'Partager avec une autre personne' : property ? 'Partager ce bien' : 'Partager cet avoir'}</button></div>` : ''}
       ${!shares.length ? html`<p class="small muted">Un avoir partagé apparaît dans les Avoirs de l'autre compte après son accord, à hauteur de sa quote-part ; il n'accède à rien d'autre.</p>` : ''}
     </div></section>`;
   }
@@ -1542,7 +1550,7 @@
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p>
-        ${shareHeadline(sharing)}</div>
+        ${shareTop(h, sharing, mayEdit, property)}</div>
       ${property ? html`<div class="panel"><dl class="kv">
         <dt>Votre quote-part</dt><dd>${num(h.total_ownership_bp / 100)} %</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
@@ -1570,7 +1578,7 @@
         <dt>${icon(LIQ_ICON[h.liquidity])}Liquidité</dt><dd>${LIQ[h.liquidity]}</dd>
         ${h.notes ? html`<dt>${icon('journal')}Notes</dt><dd style="white-space:pre-wrap">${h.notes}</dd>` : ''}
       </dl>
-      ${sharePanel(h, sharing, mayEdit)}
+      ${sharePanel(h, sharing, mayEdit, property)}
       ${sc && !shown.length ? '' : html`<section class="section">${h3i('clock', sc ? "Valeurs saisies avant l'échéancier" : 'Historique des valeurs')}
         ${shown.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${mayEdit ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${shown.map((v, i) => {
