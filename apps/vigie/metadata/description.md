@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 22** · **Version de Vigie : 0.11.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 23** · **Version de Vigie : 1.0.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -114,6 +114,12 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.0.0 : première version stable
+
+- **Vigie Patrimoine passe en 1.0.0.** Cette version reprend tout le contenu de la 0.11.0, sans changement fonctionnel ni migration supplémentaire : un patrimoine par compte, rôles Utilisateur, Administrateur et Lecture seule, partage de tout avoir avec approbation, prêts et crédits à échéancier, immobilier et plus-values latentes, établissements et logos en couleur, e-mails, double authentification, sauvegardes.
+- La numérotation suit désormais le format **majeure.mineure.correctif** : une correction donnera 1.0.1, une nouvelle fonction 1.1.0.
+- Image Docker : `ghcr.io/ajilis/vigie:1.0.0`. Étiquette Git et release GitHub : `vigie-v1.0.0`.
 
 ### Nouveautés de la version 0.11.0 : chacun son patrimoine, partout
 
