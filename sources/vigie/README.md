@@ -1,8 +1,121 @@
-# Vigie Patrimoine : sources
+# Vigie Patrimoine
 
-Application auto-hébergée de suivi de patrimoine personnel : une valeur par avoir et par date, sans gestion des mouvements. Documentation utilisateur et installation Runtipi : [`apps/vigie/metadata/description.md`](../../apps/vigie/metadata/description.md).
+Version 0.9.10 · application auto-hébergée pour [Runtipi](https://runtipi.io) · Node.js et SQLite, sans aucune dépendance npm.
 
-## Architecture
+Documentation d'installation Runtipi : [`apps/vigie/metadata/description.md`](../../apps/vigie/metadata/description.md).
+
+## 1. Pourquoi Vigie ?
+
+Savoir à tout moment **ce que l'on possède et ce que l'on doit**, tous établissements confondus, sans y passer ses soirées.
+
+Un patrimoine est éparpillé : comptes courants et livrets dans plusieurs banques, assurance-vie, PEA, épargne salariale, crypto-actifs, or, résidence principale, crédits en cours, argent prêté à un proche. Pour en avoir une vue d'ensemble, on finit souvent avec un tableur qu'on oublie de tenir à jour, ou avec un agrégateur en ligne qui exige les identifiants de ses banques et conserve ses données chez un tiers.
+
+Vigie prend le parti inverse :
+
+- **Pas de mouvements à saisir.** On ne gère ni opérations ni budget : pour chaque avoir, on note simplement sa valeur à une date (relevé, estimation). Vigie conserve chaque valeur et en tire l'historique, les tendances et les répartitions. Une mise à jour mensuelle prend quelques minutes.
+- **Privé et auto-hébergé.** Les données restent sur votre serveur, dans votre installation Runtipi. Aucun identifiant bancaire n'est demandé et aucun montant ne quitte votre serveur. Les seuls échanges avec l'extérieur (nom d'un établissement recherché, logos, taux de la BCE, adresse d'un bien quand vous demandez son estimation) sont décrits plus bas. L'application s'ouvre sur le réseau local ou à distance par Cloudflare Tunnel, avec double authentification.
+- **Une vue globale et utile.** Patrimoine net (passifs déduits), évolution dans le temps, répartition par catégorie, établissement, titulaire, devise et liquidité, écart à l'allocation visée : de quoi décider d'un rééquilibrage, d'une épargne de précaution ou d'un remboursement anticipé.
+- **Pensé pour un foyer.** Plusieurs comptes, avec des rôles ; invitations par e-mail ; partage d'un bien immobilier détenu à plusieurs.
+
+Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou fiscal : les estimations et plus-values affichées sont indicatives.
+
+## 2. Fonctionnalités
+
+### Avoirs et catégories
+
+- **Avoirs** : un compte, un placement, un bien ou un crédit, avec son nom, sa catégorie, son établissement, son titulaire, sa devise, sa liquidité et des notes. Une valeur par date ; enregistrer une valeur à une date existante la remplace.
+- **13 catégories par défaut** : comptes courants, épargne réglementée, assurance-vie, bourse, épargne retraite, épargne salariale, immobilier, crypto-actifs, métaux précieux, prêts accordés, autres actifs, crédits immobiliers et autres crédits. Elles se renomment, se réordonnent et s'ajoutent librement (actif ou passif, liquidité par défaut, allocation cible, pictogramme parmi 22).
+- **Titulaires** : Moi, Conjoint, Commun ou tout autre nom, en liste déroulante ; ajout, renommage, fusion et suppression dans Réglages.
+- **Liste des avoirs** groupée par catégorie, avec recherche, mini-courbe, dernière mise à jour et variation. Un avoir se clôture (il sort des totaux, son historique reste) puis se rouvre, ou se supprime.
+- **Détail d'un avoir** : valeur actuelle, courbe, historique complet des valeurs avec écarts, et saisie d'une nouvelle valeur.
+- **Mise à jour rapide** : un seul écran pour actualiser tous les avoirs à une date, bouton « Inchangée », filtre « à actualiser » et estimation du nouveau patrimoine net avant d'enregistrer.
+- **Rappels** : un avoir dont la valeur date de plus de 45 jours (réglable) est signalé « à actualiser ».
+
+### Tableau de bord
+
+- **Patrimoine net**, total des actifs et des passifs, en devise de référence.
+- **Variations** sur 1 mois, sur 1 an et depuis janvier.
+- **Courbe d'évolution** sur 3 mois, 6 mois, 1 an, 3 ans ou depuis le début, avec infobulle.
+- **Répartitions** par catégorie (avec l'**allocation cible** et l'écart en euros), par établissement, par titulaire et par devise.
+- **Liquidité des actifs** : disponible, sous quelques semaines, bloqué ou illiquide.
+- **Avoirs à actualiser** et **mode discret** qui masque tous les montants d'un clic.
+
+### Prêts et crédits
+
+- **Échéancier automatique** pour un prêt accordé (catégorie « Prêts accordés ») ou un crédit souscrit : à partir du montant, du taux, de la durée et de la date de versement, Vigie calcule chaque mois le capital restant, en **mensualités constantes** (fixes au centime, comme un tableau bancaire) ou **in fine**.
+- Aperçu immédiat de la mensualité, du capital restant et du coût des intérêts ; **tableau d'amortissement** complet, prochaine échéance, intérêts perçus ou payés.
+- **Remboursement anticipé ou renégociation** en modifiant l'échéancier, sans perdre l'historique ; retour à la saisie manuelle possible à tout moment.
+
+### Immobilier
+
+- **Valeur d'achat et date d'achat** distinctes de la **valeur actuelle**, qui est historisée.
+- **Quote-part de propriété** de 0,01 % à 100 % : on saisit la valeur du bien entier, le patrimoine compte sa part.
+- **Estimation sur demande** à partir des ventes DVF, via le service tiers GeoRegistry : valeur, fourchette et nombre de ventes comparables, compte rendu ajouté aux notes. L'adresse, le type, la surface et l'état ne sont transmis qu'au clic sur « Estimer ».
+- **Plus-value latente brute** (valeur actuelle moins prix d'achat, à hauteur de la quote-part).
+
+### Plus-values latentes des autres placements
+
+- Pour l'or, la crypto, la bourse et les autres actifs, un **prix de revient** et une **date d'acquisition** facultatifs donnent le **gain ou la perte latente brute**, dans le détail de l'avoir et en synthèse sur la page Avoirs, convertis en devise de référence. Ni frais, ni fiscalité, ni mouvements ne sont modélisés.
+
+### Établissements et logos
+
+- **Suggestions dès la 3e lettre** dans le champ Établissement, sans tenir compte des accents ni des majuscules, y compris par ancien nom (« Boursorama » propose BoursoBank) ; saisie libre toujours possible.
+- **Annuaire enrichi en direct** au-delà du catalogue embarqué de 73 établissements : OpenFinTech (liste quotidienne vérifiée par empreinte SHA-256), Wikidata et le registre public des entreprises (activités financières). Seul le texte recherché est envoyé à ces services, et les résultats restent disponibles si une source tombe.
+- **Pastille d'établissement** dans les listes, les répartitions et la mise à jour rapide : icône carrée venant d'OpenFinTech, de Wikidata ou du site officiel (avec le service d'icônes de Google en dernier recours), sinon un monogramme coloré.
+- **Logo complet** (souvent horizontal) affiché dans le détail d'un avoir.
+- **Réglages → Établissements** : état du logo de chaque établissement, recherche à la demande, et **image personnelle** (PNG, JPEG, WebP ou SVG) pour n'importe quel établissement, même hors catalogue.
+- Chaque source extérieure se désactive dans le fichier de configuration.
+
+### Devises
+
+- **Devise de référence** au choix parmi 30 devises ; avoirs dans n'importe laquelle d'entre elles.
+- **Taux de change** saisis à la main ou récupérés auprès de la **Banque centrale européenne** ; un avoir sans taux est signalé.
+
+### Comptes, foyer et partage
+
+- **Un patrimoine par compte** : chaque avoir appartient au compte Vigie qui l'a créé ; tableau de bord, historique et exports sont personnels.
+- **Rôles** : administrateur (tout, y compris les comptes, les sauvegardes et la restauration), éditeur (avoirs, valeurs, catégories, taux) et lecture seule.
+- **Invitations par e-mail** : la personne reçoit un lien valable 7 jours et à usage unique, choisit son identifiant et son mot de passe, puis arrive connectée. Sans e-mail, un lien peut être transmis à la main ; l'ajout direct avec un mot de passe provisoire reste possible.
+- **Partage d'un bien immobilier** avec un autre compte : le propriétaire propose une quote-part, le destinataire l'accepte ou la refuse dans **Partages immobiliers**, puis voit le bien pour sa part, en lecture seule. Le partage est révocable.
+- **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes.
+
+### Sécurité et contrôle d'accès
+
+- Mots de passe hachés avec **scrypt** ; **double authentification TOTP** (Aegis, 2FAS, Google Authenticator…) avec 10 codes de secours, facultative ou obligatoire pour tous.
+- **Blocage** du compte après plusieurs échecs, **limitation par adresse IP**, déconnexion après inactivité, durée maximale de session, **sessions visibles et révocables**.
+- **« Mot de passe oublié »** : lien valable 1 heure, réponse identique que le compte existe ou non, demandes limitées, sessions fermées et e-mail d'avis après le changement.
+- **Journal d'audit** des connexions et des modifications.
+- Le **premier compte ne peut être créé que depuis le réseau local**, jamais à travers Cloudflare Tunnel.
+- Protection CSRF, en-têtes de sécurité stricts (CSP, anti-iframe), cookies `HttpOnly` et `SameSite=Strict`, `Secure` en HTTPS ; secrets TOTP et mot de passe SMTP chiffrés (AES-256-GCM).
+- **Réglages → Sécurité** : durées de session, seuils de blocage, double authentification et logos modifiables par un administrateur, après confirmation de son mot de passe.
+
+### E-mails
+
+- **Serveur SMTP** au choix (STARTTLS, SSL/TLS ou relais local), préréglages Gmail, iCloud, OVHcloud, Free, Orange, SFR et Brevo, et **e-mail de test** avant d'enregistrer, avec des erreurs expliquées en clair.
+- Messages envoyés : invitations, liens « Mot de passe oublié », avis de changement de mot de passe, propositions de partage immobilier. Les liens utilisent toujours l'adresse publique enregistrée.
+
+### Données, exports et sauvegardes
+
+- **Exports** de votre patrimoine : JSON complet (avoirs, historique, échéanciers, réglages), avoirs et historique en CSV (point-virgule et virgule décimale, ouverture directe dans Excel ou LibreOffice).
+- **Restauration** d'un export JSON, précédée d'une sauvegarde automatique ; refusée si d'autres comptes du serveur ont des avoirs, pour ne jamais les effacer.
+- **Sauvegardes quotidiennes** de la base (heure et durée de conservation réglables), téléchargeables depuis Réglages, incluses dans les sauvegardes Runtipi.
+- Évolutions de la base par **migrations additives** appliquées au démarrage : aucune donnée n'est supprimée lors d'une mise à jour.
+
+### Interface et application installable
+
+- Interface en français, **responsive de 320 px à l'écran large** (menu repliable, tableaux en cartes sur téléphone, cibles tactiles de 44 px), **thème clair ou sombre** selon l'appareil, pictogrammes par catégorie.
+- **Réglages en onglets** : Général, Titulaires, Devises, Établissements, Données, E-mails et Sécurité.
+- **Application installable (PWA)** sur téléphone, tablette et ordinateur via l'adresse HTTPS : icône, raccourcis, fenêtre autonome. Seule l'interface est mise en cache, jamais les données ; écran hors ligne et reconnexion automatique.
+
+### Installation et exploitation
+
+- **Application Runtipi** (4.9.1 minimum), un seul conteneur, image `ghcr.io/ajilis/vigie` pour amd64 et arm64.
+- **Accès réseau** : port 8289 publié directement, sans Traefik ; ouverture par `http://IP_DU_SERVEUR:8289` sur le réseau local et par **Cloudflare Tunnel** depuis l'extérieur.
+- **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
+
+## 3. Documentation technique
+
+### Architecture
 
 - **Serveur** : Node.js 24, sans aucune dépendance npm (`node:http`, `node:crypto`, `node:sqlite`).
 - **Base** : SQLite en mode WAL, `DATA_DIR/db/vigie.sqlite`. Migrations additives dans `server/db.js` : ne jamais modifier une migration publiée, en ajouter une nouvelle.
@@ -26,7 +139,7 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 | `web/institutions.json` | Catalogue initial de secours (nom, type, alias, site officiel) |
 | `web/` | Interface, police et générateur de QR code (MIT, voir `web/vendor`) |
 
-## Modèle de données
+### Modèle de données
 
 - `categories` : actif ou passif, liquidité par défaut, allocation cible.
 - `holdings` : un avoir (nom, établissement, titulaire, devise, liquidité, clôture).
@@ -40,7 +153,7 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - `invitations` : invitation par e-mail, jeton stocké haché (SHA-256), valable 7 jours, à usage unique.
 - `password_resets` : lien « Mot de passe oublié », jeton haché, valable 1 heure ; un seul lien actif par utilisateur.
 
-## Catalogue dynamique (0.9.0)
+### Catalogue dynamique (0.9.0)
 
 - **OpenFinTech** : téléchargement quotidien des fournisseurs actifs signalés en France depuis [static.openfintech.io/raw](https://static.openfintech.io/raw/). Le descripteur `latest.json`, `SHA256SUMS` et le hash du fichier `vendors.json` sont vérifiés avant insertion. Les logos PNG connus sont tentés sur `static.openfintech.io`, puis Vigie utilise le site officiel si présent.
 - **Wikidata** : recherche à la demande dès 3 caractères, uniquement parmi les entités dont la description est financière ; lecture du site officiel (P856), des alias et du logo (P154) sur Wikimedia Commons. Les images sont téléchargées par le serveur, validées et conservées en base, jamais directement chargées par le navigateur.
@@ -48,7 +161,7 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 - **Confidentialité / résilience** : seul le texte recherché est envoyé à Wikidata et au service public français. Les noms des avoirs, les montants et les identifiants des utilisateurs ne quittent pas Vigie. Les résultats sont conservés dans SQLite et utilisés si une source tombe. Les logos personnalisés passent toujours en priorité.
 - **Contrôle** : `INSTITUTION_CATALOGUE=false` désactive toutes les requêtes vers ces trois sources (mais laisse le catalogue embarqué et les entrées déjà mises en cache). `INSTITUTION_LOGOS=false` désactive les téléchargements de logos. L'annuaire est consultable via `GET /api/institutions/catalogue` et enrichi via `GET /api/institutions/search?q=...` (authentification obligatoire).
 
-## Logos : OpenFinTech et Wikidata par défaut (0.9.1)
+### Logos : OpenFinTech et Wikidata par défaut (0.9.1)
 
 La recherche des logos suit désormais l'ordre suivant, pour **tous** les établissements
 du catalogue historique et les fiches Sirene (depuis 0.9.10, une image horizontale n'est jamais
@@ -63,7 +176,7 @@ La recherche Wikidata conserve les résultats positifs 30 jours et les recherche
 
 La configuration `INSTITUTION_CATALOGUE=false` désactive les recherches Wikidata/OpenFinTech, et `INSTITUTION_LOGOS=false` désactive toutes les récupérations automatiques. Les échecs de téléchargement peuvent aussi provenir de la connexion Internet du conteneur Docker : le nouveau mécanisme ne résout pas à lui seul une panne DNS ou réseau.
 
-## Pastilles carrées et logo complet (0.9.10)
+### Pastilles carrées et logo complet (0.9.10)
 
 Une pastille (24 à 36 px) n'affiche qu'une image dont le rapport largeur / hauteur reste entre 1/1,5 et 1,5 (`isSquarish` dans `server/logos.js`). Dans `LogoService.refresh`, chaque image des sources ouvertes est classée :
 
@@ -74,7 +187,7 @@ Wikidata est consulté même quand la pastille vient d'OpenFinTech, pour propose
 
 La migration 16 ajoute les colonnes `full_*` et `full_checked_at`, supprime du cache les pastilles horizontales enregistrées par 0.9.0 à 0.9.9 (recherchées de nouveau au préchargement) et laisse `full_checked_at` vide pour les autres, qui sont complétées une seule fois par leur logo complet.
 
-## Correspondances vérifiées (0.9.1)
+### Correspondances vérifiées (0.9.1)
 
 Les dénominations légales ci-dessous, renvoyées par le registre Sirene, sont associées à leur site de marque **sans modifier les valeurs déjà enregistrées dans les avoirs**, ni leur nom ni leur identifiant d'annuaire :
 
@@ -86,7 +199,7 @@ Les logos de référence sont récupérés sous forme d'image PNG auprès de Wik
 - **N26** : [N26 logo.svg](https://commons.wikimedia.org/wiki/File:N26_logo.svg), auteur N26, domaine public selon Wikimedia Commons (marque enregistrée).
 - **Vivid** : [Vivid-money-logo.svg](https://commons.wikimedia.org/wiki/File:Vivid-money-logo.svg), auteur *ThisUserIsVivid*, licence [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Conversion en miniature PNG par Wikimedia Commons ; les crédits restent associés à la source originale.
 
-## Navigation dans les réglages (0.9.1)
+### Navigation dans les réglages (0.9.1)
 
 La page **Réglages** dispose d'onglets thématiques : **Général** (devise et rappels),
 **Titulaires**, **Devises**, **Établissements** (gestion des logos),
@@ -100,7 +213,7 @@ les flèches, Début et Fin. Le dernier onglet sélectionné est conservé
 dans le navigateur et chaque thème peut être ouvert directement,
 par exemple `#/reglages/devises` ou `#/reglages/etablissements`.
 
-## Biens immobiliers entre comptes Vigie indépendants (0.9.8)
+### Biens immobiliers entre comptes Vigie indépendants (0.9.8)
 
 **Important : changement de modèle par rapport aux versions précédentes.**
 Les anciens comptes utilisateurs de Vigie accédaient tous aux mêmes
@@ -151,7 +264,7 @@ courbes restent fondées sur le bien entier, avec une quote-part
 actuelle appliquée à l'historique : Vigie ne modélise pas encore les
 acquisitions de parts datées.
 
-## Compatibilité avec le format réel des ventes GeoRegistry (0.9.6)
+### Compatibilité avec le format réel des ventes GeoRegistry (0.9.6)
 
 **Anomalie identifiée grâce à la version 0.9.5** : l'API renvoyait
 100 ventes de maisons au bon type dans chaque rayon autour du bien,
@@ -183,7 +296,7 @@ nombre minimal de ventes représentatives existe pour toute adresse.
 Le calcul conserve sa fourchette de prudence et reste soumis à
 validation explicite de l'utilisateur avant enregistrement.
 
-## Diagnostiquer les échecs d'estimation DVF (0.9.5)
+### Diagnostiquer les échecs d'estimation DVF (0.9.5)
 
 La version 0.9.4 pouvait afficher « moins de trois ventes locales »
 lorsqu'en réalité la recherche d'adresse avait échoué, que le service était
@@ -215,7 +328,7 @@ Aucune source externe ne reçoit le prix ou la date d'achat, ni la part
 détenue. Le résultat ne remplace jamais la valeur actuelle tant que
 l'utilisateur ne l'a pas explicitement appliqué et sauvegardé.
 
-## Quote-part de propriété immobilière (0.9.4)
+### Quote-part de propriété immobilière (0.9.4)
 
 Pour chaque bien immobilier, le champ **« Quote-part de propriété (%) »**
 permet d'indiquer de **0,01 % à 100 %** de détention, avec une précision
@@ -244,7 +357,7 @@ pour la lecture du patrimoine. En cas de changement de quote-part au fil
 du temps, Vigie ne modélise pas encore l'historique juridique de ces
 transferts : les anciennes valorisations restent celles du bien entier.
 
-## Réglages → Sécurité modifiables depuis Vigie (0.9.4)
+### Réglages → Sécurité modifiables depuis Vigie (0.9.4)
 
 L'onglet **Réglages → Sécurité** permet désormais à un **administrateur**
 de modifier directement, avec confirmation par son mot de passe actuel,
@@ -269,7 +382,7 @@ Vigie, un utilisateur non équipé doit l'activer dans **Mon compte**
 avant de retrouver l'accès à ses données. Le secret cryptographique
 de l'application n'est pas modifiable depuis Vigie.
 
-## Estimations immobilières avec peu de ventes DVF (0.9.4)
+### Estimations immobilières avec peu de ventes DVF (0.9.4)
 
 Si le moteur GeoRegistry renvoie une estimation incomplète, incohérente ou
 moins de trois comparables, Vigie utilise **une seconde méthode de calcul**
@@ -299,7 +412,7 @@ ne changent sans validation explicite de l'utilisateur.
 L'estimation reste indicative, particulièrement en zone rurale ou lorsque
 des biens très différents se trouvent à moins de 5 km.
 
-### Baguette magique et compte rendu dans les notes
+#### Baguette magique et compte rendu dans les notes
 
 Depuis Vigie **0.9.7**, un **seul clic** sur le bouton **« 🪄 Estimer »**,
 accolé à **Valeur actuelle du bien entier**, suffit : après une réponse
@@ -327,7 +440,7 @@ d'abord de libérer de l'espace. Une valeur saisie manuellement pendant
 l'appel réseau ne sera pas écrasée par la réponse tardive. Le prix d'achat,
 la date d'achat et la quote-part de propriété restent inchangés.
 
-## Biens immobiliers : achat et valeur actuelle (0.9.3)
+### Biens immobiliers : achat et valeur actuelle (0.9.3)
 
 Dans le formulaire **Avoirs → Immobilier**, Vigie distingue **Valeur d'achat** et
 **Date d'achat** (stables), de la **Valeur actuelle** (mise à jour et historisée).
@@ -358,7 +471,7 @@ l'historique des valeurs, et sont présents dans l'export JSON, la restauration
 et l'export CSV des avoirs. Les anciennes fiches immobilières restent
 consultables sans devoir renseigner immédiatement ces nouveaux champs.
 
-## Suivi des plus-values latentes (V1, version 0.9.9)
+### Suivi des plus-values latentes (V1, version 0.9.9)
 
 - L'immobilier conserve son coût d'acquisition et ses quote-parts, sans changement de modèle.
 - Pour les autres avoirs éligibles, la table `holding_acquisitions` enregistre facultativement le prix de revient total, la date d'acquisition et l'horodatage de modification.
@@ -366,7 +479,7 @@ consultables sans devoir renseigner immédiatement ces nouveaux champs.
 - Les anciens avoirs sans prix de revient restent sans plus-value calculée. Les mouvements, frais et impôts ne sont pas modélisés.
 - L'export JSON, l'import JSON et l'export CSV reprennent les nouvelles données.
 
-## Développement
+### Développement
 
 ```bash
 cd sources/vigie
@@ -380,7 +493,7 @@ Le workflow manuel **Vigie logos check** (`.github/workflows/vigie-logos-check.y
 
 Pour publier une nouvelle version : augmenter `version` dans `package.json`, `apps/vigie/config.json` (avec `tipi_version` + 1 et `updated_at`) et le tag de l'image dans `apps/vigie/docker-compose.yml`. Le workflow refuse un catalogue incohérent.
 
-## Pistes pour la suite
+### Pistes pour la suite
 
 - Objectifs de patrimoine (épargne de précaution, apport) avec progression.
 - Import CSV des valeurs depuis un tableur.
