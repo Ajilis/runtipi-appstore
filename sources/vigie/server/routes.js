@@ -13,6 +13,7 @@ import {
   LIQUIDITY, dashboard, history, holdingsView, loadState, holdingSnapshot, parseAmountToCents, isIsoDate, todayIso, addDays,
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
+import { formatCents } from './format.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
 import { TRANSPARENT_PNG, CUSTOM_KEY, sniffImage, imageSize } from './logos.js';
 import { LOAN_KINDS, amortization, loanSummary, loanValuations } from './loans.js';
@@ -71,7 +72,7 @@ function valuationDate(value) {
 
 function amount(value, label = 'Montant') {
   const cents = parseAmountToCents(value);
-  if (cents === null) fail(400, 'invalid_field', `${label} : nombre attendu, par exemple 12500 ou 12 500,50.`);
+  if (cents === null) fail(400, 'invalid_field', `${label} : nombre attendu, par exemple 12500 ou 12.500,50.`);
   return cents;
 }
 
@@ -95,6 +96,7 @@ function csvCell(v) {
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// Nombres des exports CSV : sans séparateur de milliers pour rester lisibles par un tableur.
 function frNumber(cents) {
   if (cents === null || cents === undefined) return '';
   return (cents / 100).toFixed(2).replace('.', ',');
@@ -928,7 +930,7 @@ export function registerRoutes(router, deps) {
     db.prepare('DELETE FROM loan_schedules WHERE holding_id = ?').run(id);
     return points.length;
   }
-  const scheduleText = (sc) => `${frNumber(sc.principal_cents)} à ${String(sc.annual_rate).replace('.', ',')} % sur ${sc.months} mois depuis le ${sc.start_date}${sc.kind === 'bullet' ? ', in fine' : ''}`;
+  const scheduleText = (sc) => `${formatCents(sc.principal_cents)} à ${String(sc.annual_rate).replace('.', ',')} % sur ${sc.months} mois depuis le ${sc.start_date}${sc.kind === 'bullet' ? ', in fine' : ''}`;
 
   const upsertValuation = db.prepare(`INSERT INTO valuations (holding_id, valued_at, amount_cents, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(holding_id, valued_at) DO UPDATE SET amount_cents = excluded.amount_cents, note = excluded.note, created_by = excluded.created_by, created_at = excluded.created_at`);
@@ -1036,7 +1038,7 @@ export function registerRoutes(router, deps) {
     const note = text(ctx.body.note || '', 'Note', { max: 120 });
     upsertValuation.run(id, date, cents, note, ctx.user.id, Date.now());
     db.prepare('UPDATE holdings SET updated_at = ? WHERE id = ?').run(Date.now(), id);
-    audit(ctx, 'valeur_enregistree', `${existing.name} : ${frNumber(cents)} ${existing.currency} au ${date}`);
+    audit(ctx, 'valeur_enregistree', `${existing.name} : ${formatCents(cents)} ${existing.currency} au ${date}`);
     return { ok: true };
   });
 
@@ -1045,7 +1047,7 @@ export function registerRoutes(router, deps) {
     const v = db.prepare('SELECT v.*, h.name, h.currency, h.account_user_id FROM valuations v JOIN holdings h ON h.id = v.holding_id WHERE v.id = ? AND h.account_user_id = ?').get(id,ctx.user.id);
     if (!v) fail(404, 'not_found', 'Valeur introuvable.');
     db.prepare('DELETE FROM valuations WHERE id = ?').run(id);
-    audit(ctx, 'valeur_supprimee', `${v.name} : ${frNumber(v.amount_cents)} ${v.currency} au ${v.valued_at}`);
+    audit(ctx, 'valeur_supprimee', `${v.name} : ${formatCents(v.amount_cents)} ${v.currency} au ${v.valued_at}`);
     return { ok: true };
   });
 

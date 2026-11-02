@@ -68,6 +68,7 @@ function fixture(notes = 'Jardin clos, portail électrique.', result = null, api
       return apiResponder ? apiResponder(method, uri, params) : estimate;
     },
     money: (centimes) => String(Math.round(centimes / 100)) + ' €',
+    num: (value) => String(value),
     centsInput: (centimes) => String(centimes / 100),
     mergeEstimationNote,
     Event: class { constructor(type) { this.type = type; } },

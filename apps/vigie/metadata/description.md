@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 19** · **Version de Vigie : 0.9.10** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 20** · **Version de Vigie : 0.9.11** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -28,6 +28,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Détail d'un avoir** : valeur actuelle, courbe, historique complet des valeurs avec écarts, et saisie d'une nouvelle valeur.
 - **Mise à jour rapide** : un seul écran pour actualiser tous les avoirs à une date, bouton « Inchangée », filtre « à actualiser » et estimation du nouveau patrimoine net avant d'enregistrer.
 - **Rappels** : un avoir dont la valeur date de plus de 45 jours (réglable) est signalé « à actualiser ».
+- **Montants au format 12.500,50 €** : un point sépare les milliers, une virgule les décimales, partout dans l'application, le journal et les notes d'estimation. À la saisie, « 12.500 », « 12 500 » et « 12500 » donnent le même montant ; « 12,5 » ou « 12.50 » restent des décimales. Les exports CSV gardent des nombres sans séparateur de milliers pour les tableurs.
 
 ### Tableau de bord
 
@@ -112,6 +113,12 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Nouveautés de la version 0.9.11 : point des milliers
+
+- Les montants s'affichent avec un **point comme séparateur de milliers** : 12.500,50 € au lieu de 12 500,50 €. Le changement vaut pour le tableau de bord, les avoirs, la mise à jour rapide, le tableau d'amortissement, les pourcentages, les taux de change, la taille des sauvegardes, le journal et les notes d'estimation immobilière.
+- À la saisie, **« 12.500 » vaut douze mille cinq cents** (et non 12,50 €). « 12.500,50 », « 12 500,50 » et « 12,500.50 » restent acceptés ; « 12,5 », « 12.5 » et « 0.500 » restent des décimales. Un montant affiché par Vigie, copié puis collé, est relu à l'identique, y compris un montant négatif.
+- Les **exports CSV** ne changent pas : nombres sans séparateur de milliers, virgule décimale, pour être lus tels quels par Excel ou LibreOffice.
 
 ### Nouveautés de la version 0.9.10 : pastilles lisibles, logo complet dans le détail
 

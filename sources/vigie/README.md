@@ -30,6 +30,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Détail d'un avoir** : valeur actuelle, courbe, historique complet des valeurs avec écarts, et saisie d'une nouvelle valeur.
 - **Mise à jour rapide** : un seul écran pour actualiser tous les avoirs à une date, bouton « Inchangée », filtre « à actualiser » et estimation du nouveau patrimoine net avant d'enregistrer.
 - **Rappels** : un avoir dont la valeur date de plus de 45 jours (réglable) est signalé « à actualiser ».
+- **Montants au format 12.500,50 €** : un point sépare les milliers, une virgule les décimales, partout dans l'application, le journal et les notes d'estimation. À la saisie, « 12.500 », « 12 500 » et « 12500 » donnent le même montant ; « 12,5 » ou « 12.50 » restent des décimales. Les exports CSV gardent des nombres sans séparateur de milliers pour les tableurs.
 
 ### Tableau de bord
 

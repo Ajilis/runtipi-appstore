@@ -56,7 +56,15 @@
   // ---------------------------------------------------------------------------------------------------------
   // Formats
   // ---------------------------------------------------------------------------------------------------------
+  // Conventions françaises (virgule décimale, symbole après le montant) avec un point comme séparateur
+  // de milliers : 12.500,50 €. Intl fournit les morceaux ; seul le séparateur de milliers est remplacé.
+  const dotted = (parts) => parts.map((p) => (p.type === 'group' ? '.' : p.value)).join('');
   const nfCache = new Map();
+  function num(v, { min = 0, max = 2 } = {}) {
+    const key = 'n' + min + ':' + max;
+    if (!nfCache.has(key)) nfCache.set(key, new Intl.NumberFormat('fr-FR', { minimumFractionDigits: min, maximumFractionDigits: max }));
+    return dotted(nfCache.get(key).formatToParts(Number(v))).replace('-', '−');
+  }
   function nf(cur, digits) {
     const key = cur + digits;
     if (!nfCache.has(key)) {
@@ -73,17 +81,22 @@
   function money(cents, cur = state.base, { digits = 0, sign = false } = {}) {
     if (cents === null || cents === undefined) return '—';
     if (state.discret) return `${MASK} ${symbol(cur)}`;
-    const s = nf(cur, digits).format(cents / 100);
+    const s = dotted(nf(cur, digits).formatToParts(cents / 100));
     return sign && cents > 0 ? '+' + s : s.replace('-', '−');
   }
   const exact = (cents, cur) => money(cents, cur, { digits: 2 });
   function compactMoney(cents, cur = state.base) {
     if (state.discret) return '•••';
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: cur, notation: 'compact', maximumFractionDigits: 1 }).format(cents / 100).replace('-', '−');
+    const key = 'c' + cur;
+    if (!nfCache.has(key)) {
+      try { nfCache.set(key, new Intl.NumberFormat('fr-FR', { style: 'currency', currency: cur, notation: 'compact', maximumFractionDigits: 1 })); }
+      catch { nfCache.set(key, new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 })); }
+    }
+    return dotted(nfCache.get(key).formatToParts(cents / 100)).replace('-', '−');
   }
   function pct(x, { digits = 1, sign = false } = {}) {
     if (x === null || x === undefined || !Number.isFinite(x)) return '—';
-    const s = new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(x);
+    const s = dotted(new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: digits, maximumFractionDigits: digits }).formatToParts(x));
     return (sign && x > 0 ? '+' : '') + s.replace('-', '−');
   }
   const asDate = (iso) => new Date(iso + 'T12:00:00');
@@ -109,11 +122,15 @@
   const LIQ_ICON = { immediate: 'drop', short: 'clock', locked: 'lock' };
   const ROLE_ICON = { admin: 'crown', editor: 'pencil', viewer: 'eye' };
 
-  // Montant saisi (12 500,50 ou 12,500.50) en centimes ; null si vide, NaN si illisible.
+  // Montant saisi en centimes ; null si vide, NaN si illisible. Même lecture que le serveur
+  // (normalizeAmountText) : « 12.500 » et « 12.500,50 » utilisent le point des milliers affiché par Vigie,
+  // « 12,5 », « 12.5 » et « 0.500 » sont des décimales, « 12,500.50 » est accepté.
   function parseCents(s) {
-    let t = String(s ?? '').replace(/[\s\u00a0\u202f€$£]/g, '');
+    let t = String(s ?? '').replace(/[\s\u00a0\u202f€$£]/g, '').replace(/^\u2212/, '-');
     if (!t) return null;
     if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+    else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    else if (/^-?[1-9]\d{0,2}(,\d{3}){2,}$/.test(t)) t = t.replace(/,/g, '');
     else t = t.replace(',', '.');
     return /^-?\d+(\.\d+)?$/.test(t) ? Math.round(Number(t) * 100) : NaN;
   }
@@ -816,7 +833,7 @@
 
     const heroParts = state.discret ? null : nf(d.base_currency, 0).formatToParts(d.totals.net / 100);
     const heroNumber = heroParts
-      ? html`${heroParts.filter((p) => p.type !== 'currency' && p.type !== 'literal').map((p) => (p.type === 'minusSign' ? '−' : p.value)).join('')}<span class="cur">${symbol(d.base_currency)}</span>`
+      ? html`${heroParts.filter((p) => p.type !== 'currency' && p.type !== 'literal').map((p) => (p.type === 'minusSign' ? '−' : p.type === 'group' ? '.' : p.value)).join('')}<span class="cur">${symbol(d.base_currency)}</span>`
       : html`${MASK}<span class="cur">${symbol(d.base_currency)}</span>`;
     const delta = (v, label) => {
       if (!v) return '';
@@ -921,7 +938,7 @@
     const gainRows = v.holdings.filter(h => !h.closed_at && h.latent_gain_cents !== null && h.latent_gain_cents !== undefined && h.latent_basis_cents > 0 && h.value_base !== null && (h.owned_cents !== 0 || h.currency === v.base_currency));
     const gainBase = gainRows.reduce((s,h) => s + Math.round(h.latent_gain_cents * (h.owned_cents === 0 ? 1 : h.value_base / h.owned_cents)), 0);
     const basisBase = gainRows.reduce((s,h) => s + Math.round(h.latent_basis_cents * (h.owned_cents === 0 ? 1 : h.value_base / h.owned_cents)), 0);
-    el.innerHTML = part(html`<div class="panel"><h2>Plus-values latentes</h2><p class="hero-value ${gainBase >= 0 ? 'pos' : 'neg'}">${money(gainBase, v.base_currency, { sign: true })}</p><p class="muted">${gainRows.length} avoir(s) · ${basisBase ? (gainBase / basisBase * 100).toLocaleString('fr-FR', {maximumFractionDigits:2})+' %' : '—'} · montant brut</p><p class="small muted">Hors fiscalité et mouvements. Les avoirs sans prix de revient ou taux de change sont exclus.</p></div><div class="toolbar">
+    el.innerHTML = part(html`<div class="panel"><h2>Plus-values latentes</h2><p class="hero-value ${gainBase >= 0 ? 'pos' : 'neg'}">${money(gainBase, v.base_currency, { sign: true })}</p><p class="muted">${gainRows.length} avoir(s) · ${basisBase ? num(gainBase / basisBase * 100)+' %' : '—'} · montant brut</p><p class="small muted">Hors fiscalité et mouvements. Les avoirs sans prix de revient ou taux de change sont exclus.</p></div><div class="toolbar">
         <input class="input" type="search" id="holding-search" placeholder="Rechercher un avoir, un établissement…" value="${state.filter}" aria-label="Rechercher">
         <label class="check" id="closed-toggle"><input type="checkbox" id="show-closed" ${state.showClosed ? 'checked' : ''}><span>Afficher les avoirs clôturés (<span id="closed-count"></span>)</span></label>
       </div><div class="stack" id="holdings-list"></div>`);
@@ -940,7 +957,7 @@
       <section class="section"><div class="section-head">${h2i('mail', 'Demandes reçues')}</div>
         ${inbox.invitations.length ? inbox.invitations.map((p) => html`<div class="panel form" style="margin-bottom:12px">
           <h3>${p.property_name}</h3>
-          <p>${p.sender_name || 'Un administrateur'} vous propose <b>${(p.ownership_bp / 100).toLocaleString('fr-FR')} %</b> de ce bien immobilier. Après acceptation, votre quote-part apparaîtra dans vos avoirs Vigie.</p>
+          <p>${p.sender_name || 'Un administrateur'} vous propose <b>${num(p.ownership_bp / 100)} %</b> de ce bien immobilier. Après acceptation, votre quote-part apparaîtra dans vos avoirs Vigie.</p>
           <p class="small muted">Valable jusqu'au ${dateTime(p.expires_at)}. Aucune quote-part n'est ajoutée avant votre approbation.</p>
           <div class="form-actions" style="justify-content:flex-start">
             <button class="btn primary" data-action="share-decision" data-id="${p.id}" data-decision="accept">${icon('check')}Accepter</button>
@@ -949,7 +966,7 @@
       </section>
       <section class="section"><div class="section-head">${h2i('users', 'Quote-parts approuvées')}</div>
         ${inbox.accepted.length ? inbox.accepted.map((p) => html`<div class="panel">
-          <b>${p.property_name} — ${(p.ownership_bp / 100).toLocaleString('fr-FR')} %</b>
+          <b>${p.property_name} — ${num(p.ownership_bp / 100)} %</b>
           <p class="small muted">Cette quote-part figure dans votre compte Vigie avec sa propre valeur patrimoniale. La source reste la fiche et l’estimation du propriétaire initial.</p>
           <div class="form-actions" style="justify-content:flex-start">
             <button class="btn" data-action="open-holding" data-id="${p.holding_id}">${icon('house')}Consulter le bien</button>
@@ -965,7 +982,7 @@
       api('GET', '/api/property-shares/recipients'),
       api('GET', `/api/holdings/${holdingId}/shares`),
     ]);
-    const percent = (x) => (x / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+    const percent = (x) => num(x / 100);
     const dialog = openDialog(html`<div class="dialog-body form">
       ${dialogHead('Partager le bien immobilier', 'Le bien apparaîtra dans les avoirs du compte destinataire après son accord, sans lui ouvrir l’accès à vos autres biens.')}
       <p class="muted">Quote-part initiale : <b>${percent(data.ownership_bp)} %</b> · Déjà acceptée : <b>${percent(data.accepted_bp)} %</b> · Complément disponible : <b>${percent(data.available_bp)} %</b>.</p>
@@ -1078,7 +1095,7 @@
       <section class="section real-estate-fields" data-real-estate hidden>
         ${h3i('house', 'Informations immobilières')}
         <div class="grid-2">
-          <label class="field"><span>Valeur d'achat du bien entier</span><input class="input amount" name="purchase_amount" inputmode="decimal" placeholder="Ex. 220 000" autocomplete="off" value="${property ? centsInput(property.purchase_cents) : ''}"></label>
+          <label class="field"><span>Valeur d'achat du bien entier</span><input class="input amount" name="purchase_amount" inputmode="decimal" placeholder="Ex. 220.000" autocomplete="off" value="${property ? centsInput(property.purchase_cents) : ''}"></label>
           <label class="field"><span>Date d'achat</span><input class="input" name="purchased_at" type="date" max="${todayIso()}" value="${property?.purchased_at || ''}"></label>
         </div>
         <div class="grid-2">
@@ -1165,9 +1182,9 @@
         }
         const sampleText = result.comparables + ' ventes comparables, fiabilité ' + (result.confidence === 'high' ? 'élevée' : result.confidence === 'medium' ? 'moyenne' : 'faible');
         const methodText = result.method === 'dvf_local_price_m2'
-          ? 'Prix médian local : ' + Number(result.price_per_m2).toLocaleString('fr-FR') + ' €/m² × ' + Number(form.surface_m2.value).toLocaleString('fr-FR') + ' m² ; les autres maisons peuvent être de taille différente.'
+          ? 'Prix médian local : ' + num(result.price_per_m2) + ' €/m² × ' + num(form.surface_m2.value) + ' m² ; les autres maisons peuvent être de taille différente.'
           : result.method === 'dvf_median_nearby'
-            ? 'Médiane des ventes DVF de surface comparable (rayon de ' + (result.radius_m / 1000).toLocaleString('fr-FR') + ' km).'
+            ? 'Médiane des ventes DVF de surface comparable (rayon de ' + num(result.radius_m / 1000) + ' km).'
             : 'Estimation par le moteur GeoRegistry sur ventes DVF.';
         const summary = 'Estimation du bien entier ' + money(result.estimate_cents, 'EUR') + ' (' + money(result.low_cents, 'EUR') + ' à ' + money(result.high_cents, 'EUR') + '). ' + sampleText + '. ' + methodText;
 
@@ -1408,7 +1425,7 @@
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${property ? 'Valeur de votre quote-part sur votre compte Vigie' : ''}${property ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
       ${property ? html`<div class="panel"><dl class="kv">
-        <dt>Votre quote-part</dt><dd>${(h.total_ownership_bp / 100).toLocaleString('fr-FR')} %</dd>
+        <dt>Votre quote-part</dt><dd>${num(h.total_ownership_bp / 100)} %</dd>
         <dt>Origine du bien</dt><dd>${h.shared_with_me ? 'Bien reçu par partage approuvé' : 'Bien enregistré sur votre compte'}</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
         <dt>Prix d'achat de votre part</dt><dd>${money(Math.round(property.purchase_cents * h.total_ownership_bp / 10000), h.currency, { digits: 2 })}</dd>
@@ -1473,7 +1490,7 @@
     const cur = h.currency;
     const done = Math.round((sc.repaid_cents / sc.principal_cents) * 100);
     const next = sc.rows.find((r) => r.n === sc.paid_count + 1);
-    const plain = (cents) => (state.discret ? MASK : (cents / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    const plain = (cents) => (state.discret ? MASK : num(cents / 100, { min: 2, max: 2 }));
     const shortDate = (iso) => asDate(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
     return html`<section class="panel loan" aria-label="Échéancier">
       <div class="loan-head">${h3i('calendar', 'Échéancier automatique')}<span class="tag brand">${LOAN_KIND[sc.kind]}</span></div>
@@ -1542,7 +1559,7 @@
             </div>`;
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             return html`<div class="quick" data-row data-line data-stale="${stale}" data-id="${h.id}">
-              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}${h.property && h.property.ownership_bp < 10000 ? ' · Quote-part ' + (h.property.ownership_bp / 100).toLocaleString('fr-FR') + ' % (saisir valeur du bien entier)' : ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
+              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}${h.property && h.property.ownership_bp < 10000 ? ' · Quote-part ' + num(h.property.ownership_bp / 100) + ' % (saisir valeur du bien entier)' : ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : 'aucune valeur'}</span></div>
               <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}${h.property ? ' (valeur du bien entier)' : ''}" placeholder="${h.currency}">
               <button class="btn small keep" type="button" data-action="keep-value" data-id="${h.id}" ${h.value_cents === null ? 'disabled' : ''} title="Reprendre la dernière valeur à la date choisie">${icon('equal')}Inchangée</button>
@@ -1613,13 +1630,13 @@
     const targetSum = categories.filter((c) => c.kind === 'asset').reduce((s, c) => s + (c.target_pct || 0), 0);
     const table = (kind, title) => {
       const list = categories.filter((c) => c.kind === kind);
-      return html`<section class="section"><div class="section-head">${h2i(kind === 'asset' ? 'stack' : 'debt', title)}${kind === 'asset' && targetSum > 0 ? html`<p>Total des cibles : <b class="${Math.abs(targetSum - 100) > 0.05 ? 'neg' : ''}">${targetSum.toLocaleString('fr-FR')} %</b>${Math.abs(targetSum - 100) > 0.05 ? ', idéalement 100 %' : ''}</p>` : ''}</div>
+      return html`<section class="section"><div class="section-head">${h2i(kind === 'asset' ? 'stack' : 'debt', title)}${kind === 'asset' && targetSum > 0 ? html`<p>Total des cibles : <b class="${Math.abs(targetSum - 100) > 0.05 ? 'neg' : ''}">${num(targetSum)} %</b>${Math.abs(targetSum - 100) > 0.05 ? ', idéalement 100 %' : ''}</p>` : ''}</div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Catégorie</th><th>Liquidité par défaut</th>${kind === 'asset' ? html`<th class="num">Part actuelle</th><th class="num">Cible</th>` : ''}<th class="num">Montant</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
         ${list.length ? list.map((c, i) => {
           const t = totals.get(c.id) || {};
           return html`<tr><td><div class="cell-lead">${catPict(c)}<div><b style="font-weight:500">${c.name}</b><br><span class="small muted">${c.description || ''}${c.holding_count ? ` (${c.holding_count} avoir${c.holding_count > 1 ? 's' : ''})` : ''}</span></div></div></td>
             <td>${il(LIQ_ICON[c.default_liquidity], LIQ_SHORT[c.default_liquidity])}</td>
-            ${kind === 'asset' ? html`<td class="num">${pct(t.pct || 0)}</td><td class="num">${c.target_pct !== null ? il('target', `${c.target_pct.toLocaleString('fr-FR')} %`) : '—'}</td>` : ''}
+            ${kind === 'asset' ? html`<td class="num">${pct(t.pct || 0)}</td><td class="num">${c.target_pct !== null ? il('target', `${num(c.target_pct)} %`) : '—'}</td>` : ''}
             <td class="num">${money(t.value || 0)}</td>
             ${canEdit() ? html`<td class="num nowrap">
               <button class="btn icon ghost small" data-action="move-category" data-id="${c.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Monter ${c.name}">${icon('chevUp')}</button>
@@ -1727,7 +1744,7 @@
       <section class="section" data-settings-group="devises"><div class="section-head">${h2i('exchange', 'Taux de change')}<p>1 unité de la devise vaut x ${s.base_currency}</p></div>
         ${s.missing_rates.length ? html`<div class="notice">${icon('alert')}<div>Taux manquant pour ${s.missing_rates.join(', ')}.</div></div>` : ''}
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Devise</th><th class="num">Taux</th><th>Source</th><th>Mis à jour</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
-          ${s.rates.length ? s.rates.map((r) => html`<tr><td>${r.currency}</td><td class="num">1 ${r.currency} = ${r.rate.toLocaleString('fr-FR', { maximumFractionDigits: 6 })} ${s.base_currency}</td><td>${r.source}</td><td>${dateTime(r.updated_at)}</td>
+          ${s.rates.length ? s.rates.map((r) => html`<tr><td>${r.currency}</td><td class="num">1 ${r.currency} = ${num(r.rate, { max: 6 })} ${s.base_currency}</td><td>${r.source}</td><td>${dateTime(r.updated_at)}</td>
             ${canEdit() ? html`<td class="num"><button class="btn icon ghost small" data-action="delete-rate" data-cur="${r.currency}" aria-label="Supprimer le taux ${r.currency}">${icon('trash')}</button></td>` : ''}</tr>`)
             : html`<tr><td colspan="5" class="muted">Aucun taux : seuls les avoirs en ${s.base_currency} sont comptés.</td></tr>`}
         </tbody></table></div>
@@ -1753,7 +1770,7 @@
 
       <section class="section" data-settings-group="donnees"><div class="section-head">${h2i('database', 'Sauvegardes de la base')}<p>${backups.keep_days ? `Automatique chaque jour vers ${backups.hour} h, conservée ${backups.keep_days} jours` : 'Sauvegarde automatique désactivée'}</p></div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Fichier</th><th>Date</th><th class="num">Taille</th><th><span class="sr-only">Télécharger</span></th></tr></thead><tbody>
-        ${backups.backups.length ? backups.backups.slice(0, 15).map((b) => html`<tr><td>${b.name}</td><td>${dateTime(b.created_at)}</td><td class="num">${(b.size / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko</td>
+        ${backups.backups.length ? backups.backups.slice(0, 15).map((b) => html`<tr><td>${b.name}</td><td>${dateTime(b.created_at)}</td><td class="num">${num(b.size / 1024, { max: 0 })} Ko</td>
           <td class="num"><a class="btn icon ghost small" href="/api/admin/backups/${encodeURIComponent(b.name)}" download aria-label="Télécharger ${b.name}">${icon('download')}</a></td></tr>`)
           : html`<tr><td colspan="4" class="muted">Aucune sauvegarde pour l'instant.</td></tr>`}
         </tbody></table></div>

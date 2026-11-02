@@ -37,23 +37,34 @@ export function daysBetween(a, b) {
   return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
 }
 
-// Accepte 1234.5, "1234,50", "1 234,50 €", "-12" ; renvoie des centimes entiers ou null.
+// Texte d'un montant sans espaces ni symbole → nombre au format JavaScript ("12500.5"), ou null.
+// Le point est le séparateur de milliers affiché par Vigie : « 12.500 » vaut douze mille cinq cents,
+// « 1.234.567 » un million… ; « 12,5 », « 12.5 » et « 0.500 » restent des décimales.
+// Avec virgule et point, le dernier des deux est le séparateur décimal (12.500,50 ou 12,500.50).
+export function normalizeAmountText(s) {
+  if (s.includes(',') && s.includes('.')) {
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(s)) {
+    s = s.replace(/\./g, '');
+  } else if (/^-?[1-9]\d{0,2}(,\d{3}){2,}$/.test(s)) {
+    s = s.replace(/,/g, '');
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+  return /^-?\d+(\.\d+)?$/.test(s) ? s : null;
+}
+
+// Accepte 1234.5, "1234,50", "1 234,50 €", "12.500,50", "12.500", "-12" ; renvoie des centimes entiers ou null.
 export function parseAmountToCents(value) {
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || Math.abs(value) >= 1e13) return null;
     return Math.round(value * 100);
   }
   if (typeof value !== 'string') return null;
-  let s = value.replace(/[\s  €$£]/g, '').replace(/[A-Za-z]/g, '');
+  let s = value.replace(/[\s  €$£]/g, '').replace(/[A-Za-z]/g, '').replace(/^\u2212/, '-');
   if (!s) return null;
-  if (s.includes(',') && s.includes('.')) {
-    // Le dernier séparateur est le séparateur décimal.
-    if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
-    else s = s.replace(/,/g, '');
-  } else if (s.includes(',')) {
-    s = s.replace(',', '.');
-  }
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
+  s = normalizeAmountText(s);
+  if (s === null) return null;
   const n = Number(s);
   if (!Number.isFinite(n) || Math.abs(n) >= 1e13) return null;
   return Math.round(n * 100);

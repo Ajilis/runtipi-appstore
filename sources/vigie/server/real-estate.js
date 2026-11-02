@@ -1,6 +1,7 @@
 // Estimation indicative de la valeur actuelle d'un bien immobilier.
 // Les montants de l'achat et les avoirs ne sont jamais transmis au fournisseur.
 // Une estimation est une proposition : l'utilisateur décide de l'enregistrer.
+import { formatNumber } from './format.js';
 export const REAL_ESTATE_TYPES = ['maison', 'appartement'];
 export const REAL_ESTATE_CONDITIONS = ['a_renover', 'travaux', 'correct', 'bon', 'renove', 'neuf'];
 
@@ -43,8 +44,8 @@ export const ESTIMATION_NOTE_START = '[Estimation Vigie]';
 export const ESTIMATION_NOTE_END = '[/Estimation Vigie]';
 
 export function buildEstimateNote(result, params) {
-  const euro = (cents) => Math.round(cents / 100).toLocaleString('fr-FR') + ' €';
-  const n = (value) => Number(value).toLocaleString('fr-FR');
+  const euro = (cents) => formatNumber(Math.round(cents / 100), { max: 0 }) + ' €';
+  const n = (value) => formatNumber(value);
   const method = result.method;
   const type = params.type_local === 1 ? 'maisons' : 'appartements';
   const confidence = { high: 'élevée', medium: 'moyenne', low: 'faible' }[result.confidence] || 'non précisée';
@@ -284,7 +285,7 @@ export class RealEstateEstimator {
         rejectedPrice ? rejectedPrice + ' prix/m², surface ou distance invalide(s)' : null,
         rejectedDuplicates ? rejectedDuplicates + ' doublon(s) de mutation' : null,
       ].filter(Boolean);
-      diagnostics.push((radius / 1000).toLocaleString('fr-FR') + ' km : ' +
+      diagnostics.push(formatNumber(radius / 1000) + ' km : ' +
         geoCount + ' ligne(s) retournée(s), ' + typedSales +
         ' du bon type, ' + sales.length + ' vente(s) exploitable(s)' +
         (exclusions.length ? ' ; rejets : ' + exclusions.join(', ') : '') + '.');
