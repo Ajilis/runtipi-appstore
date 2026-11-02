@@ -280,6 +280,9 @@ test('partage : plus de menu dédié, état affiché sur les avoirs, demandes en
   assert.match(ui,/data-action="share-decision"/);
   assert.match(ui,/share-request-form/);
   assert.match(ui,/name="holding_pct"/);
+  assert.match(ui,/\$\{shareHeadline\(sharing\)\}/,'état du partage en tête du détail de l’avoir');
+  assert.match(ui,/En attente de validation par/);
+  assert.match(ui,/Partage refusé par/);
 });
 
 test('comptes Vigie indépendants : patrimoines et exports séparés, contrôle des URL et de la mise à jour rapide', async () => {

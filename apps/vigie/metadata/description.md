@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 23** · **Version de Vigie : 1.0.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 24** · **Version de Vigie : 1.0.1** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -114,6 +114,10 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.0.1 : état du partage en tête du détail d'un avoir
+
+- Le détail d'un avoir affiche, juste sous sa valeur, l'état de son partage, sans avoir à faire défiler : **Partagé avec… (part) · approuvé le…**, **En attente de validation par… · proposé le…**, **Partage refusé par… le…** ou demande expirée ; chez le destinataire, **Partagé par… · votre part · approuvé le…**. Un clic mène à la section Partage.
 
 ### Version 1.0.0 : première version stable
 

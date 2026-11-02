@@ -687,3 +687,8 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
   .share-request .share-actions { width: 100%; padding-left: 30px; }
 }
 .field .static-value { margin: 0; padding: 9px 0; font-weight: 500; }
+/* État du partage en tête du détail d'un avoir (1.0.1). */
+.share-headline { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.share-headline .tag { white-space: normal; font-size: 0.8125rem; padding: 3px 10px; line-height: 1.35; border-radius: 12px; }
+.share-headline:hover .tag { filter: brightness(0.97); }
+.share-headline:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 999px; }

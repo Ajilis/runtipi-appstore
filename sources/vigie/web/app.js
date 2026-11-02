@@ -990,6 +990,24 @@
     return html`<span class="tag">${icon('close')}Partage terminé le ${msDay(x.revoked_at)}</span>`;
   }
 
+  // État du partage en tête du détail d'un avoir, visible sans faire défiler ; un clic mène à la section Partage.
+  function shareHeadline(sharing) {
+    if (!sharing) return '';
+    const tags = [];
+    if (sharing.role === 'recipient') {
+      const s = sharing.share;
+      tags.push(html`<span class="tag share ok">${icon('users')}Partagé par ${sharing.owner_name || 'un autre compte'} · votre part ${pctBp(s.ownership_bp)} · approuvé le ${msDay(s.accepted_at)}</span>`);
+    } else {
+      for (const x of sharing.shares.filter(activeShare)) tags.push(x.status === 'accepted'
+        ? html`<span class="tag share ok">${icon('users')}Partagé avec ${x.recipient_name} (${pctBp(x.ownership_bp)}) · approuvé le ${msDay(x.accepted_at)}</span>`
+        : html`<span class="tag share wait">${icon('clock')}En attente de validation par ${x.recipient_name} (${pctBp(x.ownership_bp)}) · proposé le ${msDay(x.created_at)}</span>`);
+      const last = sharing.shares[0];
+      if (!tags.length && last && last.status === 'declined') tags.push(html`<span class="tag share bad">${icon('close')}Partage refusé par ${last.recipient_name} le ${msDay(last.declined_at)}</span>`);
+      if (!tags.length && last && last.status === 'expired') tags.push(html`<span class="tag">${icon('clock')}Demande à ${last.recipient_name} expirée sans réponse le ${msDay(last.expires_at)}</span>`);
+    }
+    return tags.length ? html`<button type="button" class="share-headline" data-action="goto-share" aria-label="Voir le détail du partage">${tags}</button>` : '';
+  }
+
   // « Partagé » : oui seulement après l'accord du destinataire ; une demande en attente est dite comme telle.
   function sharedText(active) {
     const names = (list) => list.map((x) => x.recipient_name).join(', ');
@@ -1003,7 +1021,7 @@
   function sharePanel(h, sharing, mayEdit) {
     if (sharing && sharing.role === 'recipient') {
       const s = sharing.share;
-      return html`<section class="section share-panel">${h3i('users', 'Partage')}<div class="panel">
+      return html`<section class="section share-panel" id="share-section">${h3i('users', 'Partage')}<div class="panel">
         <dl class="kv">
           <dt>Partagé</dt><dd>Oui, par ${sharing.owner_name || s.sender_name || 'un autre compte'}</dd>
           <dt>Votre quote-part</dt><dd>${pctBp(s.ownership_bp)}</dd>
@@ -1028,7 +1046,7 @@
         <span class="state">${shareState(x)}</span></div>
       ${mayEdit && activeShare(x) ? html`<button class="btn small ghost" type="button" data-action="share-revoke" data-id="${x.id}" data-holding="${h.id}" data-role="owner" data-status="${x.status}" data-name="${x.recipient_name}">${icon('close')}${x.status === 'pending' ? 'Annuler' : 'Retirer'}</button>` : ''}
     </li>`;
-    return html`<section class="section share-panel">${h3i('users', 'Partage')}<div class="panel">
+    return html`<section class="section share-panel" id="share-section">${h3i('users', 'Partage')}<div class="panel">
       <dl class="kv">
         <dt>Partagé</dt><dd>${sharedText(active)}</dd>
         ${h.total_ownership_bp < 10000 || shares.length ? html`<dt>Votre quote-part</dt><dd>${pctBp(h.total_ownership_bp)}</dd>` : ''}
@@ -1523,7 +1541,8 @@
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
-        <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p></div>
+        <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p>
+        ${shareHeadline(sharing)}</div>
       ${property ? html`<div class="panel"><dl class="kv">
         <dt>Votre quote-part</dt><dd>${num(h.total_ownership_bp / 100)} %</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
@@ -2602,6 +2621,7 @@
     breakdown: (b) => { state.breakdown = b.dataset.key; store.set('breakdown', state.breakdown); render(); },
     logout: async () => { try { await api('POST', '/api/auth/logout'); } catch { /* déjà déconnecté */ } state.user = null; state.logoVersions = null; location.hash = '#/'; showLogin('Vous êtes déconnecté.'); },
     'share-holding': (b) => shareHoldingForm(Number(b.dataset.id)).catch(fail),
+    'goto-share': () => { const sec = $('dialog[open] #share-section'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     'share-decision': async (b) => withBusy(b, async () => {
       try {
         const r = await api('POST', `/api/shares/${b.dataset.id}/decision`, { decision: b.dataset.decision });
