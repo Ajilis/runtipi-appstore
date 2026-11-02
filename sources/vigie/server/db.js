@@ -326,6 +326,28 @@ export const MIGRATIONS = [
   CREATE UNIQUE INDEX idx_holding_shares_active ON holding_shares(holding_id, recipient_id)
     WHERE declined_at IS NULL AND revoked_at IS NULL;
   `,
+  // 0.11.0 : chaque compte a ses propres catégories, donc ses propres allocations cibles. Les catégories existantes
+  // restent au premier administrateur ; chaque autre compte en reçoit une copie (identifiants déterministes)
+  // et ses avoirs sont rangés dans sa copie.
+  `
+  ALTER TABLE categories ADD COLUMN account_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+  CREATE TEMP TABLE mig_owner AS SELECT COALESCE(
+    (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1), (SELECT id FROM users ORDER BY id LIMIT 1)) AS id;
+  UPDATE categories SET account_user_id = (SELECT id FROM mig_owner);
+  CREATE TEMP TABLE mig_users AS SELECT id AS user_id, ROW_NUMBER() OVER (ORDER BY id) AS rk
+    FROM users WHERE id <> (SELECT id FROM mig_owner);
+  CREATE TEMP TABLE mig_max AS SELECT COALESCE(MAX(id), 0) AS m FROM categories;
+  INSERT INTO categories (id, name, kind, description, default_liquidity, target_pct, icon, sort_order, created_at, account_user_id)
+    SELECT c.id + mm.m * mu.rk, c.name, c.kind, c.description, c.default_liquidity, c.target_pct, c.icon, c.sort_order, c.created_at, mu.user_id
+    FROM categories c CROSS JOIN mig_users mu CROSS JOIN mig_max mm
+    WHERE c.account_user_id = (SELECT id FROM mig_owner);
+  UPDATE holdings SET category_id = category_id + (SELECT m FROM mig_max) * (SELECT rk FROM mig_users WHERE user_id = holdings.account_user_id)
+    WHERE account_user_id IN (SELECT user_id FROM mig_users);
+  DROP TABLE mig_owner;
+  DROP TABLE mig_users;
+  DROP TABLE mig_max;
+  CREATE INDEX idx_categories_account ON categories(account_user_id);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).
@@ -390,8 +412,9 @@ export const DEFAULT_CATEGORIES = [
   { name: 'Autres crédits', kind: 'liability', default_liquidity: 'locked', description: 'Prêts personnels, auto, travaux', icon: 'loanDoc' },
 ];
 
-export function seedCategories(db) {
+// Catégories par défaut d'un compte (chaque compte a les siennes depuis 0.11.0).
+export function seedCategories(db, userId) {
   const now = Date.now();
-  const insert = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  DEFAULT_CATEGORIES.forEach((c, i) => insert.run(c.name, c.kind, c.description, c.default_liquidity, c.icon, (i + 1) * 10, now));
+  const insert = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, icon, sort_order, created_at, account_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  DEFAULT_CATEGORIES.forEach((c, i) => insert.run(c.name, c.kind, c.description, c.default_liquidity, c.icon, (i + 1) * 10, now, userId));
 }

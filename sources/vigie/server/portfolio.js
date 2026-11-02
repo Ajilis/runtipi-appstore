@@ -93,16 +93,39 @@ export function mergeSchedule(list, schedule, today) {
   return [...list.filter((v) => v.valued_at < schedule.start_date), ...loanValuations(schedule, today)];
 }
 
+// Délai de rappel propre au compte (0.11.0), à défaut le réglage général.
+export function staleDaysFor(db, userId = null) {
+  const own = userId === null ? null : getSetting(db, 'stale_days:' + userId, null);
+  return Number(own ?? getSetting(db, 'stale_days', '45'));
+}
+
 export function loadState(db, today = todayIso(), userId = null) {
-  const categories = db.prepare('SELECT * FROM categories ORDER BY sort_order, id').all();
+  // Chaque compte a ses propres catégories (et ses allocations cibles).
+  const categories = userId === null
+    ? db.prepare('SELECT * FROM categories ORDER BY sort_order, id').all()
+    : db.prepare('SELECT * FROM categories WHERE account_user_id = ? ORDER BY sort_order, id').all(userId);
   // Chaque compte ne voit que ses avoirs et les parts d'avoirs d'autrui qu'il a explicitement acceptées.
-  const holdings = userId === null
+  let holdings = userId === null
     ? db.prepare('SELECT * FROM holdings ORDER BY sort_order, id').all()
     : db.prepare(`SELECT h.* FROM holdings h WHERE h.account_user_id = ?
         OR EXISTS (SELECT 1 FROM holding_shares s WHERE s.holding_id = h.id
           AND s.recipient_id = ? AND s.accepted_at IS NOT NULL
           AND s.revoked_at IS NULL AND s.declined_at IS NULL)
         ORDER BY h.sort_order,h.id`).all(userId,userId);
+  // Un avoir reçu en partage est rangé dans la catégorie du destinataire de même nom et de même type ;
+  // à défaut, la catégorie du titulaire est montrée telle quelle (lecture seule).
+  if (userId !== null) {
+    const own = new Set(categories.map((c) => c.id));
+    const byName = new Map(categories.map((c) => [c.kind + ':' + c.name.trim().toLowerCase(), c.id]));
+    holdings = holdings.map((h) => {
+      if (own.has(h.category_id)) return h;
+      const theirs = db.prepare('SELECT * FROM categories WHERE id = ?').get(h.category_id);
+      const mine = theirs && byName.get(theirs.kind + ':' + theirs.name.trim().toLowerCase());
+      if (mine) return { ...h, category_id: mine };
+      if (theirs && !own.has(theirs.id)) { categories.push({ ...theirs, shared_only: true }); own.add(theirs.id); }
+      return h;
+    });
+  }
   const visibleIds = new Set(holdings.map((h) => h.id));
   const valuations = db.prepare('SELECT id, holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at')
     .all().filter((v) => visibleIds.has(v.holding_id));
@@ -201,7 +224,7 @@ function groupSum(items) {
 export function dashboard(db, options = {}) {
   const today = options.today || todayIso();
   const state = loadState(db, today, options.userId ?? null);
-  const staleDays = Number(getSetting(db, 'stale_days', '45'));
+  const staleDays = staleDaysFor(db, options.userId ?? null);
   let assets = 0, liabilities = 0;
   const liquidity = { immediate: 0, short: 0, locked: 0 };
   const catTotals = new Map(state.categories.map((c) => [c.id, { value: 0, count: 0 }]));
@@ -324,7 +347,7 @@ export function sharingByHolding(db, state) {
 export function holdingsView(db, userId = null) {
   const today = todayIso();
   const state = loadState(db, today, userId);
-  const staleDays = Number(getSetting(db, 'stale_days', '45'));
+  const staleDays = staleDaysFor(db, userId);
   const properties = state.properties;
   const sharing = sharingByHolding(db, state);
   return {
@@ -339,7 +362,7 @@ export function holdingsView(db, userId = null) {
       return {
         ...h,
         value_cents: snap.cents, // valeur du bien entier, inchangée pour la saisie et l'historique
-        owned_cents: snap.owned, // part totale détenue par le foyer sur le serveur
+        owned_cents: snap.owned, // part détenue par ce compte
         owner_owned_cents: snap.owner_owned_cents,
         total_ownership_bp: snap.ownership_bp,
         shared_with_me: snap.shared_with_me,

@@ -686,3 +686,4 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
   .share-request { flex-wrap: wrap; }
   .share-request .share-actions { width: 100%; padding-left: 30px; }
 }
+.field .static-value { margin: 0; padding: 9px 0; font-weight: 500; }

@@ -297,7 +297,7 @@ test('API : images déposées par l\'administrateur, prioritaires sur le logo r�
   assert.equal(r.status, 200);
   assert.ok(Buffer.compare((await viewer.get('/api/institutions/logo/boursobank')).data, custom) !== 0, 'retour au logo récupéré');
   assert.equal((await admin.del('/api/admin/logos/boursobank')).status, 404);
-  r = await admin.post('/api/admin/import', exp);
+  r = await admin.post('/api/import', exp);
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.ok(Buffer.compare((await viewer.get('/api/institutions/logo/boursobank')).data, custom) === 0, 'image restaurée par l\'import');
   const audit = (await admin.get('/api/audit')).data.entries.map((e) => e.action);

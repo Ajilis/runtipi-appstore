@@ -118,7 +118,8 @@
   }
   const LIQ = { immediate: 'Disponible', short: 'Sous quelques semaines', locked: 'Bloqué ou illiquide' };
   const LIQ_SHORT = { immediate: 'Disponible', short: 'Court terme', locked: 'Bloqué' };
-  const ROLE = { admin: 'Administrateur', editor: 'Éditeur', viewer: 'Lecture seule' };
+  // Chaque compte a son propre patrimoine : le rôle dit ce que la personne peut en faire (0.11.0).
+  const ROLE = { admin: 'Administrateur', editor: 'Utilisateur', viewer: 'Lecture seule' };
   const LIQ_ICON = { immediate: 'drop', short: 'clock', locked: 'lock' };
   const ROLE_ICON = { admin: 'crown', editor: 'pencil', viewer: 'eye' };
 
@@ -238,7 +239,11 @@
   const nameFields = (u = {}, autofocus = false) => html`<div class="grid-2">
     <label class="field"><span>Prénom</span><input class="input" name="first_name" autocomplete="given-name" required maxlength="60" value="${u.first_name || ''}" ${autofocus ? raw('autofocus') : ''}></label>
     <label class="field"><span>Nom</span><input class="input" name="last_name" autocomplete="family-name" required maxlength="60" value="${u.last_name || ''}"></label></div>`;
-  const ROLE_HINT = { admin: 'Tout, y compris les comptes, les sauvegardes et la restauration', editor: 'Avoirs, valeurs, catégories et taux de change', viewer: 'Consultation et export, sans modification' };
+  const ROLE_HINT = {
+    admin: 'Gère son propre patrimoine, plus les comptes, les e-mails, la sécurité, les taux de change saisis à la main, les sauvegardes et les logos',
+    editor: 'Gère son propre patrimoine : avoirs, valeurs, catégories et allocation cible, titulaires, partages, export et restauration',
+    viewer: 'Ne crée rien : consulte les avoirs que d’autres comptes lui partagent, après son accord',
+  };
 
   // ---------------------------------------------------------------------------------------------------------
   // Icônes (traits, 24 × 24)
@@ -828,7 +833,7 @@
         <p class="hero-label">Patrimoine net</p><p class="hero-value">${money(0)}</p>
         <div class="empty" style="justify-items:start;text-align:left;padding:8px 0 18px">${pict('stack', 'lg')}<h2>Commencez par vos comptes et vos biens</h2>
         <p>Ajoutez chaque avoir avec sa valeur du jour : comptes, livrets, assurance-vie, bourse, immobilier, crédits. Vigie conserve chaque mise à jour pour tracer l'évolution de votre patrimoine.</p>
-        ${canEdit() ? html`<button class="btn primary" data-action="new-holding">${icon('plus')}Ajouter un avoir</button>` : html`<p>Un éditeur ou un administrateur doit d'abord saisir les avoirs.</p>`}</div></section>`);
+        ${canEdit() ? html`<button class="btn primary" data-action="new-holding">${icon('plus')}Ajouter un avoir</button>` : html`<p>Votre compte est en lecture seule : vous verrez ici les avoirs que d'autres comptes partagent avec vous, après votre accord.</p>`}</div></section>`);
       return;
     }
 
@@ -1122,7 +1127,7 @@
   async function holdingForm(existing = null) {
     const [cats, settings] = await Promise.all([api('GET', '/api/categories'), api('GET', '/api/settings')]);
     const h = existing || {};
-    const catOptions = (kind, label) => html`<optgroup label="${label}">${cats.categories.filter((c) => c.kind === kind).map((c) => html`<option value="${c.id}" data-liq="${c.default_liquidity}" data-icon="${catIconKey(c)}" data-kind="${c.kind}" data-loan="${isLoanCat(c)}" ${h.category_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</optgroup>`;
+    const catOptions = (kind, label) => html`<optgroup label="${label}">${cats.categories.filter((c) => c.kind === kind && !c.shared_only).map((c) => html`<option value="${c.id}" data-liq="${c.default_liquidity}" data-icon="${catIconKey(c)}" data-kind="${c.kind}" data-loan="${isLoanCat(c)}" ${h.category_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</optgroup>`;
     const owners = [...settings.owners];
     if (h.owner && !owners.some((o) => o.toLowerCase() === h.owner.toLowerCase())) owners.push(h.owner);
     const curList = [...new Set([settings.base_currency, ...settings.currencies])];
@@ -1719,11 +1724,19 @@
     const [{ categories }, d] = await Promise.all([api('GET', '/api/categories'), api('GET', '/api/dashboard')]);
     if (!current()) return;
     state.base = d.base_currency;
-    setHeader('Catégories', 'Regroupez vos avoirs et fixez une allocation cible', canEdit() ? html`<button class="btn primary" data-action="new-category">${icon('plus')}Ajouter une catégorie</button>` : '');
+    setHeader('Catégories', 'Vos catégories et votre allocation cible, propres à votre compte', canEdit() ? html`<button class="btn primary" data-action="new-category">${icon('plus')}Ajouter une catégorie</button>` : '');
     const totals = new Map(d.categories.map((c) => [c.id, c]));
-    const targetSum = categories.filter((c) => c.kind === 'asset').reduce((s, c) => s + (c.target_pct || 0), 0);
+    const targetSum = categories.filter((c) => c.kind === 'asset' && !c.shared_only).reduce((s, c) => s + (c.target_pct || 0), 0);
     const table = (kind, title) => {
-      const list = categories.filter((c) => c.kind === kind);
+      const list = categories.filter((c) => c.kind === kind && !c.shared_only);
+      // Catégorie d'un avoir reçu en partage sans équivalent chez vous : affichée, non modifiable.
+      const sharedRows = categories.filter((c) => c.kind === kind && c.shared_only).map((c) => {
+        const t = totals.get(c.id) || {};
+        return html`<tr><td><div class="cell-lead">${catPict(c)}<div><b style="font-weight:500">${c.name}</b><br><span class="small muted">Catégorie d'un avoir reçu en partage${c.holding_count ? ` (${c.holding_count} avoir${c.holding_count > 1 ? 's' : ''})` : ''}</span></div></div></td>
+          <td>${il(LIQ_ICON[c.default_liquidity], LIQ_SHORT[c.default_liquidity])}</td>
+          ${kind === 'asset' ? html`<td class="num">${pct(t.pct || 0)}</td><td class="num">—</td>` : ''}
+          <td class="num">${money(t.value || 0)}</td>${canEdit() ? html`<td></td>` : ''}</tr>`;
+      });
       return html`<section class="section"><div class="section-head">${h2i(kind === 'asset' ? 'stack' : 'debt', title)}${kind === 'asset' && targetSum > 0 ? html`<p>Total des cibles : <b class="${Math.abs(targetSum - 100) > 0.05 ? 'neg' : ''}">${num(targetSum)} %</b>${Math.abs(targetSum - 100) > 0.05 ? ', idéalement 100 %' : ''}</p>` : ''}</div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Catégorie</th><th>Liquidité par défaut</th>${kind === 'asset' ? html`<th class="num">Part actuelle</th><th class="num">Cible</th>` : ''}<th class="num">Montant</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
         ${list.length ? list.map((c, i) => {
@@ -1737,10 +1750,10 @@
               <button class="btn icon ghost small" data-action="move-category" data-id="${c.id}" data-dir="1" ${i === list.length - 1 ? 'disabled' : ''} aria-label="Descendre ${c.name}">${icon('chevDown')}</button>
               <button class="btn icon ghost small" data-action="edit-category" data-id="${c.id}" aria-label="Modifier ${c.name}">${icon('edit')}</button>
               <button class="btn icon ghost small" data-action="delete-category" data-id="${c.id}" data-name="${c.name}" ${c.holding_count ? 'disabled title="Contient des avoirs"' : ''} aria-label="Supprimer ${c.name}">${icon('trash')}</button></td>` : ''}</tr>`;
-        }) : html`<tr><td colspan="6" class="muted">Aucune catégorie.</td></tr>`}</tbody></table></div></section>`;
+        }) : html`<tr><td colspan="6" class="muted">Aucune catégorie.</td></tr>`}${sharedRows}</tbody></table></div></section>`;
     };
     el.innerHTML = part(html`${table('asset', 'Actifs')}${table('liability', 'Passifs')}`);
-    el._categories = categories;
+    el._categories = categories.filter((c) => !c.shared_only);
   }
 
   function categoryForm(existing = null) {
@@ -1819,9 +1832,10 @@
           aria-controls="settings-panel-${key}" aria-selected="false" tabindex="-1" data-settings-tab="${key}">${icon(pictogram)}<span>${label}</span></button>`)}
       </nav>
       <section class="section" data-settings-group="general">${h2i('bell', 'Devise et rappels')}<div class="panel">
-        ${isAdmin() ? html`<form class="form" id="settings-form"><div class="grid-2">
-          <label class="field"><span>Devise de référence</span><select class="select" name="base_currency">${curOptions(s.base_currency)}</select><small>Changer de devise efface les taux de change saisis.</small></label>
-          <label class="field"><span>Rappel d'actualisation (jours)</span><input class="input" type="number" name="stale_days" min="0" max="3650" value="${s.stale_days}"><small>Un avoir est signalé « à actualiser » au-delà de ce délai. 0 désactive le rappel.</small></label>
+        ${canEdit() ? html`<form class="form" id="settings-form"><div class="grid-2">
+          ${isAdmin() ? html`<label class="field"><span>Devise de référence</span><select class="select" name="base_currency">${curOptions(s.base_currency)}</select><small>Commune à tous les comptes. Changer de devise efface les taux de change saisis.</small></label>`
+            : html`<div class="field"><span>Devise de référence</span><p class="static-value">${s.base_currency}</p><small>Commune à tous les comptes, choisie par l'administrateur.</small></div>`}
+          <label class="field"><span>Rappel d'actualisation (jours)</span><input class="input" type="number" name="stale_days" min="0" max="3650" value="${s.stale_days}"><small>Un avoir est signalé « à actualiser » au-delà de ce délai. Propre à votre compte. 0 désactive le rappel.</small></label>
         </div><div class="form-actions"><button class="btn primary" type="submit">${icon('check')}Enregistrer</button></div></form>`
         : html`<dl class="kv"><dt>Devise de référence</dt><dd>${s.base_currency}</dd><dt>Rappel d'actualisation</dt><dd>${s.stale_days ? `${s.stale_days} jours` : 'désactivé'}</dd></dl>`}
       </div></section>
@@ -1835,19 +1849,19 @@
         ${canEdit() ? html`<form class="toolbar" id="owner-form"><input class="input" name="name" required maxlength="40" placeholder="Nouveau titulaire" aria-label="Nouveau titulaire" style="max-width:240px"><button class="btn" type="submit">${icon('plus')}Ajouter le titulaire</button></form>` : ''}
       </section>
 
-      <section class="section" data-settings-group="devises"><div class="section-head">${h2i('exchange', 'Taux de change')}<p>1 unité de la devise vaut x ${s.base_currency}</p></div>
+      <section class="section" data-settings-group="devises"><div class="section-head">${h2i('exchange', 'Taux de change')}<p>Communs à tous les comptes : 1 unité de la devise vaut x ${s.base_currency}${isAdmin() ? '' : ". Un taux saisi à la main se demande à l'administrateur"}</p></div>
         ${s.missing_rates.length ? html`<div class="notice">${icon('alert')}<div>Taux manquant pour ${s.missing_rates.join(', ')}.</div></div>` : ''}
-        <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Devise</th><th class="num">Taux</th><th>Source</th><th>Mis à jour</th>${canEdit() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
+        <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Devise</th><th class="num">Taux</th><th>Source</th><th>Mis à jour</th>${isAdmin() ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${s.rates.length ? s.rates.map((r) => html`<tr><td>${r.currency}</td><td class="num">1 ${r.currency} = ${num(r.rate, { max: 6 })} ${s.base_currency}</td><td>${r.source}</td><td>${dateTime(r.updated_at)}</td>
-            ${canEdit() ? html`<td class="num"><button class="btn icon ghost small" data-action="delete-rate" data-cur="${r.currency}" aria-label="Supprimer le taux ${r.currency}">${icon('trash')}</button></td>` : ''}</tr>`)
+            ${isAdmin() ? html`<td class="num"><button class="btn icon ghost small" data-action="delete-rate" data-cur="${r.currency}" aria-label="Supprimer le taux ${r.currency}">${icon('trash')}</button></td>` : ''}</tr>`)
             : html`<tr><td colspan="5" class="muted">Aucun taux : seuls les avoirs en ${s.base_currency} sont comptés.</td></tr>`}
         </tbody></table></div>
-        ${canEdit() ? html`<form class="toolbar" id="rate-form">
+        ${isAdmin() ? html`<form class="toolbar" id="rate-form">
           <select class="select" name="currency" aria-label="Devise" style="max-width:120px">${addable.map((c) => html`<option ${s.missing_rates[0] === c ? 'selected' : ''}>${c}</option>`)}</select>
           <input class="input amount" name="rate" inputmode="decimal" placeholder="Taux, ex. 0,92" required style="max-width:180px" aria-label="Taux">
           <button class="btn" type="submit">${icon('check')}Enregistrer le taux</button>
           ${s.ecb_enabled ? html`<button class="btn" type="button" data-action="ecb-rates">${icon('globe')}Récupérer les taux de la BCE</button>` : ''}
-        </form>` : ''}
+        </form>` : canEdit() && s.ecb_enabled ? html`<div class="toolbar"><button class="btn" type="button" data-action="ecb-rates">${icon('globe')}Récupérer les taux de la BCE</button></div>` : ''}
       </section>
 
       <section class="section" data-settings-group="donnees">${h2i('download', 'Exporter mes données')}<div class="panel"><div class="toolbar">
@@ -1856,11 +1870,13 @@
         <a class="btn" href="/api/export/history.csv" download>${icon('download')}Historique des valeurs (CSV)</a>
       </div><p class="small muted" style="margin-top:10px">Les fichiers CSV utilisent le point-virgule et la virgule décimale, pour s'ouvrir directement dans Excel ou LibreOffice.</p></div></section>
 
-      ${isAdmin() ? html`
-      <section class="section" data-settings-group="donnees">${h2i('upload', 'Restaurer un export')}<div class="panel form">
-        <p class="muted">Remplace toutes les catégories, tous les avoirs, l'historique et les taux par ceux d'un export JSON de Vigie. Les comptes utilisateurs ne changent pas. Une sauvegarde de la base est créée juste avant.</p>
+      ${canEdit() ? html`
+      <section class="section" data-settings-group="donnees">${h2i('upload', 'Restaurer mon export')}<div class="panel form">
+        <p class="muted">Remplace vos catégories, vos avoirs, leur historique, vos titulaires et votre délai de rappel par ceux d'un export JSON de Vigie. Les patrimoines des autres comptes ne changent pas. Une sauvegarde de la base est créée juste avant.</p>
         <div class="toolbar"><input type="file" id="import-file" accept="application/json,.json" class="input" style="max-width:360px"><button class="btn" type="button" data-action="import">${icon('upload')}Restaurer cet export</button></div>
-      </div></section>
+      </div></section>` : ''}
+
+      ${isAdmin() ? html`
 
       <section class="section" data-settings-group="donnees"><div class="section-head">${h2i('database', 'Sauvegardes de la base')}<p>${backups.keep_days ? `Automatique chaque jour vers ${backups.hour} h, conservée ${backups.keep_days} jours` : 'Sauvegarde automatique désactivée'}</p></div>
         <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Fichier</th><th>Date</th><th class="num">Taille</th><th><span class="sr-only">Télécharger</span></th></tr></thead><tbody>
@@ -1978,8 +1994,8 @@
     if (sf) sf.addEventListener('submit', async (e) => {
       e.preventDefault();
       const body = formData(sf);
-      if (body.base_currency !== s.base_currency && !(await confirmDialog({ title: 'Changer de devise de référence ?', message: `Tous les totaux seront exprimés en ${body.base_currency} et les taux de change actuels seront effacés.`, confirm: 'Changer de devise' }))) return;
-      try { const r = await api('PUT', '/api/settings', { base_currency: body.base_currency, stale_days: Number(body.stale_days) }); toast(r.warning || 'Réglages enregistrés'); render(); } catch (err) { fail(err); }
+      if (body.base_currency !== undefined && body.base_currency !== s.base_currency && !(await confirmDialog({ title: 'Changer de devise de référence ?', message: `Tous les totaux seront exprimés en ${body.base_currency} et les taux de change actuels seront effacés.`, confirm: 'Changer de devise' }))) return;
+      try { const r = await api('PUT', '/api/settings', { ...(isAdmin() ? { base_currency: body.base_currency } : {}), stale_days: Number(body.stale_days) }); toast(r.warning || 'Réglages enregistrés'); render(); } catch (err) { fail(err); }
     });
     const of = $('#owner-form');
     if (of) of.addEventListener('submit', async (e) => {
@@ -2241,7 +2257,9 @@
             <label class="field"><span>Confirmation</span><input class="input" type="password" name="confirm" autocomplete="new-password" minlength="10" required></label>
             <div class="form-actions"><button class="btn" type="submit">${icon('key')}Changer le mot de passe</button></div></form></section>
         </div>
-      </div>`);
+      </div>
+      <section class="section"><div class="section-head">${h2i('journal', 'Mon journal')}<p>Vos connexions et vos modifications, les plus récentes en premier</p></div><div id="my-journal"><p class="loading">Chargement…</p></div></section>`);
+    journalTable($('#my-journal'), '/api/audit/mine', { withUser: false, pageSize: 30 }).catch(fail);
     const pf = $('#profile-form');
     pf.email.addEventListener('input', () => {
       const changed = pf.email.value.trim().toLowerCase() !== (user.email || '');
@@ -2427,7 +2445,7 @@
         <label class="field"><span>Prénom <span class="muted">(facultatif)</span></span><input class="input" name="first_name" maxlength="60" autocomplete="off"></label>
         <label class="field"><span>Nom <span class="muted">(facultatif)</span></span><input class="input" name="last_name" maxlength="60" autocomplete="off"></label>
       </div>
-      <label class="field"><span>Rôle</span><select class="select" name="role">${Object.entries(ROLE).map(([k, l]) => html`<option value="${k}" ${k === 'viewer' ? 'selected' : ''}>${l}</option>`)}</select><small data-role-hint>${ROLE_HINT.viewer}</small></label>
+      <label class="field"><span>Rôle</span><select class="select" name="role">${Object.entries(ROLE).map(([k, l]) => html`<option value="${k}" ${k === 'editor' ? 'selected' : ''}>${l}</option>`)}</select><small data-role-hint>${ROLE_HINT.editor}</small></label>
       <p class="error-text" role="alert" hidden></p>
       <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button>
         ${ready ? html`<button class="btn" type="submit" value="link">${icon('link')}Lien sans e-mail</button><button class="btn primary" type="submit" value="send">${icon('send')}Envoyer l'invitation</button>`
@@ -2448,7 +2466,7 @@
   async function pageUsers(el, route, current) {
     const [{ users }, inv] = await Promise.all([api('GET', '/api/users'), api('GET', '/api/admin/invitations')]);
     if (!current()) return;
-    setHeader('Utilisateurs', 'Qui peut consulter ou modifier le patrimoine', html`<button class="btn" data-action="new-user">${icon('plus')}Ajouter directement</button><button class="btn primary" data-action="invite-user">${icon('mail')}Inviter par e-mail</button>`);
+    setHeader('Utilisateurs', 'Les comptes de ce serveur : chacun gère son propre patrimoine', html`<button class="btn" data-action="new-user">${icon('plus')}Ajouter directement</button><button class="btn primary" data-action="invite-user">${icon('mail')}Inviter par e-mail</button>`);
     el.innerHTML = part(html`
       ${inv.invitations.length ? html`<section class="section"><div class="section-head">${h2i('mail', 'Invitations en attente')}<p>Le compte est créé quand la personne ouvre le lien</p></div>
         <div class="panel flush table-wrap"><table class="table invites"><thead><tr><th>Invité</th><th>Rôle</th><th>Envoi</th><th>Validité</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
@@ -2474,7 +2492,7 @@
   }
 
   function userForm(u = null) {
-    const roles = Object.entries(ROLE).map(([k, l]) => html`<option value="${k}" ${u ? (u.role === k ? 'selected' : '') : k === 'viewer' ? 'selected' : ''}>${l}</option>`);
+    const roles = Object.entries(ROLE).map(([k, l]) => html`<option value="${k}" ${u ? (u.role === k ? 'selected' : '') : k === 'editor' ? 'selected' : ''}>${l}</option>`);
     const self = u && u.id === state.user.id;
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(u ? u.display_name : 'Ajouter un utilisateur', u ? `Identifiant : ${u.username}` : "Communiquez-lui son mot de passe provisoire : il pourra le changer dans « Mon compte ».", u ? avatar(u.display_name, 'lg') : pict('user', 'lg'))}
@@ -2534,25 +2552,30 @@
     : /taux/.test(a) ? 'exchange' : /titulaire/.test(a) ? 'user' : /utilisateur/.test(a) ? 'users' : /cloture/.test(a) ? 'lock' : /rouvert/.test(a) ? 'unlock'
     : /valeur|mise_a_jour/.test(a) ? 'update' : /categorie/.test(a) ? 'categories' : /reglages/.test(a) ? 'settings' : /cree/.test(a) ? 'plus' : 'edit');
 
-  async function pageAudit(el, route, current) {
+  // Tableau du journal, paginé : celui de l'administrateur (tous les comptes) ou celui de chacun (Mon compte).
+  async function journalTable(el, url, { withUser = true, pageSize = 100 } = {}) {
     let entries = [];
     const load = async (before) => {
-      const r = await api('GET', `/api/audit?limit=100${before ? `&before=${before}` : ''}`);
+      const r = await api('GET', `${url}?limit=${pageSize}${before ? `&before=${before}` : ''}`);
       entries = entries.concat(r.entries);
       return r.more;
     };
-    const more = await load();
-    if (!current()) return;
-    setHeader('Journal', 'Connexions et modifications, les plus récentes en premier');
     const draw = (hasMore) => {
-      el.innerHTML = part(html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Détail</th><th>Adresse IP</th></tr></thead><tbody>
-        ${entries.map((a) => html`<tr><td class="nowrap">${dateTime(a.at)}</td><td>${a.username || '—'}</td>
+      el.innerHTML = part(entries.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th>${withUser ? html`<th>Utilisateur</th>` : ''}<th>Action</th><th>Détail</th><th>Adresse IP</th></tr></thead><tbody>
+        ${entries.map((a) => html`<tr><td class="nowrap">${dateTime(a.at)}</td>${withUser ? html`<td>${a.username || '—'}</td>` : ''}
           <td class="${/refusee|bloque/.test(a.action) ? 'neg' : ''}">${il(actionIcon(a.action), ACTION[a.action] || a.action)}</td><td class="small">${a.detail || ''}</td><td class="small muted">${a.ip || ''}</td></tr>`)}
-        </tbody></table></div>${hasMore ? html`<div><button class="btn" id="audit-more">Afficher les entrées plus anciennes</button></div>` : ''}`);
-      const b = $('#audit-more');
+        </tbody></table></div>${hasMore ? html`<div class="toolbar"><button class="btn" type="button" data-more>Afficher les entrées plus anciennes</button></div>` : ''}`
+        : html`<div class="panel"><p class="muted">Aucune entrée pour l'instant.</p></div>`);
+      const b = $('[data-more]', el);
       if (b) b.addEventListener('click', async () => { draw(await load(entries[entries.length - 1].id)); });
     };
-    draw(more);
+    draw(await load());
+  }
+
+  async function pageAudit(el, route, current) {
+    setHeader('Journal', 'Connexions, sécurité et administration de tous les comptes ; le détail du patrimoine des autres comptes reste privé');
+    if (!current()) return;
+    await journalTable(el, '/api/audit');
   }
 
   // ---------------------------------------------------------------------------------------------------------
@@ -2675,9 +2698,13 @@
       if (!file) { fail(new Error("Choisissez d'abord un fichier d'export JSON.")); return; }
       let data;
       try { data = JSON.parse(await file.text()); } catch { fail(new Error("Ce fichier n'est pas un JSON valide.")); return; }
-      if (!(await confirmDialog({ title: 'Remplacer toutes les données ?', message: `Les avoirs, l'historique, les catégories et les taux actuels seront remplacés par ceux de ${file.name}. Une sauvegarde est créée juste avant.`, confirm: 'Remplacer les données', danger: true }))) return;
+      if (!(await confirmDialog({ title: 'Remplacer votre patrimoine ?', message: `Vos avoirs, leur historique et vos catégories seront remplacés par ceux de ${file.name}. Les autres comptes ne sont pas touchés. Une sauvegarde est créée juste avant.`, confirm: 'Remplacer les données', danger: true }))) return;
       await withBusy(b, async () => {
-        try { const r = await api('POST', '/api/admin/import', data); toast(`Restauration terminée : ${r.holdings} avoirs, ${r.valuations} valeurs`); render(); } catch (err) { fail(err); }
+        try {
+          const r = await api('POST', '/api/import', data);
+          toast(`Restauration terminée : ${r.holdings} avoirs, ${r.valuations} valeurs${r.skipped_shares ? `, ${r.skipped_shares} partage(s) vers un compte absent ignoré(s)` : ''}.${r.warning ? ' ' + r.warning : ''}`);
+          render();
+        } catch (err) { fail(err); }
       });
     },
     'backup-now': async (b) => withBusy(b, async () => { try { const r = await api('POST', '/api/admin/backups', {}); toast(`Sauvegarde ${r.backup.name} créée`); render(); } catch (err) { fail(err); } }),
@@ -2731,8 +2758,18 @@
     },
     'user-unlock': async (b) => { try { await api('PATCH', `/api/users/${b.dataset.id}`, { unlock: true }); closeDialog(); toast('Compte débloqué'); render(); } catch (err) { fail(err); } },
     'user-delete': async (b) => {
-      if (!(await confirmDialog({ title: `Supprimer ${b.dataset.name} ?`, message: "Le compte est supprimé. Les données de patrimoine ne changent pas.", confirm: 'Supprimer', danger: true }))) return;
-      try { await api('DELETE', `/api/users/${b.dataset.id}`); toast('Utilisateur supprimé'); render(); } catch (err) { fail(err); }
+      if (!(await confirmDialog({ title: `Supprimer ${b.dataset.name} ?`, message: "Le compte et ses réglages sont supprimés. Les patrimoines des autres comptes ne changent pas.", confirm: 'Supprimer', danger: true }))) return;
+      try { await api('DELETE', `/api/users/${b.dataset.id}`); toast('Utilisateur supprimé'); render(); }
+      catch (err) {
+        if (err.code !== 'account_has_holdings') { fail(err); return; }
+        // Chaque compte a son patrimoine : le supprimer efface aussi ses avoirs, après une seconde confirmation.
+        const n = err.data.holdings;
+        const one = n === 1;
+        if (!(await confirmDialog({ title: one ? 'Supprimer aussi son avoir ?' : `Supprimer aussi ses ${n} avoirs ?`,
+          message: `${b.dataset.name} a ${one ? 'un avoir' : `${n} avoirs`} dans Vigie. ${one ? 'Il sera supprimé définitivement avec ses valeurs, son échéancier et ses partages' : 'Ils seront supprimés définitivement avec leurs valeurs, leurs échéanciers et leurs partages'}. Pensez à exporter ses données avant si besoin.`,
+          confirm: `Supprimer le compte et ses avoirs`, danger: true }))) return;
+        try { await api('DELETE', `/api/users/${b.dataset.id}?avec_avoirs=1`); toast('Utilisateur et avoirs supprimés'); render(); } catch (e2) { fail(e2); }
+      }
     },
   };
 

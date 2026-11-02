@@ -164,3 +164,30 @@ test('base 0.9.11 : partages immobiliers repris comme partages d’avoirs, quote
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('base 0.10.0 : catégories copiées pour chaque compte, avoirs rangés dans la copie de leur titulaire', () => {
+  const dir = legacyDatabase(17, (raw) => {
+    const u = raw.prepare("INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES (?, ?, ?, 'x', ?, 0)");
+    u.run(1, 'camille', 'Camille', 'admin'); u.run(2, 'lea', 'Léa', 'editor'); u.run(3, 'sam', 'Sam', 'viewer');
+    const c = raw.prepare("INSERT INTO categories (id, name, kind, icon, target_pct, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0)");
+    c.run(1, 'Comptes courants', 'asset', 'wallet', null, 10); c.run(2, 'Bourse', 'asset', 'chart', 35, 20); c.run(5, 'Crédits', 'liability', 'loanDoc', null, 30);
+    const h = raw.prepare("INSERT INTO holdings (id, category_id, name, currency, liquidity, sort_order, created_at, updated_at, account_user_id) VALUES (?, ?, ?, 'EUR', 'immediate', 0, 0, 0, ?)");
+    h.run(1, 1, 'Compte de Camille', 1); h.run(2, 2, 'PEA de Léa', 2); h.run(3, 5, 'Prêt de Léa', 2);
+  });
+  const db = openDatabase(dir);
+  const cats = (uid) => db.prepare('SELECT id, name, target_pct FROM categories WHERE account_user_id = ? ORDER BY sort_order').all(uid).map((r) => ({ ...r }));
+  assert.deepEqual(cats(1).map((c) => c.id), [1, 2, 5], 'les catégories existantes restent au premier administrateur');
+  for (const uid of [2, 3]) {
+    assert.deepEqual(cats(uid).map((c) => c.name), ['Comptes courants', 'Bourse', 'Crédits'], 'chaque compte reçoit une copie');
+    assert.equal(cats(uid).find((c) => c.name === 'Bourse').target_pct, 35, 'avec les cibles qu’il voyait');
+  }
+  const placed = db.prepare('SELECT h.name, c.name AS cat, c.account_user_id AS owner FROM holdings h JOIN categories c ON c.id = h.category_id ORDER BY h.id').all().map((r) => ({ ...r }));
+  assert.deepEqual(placed, [
+    { name: 'Compte de Camille', cat: 'Comptes courants', owner: 1 },
+    { name: 'PEA de Léa', cat: 'Bourse', owner: 2 },
+    { name: 'Prêt de Léa', cat: 'Crédits', owner: 2 },
+  ]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_temp_master WHERE name LIKE 'mig_%'").get().n, 0, 'tables temporaires supprimées');
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

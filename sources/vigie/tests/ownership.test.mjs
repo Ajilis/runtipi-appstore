@@ -104,7 +104,7 @@ test('quote-part : les droits détenus entrent dans le patrimoine, la valeur enr
     assert.match(csv.data.toString('utf8'), /Quote-part \(%\)/);
     assert.match(csv.data.toString('utf8'), /12,5/);
 
-    const restored = await admin.post('/api/admin/import', saved);
+    const restored = await admin.post('/api/import', saved);
     assert.equal(restored.status, 200, JSON.stringify(restored.data));
     detail = (await admin.get('/api/holdings/' + id)).data;
     assert.equal(detail.property.ownership_bp, 1250);
@@ -112,7 +112,7 @@ test('quote-part : les droits détenus entrent dans le patrimoine, la valeur enr
     assert.equal((await admin.get('/api/dashboard')).data.totals.assets, 12500000);
     const legacy = JSON.parse(JSON.stringify(saved));
     delete legacy.real_estate[0].ownership_bp;
-    const legacyImport = await admin.post('/api/admin/import', legacy);
+    const legacyImport = await admin.post('/api/import', legacy);
     assert.equal(legacyImport.status, 200, JSON.stringify(legacyImport.data));
     detail = (await admin.get('/api/holdings/' + id)).data;
     assert.equal(detail.property.ownership_bp, 10000, 'ancien export sans quote-part : 100 %');

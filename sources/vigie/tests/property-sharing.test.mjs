@@ -35,14 +35,14 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
     assert.equal((await leaClient.post('/api/auth/login',{username:'lea',password:PASSWORD})).status,200);
     assert.equal((await lucClient.post('/api/auth/login',{username:'luc',password:PASSWORD})).status,200);
     const cats = (await admin.get('/api/categories')).data.categories;
-    const cat = cats.find(x=>x.name==='Immobilier');
+    let cat = cats.find(x=>x.name==='Immobilier');
     const created = await admin.post('/api/holdings', {
       category_id:cat.id,name:'Maison indivise',amount:800000,date:todayIso(),
       property:{purchase_amount:425000,purchased_at:'2004-04-01',property_type:'maison',
         address:'12 rue de la Roë, Angers',surface_m2:180,condition:'bon',ownership_pct:60},
     });
     assert.equal(created.status,200,JSON.stringify(created.data));
-    const id = created.data.id;
+    let id = created.data.id;
     assert.equal((await admin.get('/api/dashboard')).data.totals.assets,48000000,'avant accord, seulement 60 % pris en compte');
     const initial = (await admin.get('/api/holdings/'+id+'/shares')).data;
     assert.equal(initial.name,'Maison indivise');
@@ -139,8 +139,11 @@ test('immobilier partagé : e-mail, proposition complémentaire, approbation cib
     assert.equal(exported.holding_shares[0].ownership_bp,4000);
     assert.equal(exported.holdings.find(x=>x.id===id).ownership_bp,6000);
 
-    const imported = await admin.post('/api/admin/import',exported);
+    const imported = await admin.post('/api/import',exported);
     assert.equal(imported.status,200,JSON.stringify(imported.data));
+    // La restauration renumérote les avoirs et catégories du compte.
+    id = (await admin.get('/api/holdings')).data.holdings.find(x=>x.name==='Maison indivise').id;
+    cat = (await admin.get('/api/categories')).data.categories.find(x=>x.name==='Immobilier');
     assert.equal((await admin.get('/api/dashboard')).data.totals.assets,48000000);
     assert.equal((await leaClient.get('/api/dashboard')).data.totals.assets,32000000);
     assert.equal((await leaClient.get('/api/shares/inbox')).data.accepted.length,1);
@@ -298,8 +301,18 @@ test('comptes Vigie indépendants : patrimoines et exports séparés, contrôle 
     assert.equal((await editor.post('/api/auth/login',{username:'indep_editor',password:PASSWORD})).status,200);
     assert.equal((await viewer.post('/api/auth/login',{username:'indep_viewer',password:PASSWORD})).status,200);
     const cats=(await admin.get('/api/categories')).data.categories;
+    const editorCats=(await editor.get('/api/categories')).data.categories;
     const courant=cats.find(x=>x.name==='Comptes courants').id;
-    const epargne=cats.find(x=>x.name==='Épargne réglementée').id;
+    const epargne=editorCats.find(x=>x.name==='Épargne réglementée').id;
+    assert.equal(editorCats.length,cats.length,'chaque compte reçoit les catégories par défaut');
+    assert.ok(!editorCats.some((c)=>cats.some((a)=>a.id===c.id)),'catégories propres à chaque compte');
+    assert.equal((await editor.post('/api/holdings',{category_id:courant,name:'Intrus',amount:1})).status,400,
+      'impossible de ranger un avoir dans la catégorie d’un autre compte');
+    assert.equal((await editor.patch('/api/categories/'+courant,{name:'Piratée'})).status,404);
+    assert.equal((await editor.del('/api/categories/'+courant)).status,404);
+    assert.equal((await editor.patch('/api/categories/'+editorCats.find(x=>x.name==='Bourse').id,{name:'Actions de Bruno',target_pct:80})).status,200);
+    assert.ok(cats.some(x=>x.name==='Bourse') && (await admin.get('/api/categories')).data.categories.find(x=>x.name==='Bourse').target_pct!==80,
+      'la catégorie et la cible de l’administrateur ne changent pas');
     const privateA=await admin.post('/api/holdings',{
       category_id:courant,name:'Compte Alice privé',institution:'Banque privée Alice',
       owner:'Titulaire Alice unique',amount:10000,date:todayIso(),
@@ -350,9 +363,15 @@ test('comptes Vigie indépendants : patrimoines et exports séparés, contrôle 
     assert.doesNotMatch(csvEditor,/Compte Alice privé/);
     const csvHistory=(await viewer.get('/api/export/history.csv')).data.toString('utf8');
     assert.doesNotMatch(csvHistory,/Compte Alice privé|Livret Bruno privé/);
-    assert.equal((await admin.post('/api/admin/import',expAdmin)).status,409,
-      'import global destructeur interdit en présence du compte Bruno');
+    const restoredA=await admin.post('/api/import',expAdmin);
+    assert.equal(restoredA.status,200,JSON.stringify(restoredA.data));
     assert.equal((await editor.get('/api/holdings/'+bid)).status,200,
-      'l’import refusé n’a effacé aucun avoir');
+      'la restauration de l’administrateur n’efface pas les avoirs de Bruno');
+    assert.deepEqual((await admin.get('/api/holdings')).data.holdings.map(x=>x.name),['Compte Alice privé']);
+    const restoredB=await editor.post('/api/import',expEditor);
+    assert.equal(restoredB.status,200,'chacun restaure son propre export');
+    assert.deepEqual((await editor.get('/api/holdings')).data.holdings.map(x=>x.name),['Livret Bruno privé']);
+    assert.equal((await admin.get('/api/dashboard')).data.totals.assets,1000000);
+    assert.equal((await viewer.post('/api/import',expEditor)).status,403,'lecture seule : pas de restauration');
   } finally { await srv.stop(); }
 });

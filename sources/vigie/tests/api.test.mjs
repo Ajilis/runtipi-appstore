@@ -287,7 +287,7 @@ test('export, sauvegarde et import', async () => {
 
   await admin.del(`/api/holdings/${ids.pea}`);
   assert.notEqual((await admin.get('/api/dashboard')).data.totals.net, before.totals.net);
-  const imp = await admin.post('/api/admin/import', exp.data);
+  const imp = await admin.post('/api/import', exp.data);
   assert.equal(imp.status, 200, JSON.stringify(imp.data));
   const restored = (await admin.get('/api/dashboard')).data;
   assert.deepEqual(restored.totals, before.totals);

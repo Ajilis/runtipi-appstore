@@ -201,12 +201,12 @@ test('export et import conservent les échéanciers', async () => {
   const s = exp.loan_schedules.find((x) => x.holding_id === ids.loan);
   assert.deepEqual({ ...s }, { holding_id: ids.loan, kind: 'amortizing', principal_cents: 1_200_000, annual_rate: 4.5, months: 24, start_date: start });
   await admin.del(`/api/holdings/${ids.credit}`);
-  let r = await admin.post('/api/admin/import', exp);
+  let r = await admin.post('/api/import', exp);
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.deepEqual((await admin.get('/api/dashboard')).data.totals, before);
-  r = await admin.post('/api/admin/import', { ...exp, loan_schedules: [{ ...s, holding_id: 9999 }] });
+  r = await admin.post('/api/import', { ...exp, loan_schedules: [{ ...s, holding_id: 9999 }] });
   assert.equal(r.status, 400);
-  r = await admin.post('/api/admin/import', { ...exp, loan_schedules: [{ ...s, annual_rate: '3' }] });
+  r = await admin.post('/api/import', { ...exp, loan_schedules: [{ ...s, annual_rate: '3' }] });
   assert.equal(r.status, 400);
   assert.deepEqual((await admin.get('/api/dashboard')).data.totals, before, 'import refusé : rien n\'a changé');
 });

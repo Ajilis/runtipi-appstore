@@ -15,7 +15,7 @@ Vigie prend le parti inverse :
 - **Pas de mouvements à saisir.** On ne gère ni opérations ni budget : pour chaque avoir, on note simplement sa valeur à une date (relevé, estimation). Vigie conserve chaque valeur et en tire l'historique, les tendances et les répartitions. Une mise à jour mensuelle prend quelques minutes.
 - **Privé et auto-hébergé.** Les données restent sur votre serveur, dans votre installation Runtipi. Aucun identifiant bancaire n'est demandé et aucun montant ne quitte votre serveur. Les seuls échanges avec l'extérieur (nom d'un établissement recherché, logos, taux de la BCE, adresse d'un bien quand vous demandez son estimation) sont décrits plus bas. L'application s'ouvre sur le réseau local ou à distance par Cloudflare Tunnel, avec double authentification.
 - **Une vue globale et utile.** Patrimoine net (passifs déduits), évolution dans le temps, répartition par catégorie, établissement, titulaire, devise et liquidité, écart à l'allocation visée : de quoi décider d'un rééquilibrage, d'une épargne de précaution ou d'un remboursement anticipé.
-- **Pensé pour un foyer.** Plusieurs comptes, avec des rôles ; invitations par e-mail ; partage de n'importe quel avoir détenu à plusieurs (compte joint, bien en indivision, crédit à deux), chacun ne comptant que sa part.
+- **Pensé pour un foyer.** Plusieurs comptes, et **chacun a son propre patrimoine** (avoirs, catégories, objectifs, réglages, journal) ; invitations par e-mail ; partage de n'importe quel avoir détenu à plusieurs (compte joint, bien en indivision, crédit à deux), chacun ne comptant que sa part.
 
 Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou fiscal : les estimations et plus-values affichées sont indicatives.
 
@@ -24,12 +24,12 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 ### Avoirs et catégories
 
 - **Avoirs** : un compte, un placement, un bien ou un crédit, avec son nom, sa catégorie, son établissement, son titulaire, sa devise, sa liquidité et des notes. Une valeur par date ; enregistrer une valeur à une date existante la remplace.
-- **13 catégories par défaut** : comptes courants, épargne réglementée, assurance-vie, bourse, épargne retraite, épargne salariale, immobilier, crypto-actifs, métaux précieux, prêts accordés, autres actifs, crédits immobiliers et autres crédits. Elles se renomment, se réordonnent et s'ajoutent librement (actif ou passif, liquidité par défaut, allocation cible, pictogramme parmi 22).
+- **13 catégories par défaut, propres à chaque compte** : comptes courants, épargne réglementée, assurance-vie, bourse, épargne retraite, épargne salariale, immobilier, crypto-actifs, métaux précieux, prêts accordés, autres actifs, crédits immobiliers et autres crédits. Elles se renomment, se réordonnent et s'ajoutent librement (actif ou passif, liquidité par défaut, allocation cible, pictogramme parmi 22).
 - **Titulaires** : Moi, Conjoint, Commun ou tout autre nom, en liste déroulante ; ajout, renommage, fusion et suppression dans Réglages.
 - **Liste des avoirs** groupée par catégorie, avec recherche, mini-courbe, dernière mise à jour et variation. Un avoir se clôture (il sort des totaux, son historique reste) puis se rouvre, ou se supprime.
 - **Détail d'un avoir** : valeur actuelle, courbe, historique complet des valeurs avec écarts, et saisie d'une nouvelle valeur.
 - **Mise à jour rapide** : un seul écran pour actualiser tous les avoirs à une date, bouton « Inchangée », filtre « à actualiser » et estimation du nouveau patrimoine net avant d'enregistrer.
-- **Rappels** : un avoir dont la valeur date de plus de 45 jours (réglable) est signalé « à actualiser ».
+- **Rappels** : un avoir dont la valeur date de plus de 45 jours (réglable par chaque compte) est signalé « à actualiser ».
 - **Montants au format 12.500,50 €** : un point sépare les milliers, une virgule les décimales, partout dans l'application, le journal et les notes d'estimation. À la saisie, « 12.500 », « 12 500 » et « 12500 » donnent le même montant ; « 12,5 » ou « 12.50 » restent des décimales. Les exports CSV gardent des nombres sans séparateur de milliers pour les tableurs.
 
 ### Tableau de bord
@@ -70,12 +70,12 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 ### Devises
 
 - **Devise de référence** au choix parmi 30 devises ; avoirs dans n'importe laquelle d'entre elles.
-- **Taux de change** saisis à la main ou récupérés auprès de la **Banque centrale européenne** ; un avoir sans taux est signalé.
+- **Taux de change** communs à tous les comptes : récupérés auprès de la **Banque centrale européenne** par chacun, ou saisis à la main par l'administrateur ; un avoir sans taux est signalé. La devise de référence est commune au serveur.
 
 ### Comptes, foyer et partage
 
-- **Un patrimoine par compte** : chaque avoir appartient au compte Vigie qui l'a créé ; tableau de bord, historique et exports sont personnels.
-- **Rôles** : administrateur (tout, y compris les comptes, les sauvegardes et la restauration), éditeur (avoirs, valeurs, catégories, taux) et lecture seule.
+- **Un patrimoine par compte** : avoirs, catégories et allocation cible, titulaires, délai de rappel, tableau de bord, historique, journal, exports et restauration sont personnels. Les autres comptes, administrateur compris, ne voient ni vos avoirs ni vos montants, sauf ce que vous partagez.
+- **Rôles** : **Utilisateur** (rôle par défaut : gère son propre patrimoine), **Administrateur** (son patrimoine, plus les comptes, les e-mails, la sécurité, les taux saisis à la main, les sauvegardes et les logos) et **Lecture seule** (ne crée rien, consulte les avoirs que d'autres comptes lui partagent). Supprimer un compte qui a des avoirs les supprime avec lui, après une seconde confirmation.
 - **Invitations par e-mail** : la personne reçoit un lien valable 7 jours et à usage unique, choisit son identifiant et son mot de passe, puis arrive connectée. Sans e-mail, un lien peut être transmis à la main ; l'ajout direct avec un mot de passe provisoire reste possible.
 - **Partage d'un avoir** avec un autre compte du serveur (compte joint, livret, assurance-vie, bien immobilier, crédit…) : bouton **Partager cet avoir** dans le détail de l'avoir, quote-part proposée (la moitié par défaut, ou la part non attribuée d'un bien en indivision). Le destinataire voit la demande **en haut de ses Avoirs et de son tableau de bord**, avec **Accepter** et **Refuser** (et un e-mail si l'envoi est configuré). Chaque avoir indique s'il est **partagé ou non**, avec qui, **depuis quand** et si le destinataire **a approuvé**, est **en attente** ou **a refusé** ; une étiquette le résume dans la liste. Après accord, chacun ne compte que sa part ; le destinataire voit l'avoir en lecture seule. Le partage se retire à tout moment.
 - **Quote-part** : pour un compte joint ou un placement à deux, indiquez votre part (100 % par défaut) ; seule celle-ci entre dans votre patrimoine.
@@ -86,7 +86,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - Mots de passe hachés avec **scrypt** ; **double authentification TOTP** (Aegis, 2FAS, Google Authenticator…) avec 10 codes de secours, facultative ou obligatoire pour tous.
 - **Blocage** du compte après plusieurs échecs, **limitation par adresse IP**, déconnexion après inactivité, durée maximale de session, **sessions visibles et révocables**.
 - **« Mot de passe oublié »** : lien valable 1 heure, réponse identique que le compte existe ou non, demandes limitées, sessions fermées et e-mail d'avis après le changement.
-- **Journal d'audit** des connexions et des modifications.
+- **Journal** : chacun consulte le sien dans **Mon compte** ; celui de l'administrateur montre les connexions, la sécurité et l'administration de tous les comptes, sans le détail du patrimoine des autres.
 - Le **premier compte ne peut être créé que depuis le réseau local**, jamais à travers Cloudflare Tunnel.
 - Protection CSRF, en-têtes de sécurité stricts (CSP, anti-iframe), cookies `HttpOnly` et `SameSite=Strict`, `Secure` en HTTPS ; secrets TOTP et mot de passe SMTP chiffrés (AES-256-GCM).
 - **Réglages → Sécurité** : durées de session, seuils de blocage, double authentification et logos modifiables par un administrateur, après confirmation de son mot de passe.
@@ -99,7 +99,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 ### Données, exports et sauvegardes
 
 - **Exports** de votre patrimoine : JSON complet (avoirs, historique, échéanciers, réglages), avoirs et historique en CSV (point-virgule et virgule décimale, ouverture directe dans Excel ou LibreOffice).
-- **Restauration** d'un export JSON, précédée d'une sauvegarde automatique ; refusée si d'autres comptes du serveur ont des avoirs, pour ne jamais les effacer.
+- **Restauration** de son propre export JSON par chaque compte, précédée d'une sauvegarde automatique : seuls ses avoirs, ses catégories et ses réglages sont remplacés, jamais ceux des autres comptes.
 - **Sauvegardes quotidiennes** de la base (heure et durée de conservation réglables), téléchargeables depuis Réglages, incluses dans les sauvegardes Runtipi.
 - Évolutions de la base par **migrations additives** appliquées au démarrage : aucune donnée n'est supprimée lors d'une mise à jour.
 
@@ -373,8 +373,8 @@ de modifier directement, avec confirmation par son mot de passe actuel,
 les paramètres suivants : délai de déconnexion par inactivité, durée
 maximale d'une nouvelle session, seuil des échecs de connexion, durée
 de blocage, double authentification obligatoire, récupération externe
-des logos et service de secours pour les logos. Un compte éditeur ou
-lecteur ne peut pas les modifier.
+des logos et service de secours pour les logos. Un compte Utilisateur ou
+en Lecture seule ne peut pas les modifier.
 
 Les changements sont validés par le serveur, historisés dans le journal
 d'audit, actifs immédiatement et persistés dans **SQLite** pour être

@@ -260,7 +260,12 @@ export function buildMessage({ fromAddress, fromName, to, subject, text, html, d
 
 // --- Modèles des messages ----------------------------------------------------------------------------------------
 const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const ROLE_LABEL = { admin: 'administrateur (tout, y compris les comptes et les sauvegardes)', editor: 'éditeur (avoirs, valeurs et catégories)', viewer: 'lecture seule (consultation et export)' };
+// Chaque compte a son propre patrimoine (0.11.0) : le rôle dit ce que la personne peut faire du sien.
+const ROLE_LABEL = {
+  admin: 'administrateur (votre propre patrimoine, plus les comptes et le serveur)',
+  editor: 'utilisateur (vous gérez votre propre patrimoine)',
+  viewer: 'lecture seule (vous consultez les avoirs que d’autres comptes vous partagent)',
+};
 export const frDateTime = (ms) => new Date(ms).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 function layout({ title, paragraphs, button, footer }) {
@@ -318,10 +323,11 @@ export const templates = {
     const hello = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
     return {
       subject: `${inviter} vous invite sur Vigie Patrimoine`,
-      text: `${hello}\n\n${inviter} vous invite à rejoindre Vigie Patrimoine, le suivi de patrimoine de votre foyer, avec le rôle ${ROLE_LABEL[role]}.\n\nCréez votre compte en ouvrant ce lien :\n${url}\n\nVous choisirez votre nom d'utilisateur et votre mot de passe. Ce lien est valable jusqu'au ${frDateTime(expiresAt)} et ne sert qu'une fois.\n\nSi vous ne vous attendiez pas à cette invitation, ignorez ce message : aucun compte n'est créé sans votre action.\n`,
+      text: `${hello}\n\n${inviter} vous invite à rejoindre Vigie Patrimoine pour suivre votre patrimoine, avec le rôle ${ROLE_LABEL[role]}. Votre compte est personnel : les autres comptes ne voient pas vos avoirs, sauf ceux que vous choisissez de partager.\n\nCréez votre compte en ouvrant ce lien :\n${url}\n\nVous choisirez votre nom d'utilisateur et votre mot de passe. Ce lien est valable jusqu'au ${frDateTime(expiresAt)} et ne sert qu'une fois.\n\nSi vous ne vous attendiez pas à cette invitation, ignorez ce message : aucun compte n'est créé sans votre action.\n`,
       html: layout({
         title: `${inviter} vous invite sur Vigie Patrimoine`,
-        paragraphs: [escHtml(hello), `${escHtml(inviter)} vous invite à rejoindre <b>Vigie Patrimoine</b>, le suivi de patrimoine de votre foyer, avec le rôle <b>${escHtml(ROLE_LABEL[role])}</b>.`,
+        paragraphs: [escHtml(hello), `${escHtml(inviter)} vous invite à rejoindre <b>Vigie Patrimoine</b> pour suivre votre patrimoine, avec le rôle <b>${escHtml(ROLE_LABEL[role])}</b>.`,
+          'Votre compte est personnel : les autres comptes ne voient pas vos avoirs, sauf ceux que vous choisissez de partager.',
           "Vous choisirez votre nom d'utilisateur et votre mot de passe."],
         button: { label: 'Créer mon compte', url },
         footer: `Ce lien est valable jusqu'au ${escHtml(frDateTime(expiresAt))} et ne sert qu'une fois. Si vous ne vous attendiez pas à cette invitation, ignorez ce message : aucun compte n'est créé sans votre action.`,

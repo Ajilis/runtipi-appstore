@@ -10,7 +10,7 @@ import {
 import { ROLES, publicUser, getDummyHash, isPrivateIp, cameThroughCloudflare, isHttps } from './auth.js';
 import { sendMail, buildMessage, templates, isEmail, SmtpError, SECURITY_MODES } from './mail.js';
 import {
-  LIQUIDITY, dashboard, history, holdingsView, loadState, holdingSnapshot, parseAmountToCents, isIsoDate, todayIso, addDays,
+  LIQUIDITY, dashboard, history, holdingsView, loadState, holdingSnapshot, parseAmountToCents, isIsoDate, todayIso, addDays, staleDaysFor,
   SHARE_ROW_SQL, shareView, shareStatus, sharingByHolding,
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
@@ -266,7 +266,7 @@ export function registerRoutes(router, deps) {
       const now = Date.now();
       const r = db.prepare("INSERT INTO users (username, display_name, first_name, last_name, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, 'admin', ?, ?)")
         .run(uname, person.display_name, person.first_name, person.last_name, hash, now, now);
-      if (db.prepare('SELECT COUNT(*) AS n FROM categories').get().n === 0) seedCategories(db);
+      seedCategories(db, Number(r.lastInsertRowid));
       setSetting(db, 'base_currency', base);
       setSetting(db, 'stale_days', '45');
       if (getSetting(db, 'owners') === null) saveOwners(DEFAULT_OWNERS);
@@ -612,9 +612,10 @@ export function registerRoutes(router, deps) {
 
   router.get('/api/holdings/:id', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const h = readableHolding(id, ctx.user.id);
+    readableHolding(id, ctx.user.id);
     const today = todayIso();
     const state = loadState(db, today, ctx.user.id);
+    const h = state.holdings.find((x) => x.id === id); // catégorie ramenée à celle du compte pour un avoir partagé
     const snap = holdingSnapshot(state, h);
     let valuations = db.prepare(`SELECT v.id, v.valued_at, v.amount_cents, v.note, v.created_at, u.display_name AS created_by
       FROM valuations v LEFT JOIN users u ON u.id = v.created_by WHERE v.holding_id = ? ORDER BY v.valued_at DESC`).all(id);
@@ -638,12 +639,17 @@ export function registerRoutes(router, deps) {
       valuations, schedule, base_currency: state.base };
   });
 
+  // Catégories du compte (créées à la demande pour un compte qui n'en aurait pas), avec le nombre d'avoirs visibles,
+  // y compris les avoirs reçus en partage rangés dans la catégorie équivalente.
+  function ensureCategories(userId) {
+    if (!db.prepare('SELECT 1 FROM categories WHERE account_user_id = ? LIMIT 1').get(userId)) seedCategories(db, userId);
+  }
   router.get('/api/categories', { auth: 'viewer' }, (ctx) => {
-    const rows = db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM holdings h WHERE h.category_id = c.id AND
-      (h.account_user_id = ? OR EXISTS (SELECT 1 FROM holding_shares s WHERE s.holding_id = h.id
-        AND s.recipient_id = ? AND s.accepted_at IS NOT NULL AND s.revoked_at IS NULL AND s.declined_at IS NULL)))
-      AS holding_count FROM categories c ORDER BY sort_order, id`).all(ctx.user.id,ctx.user.id);
-    return { categories: rows };
+    ensureCategories(ctx.user.id);
+    const state = loadState(db, todayIso(), ctx.user.id);
+    const counts = new Map();
+    for (const h of state.holdings) counts.set(h.category_id, (counts.get(h.category_id) || 0) + 1);
+    return { categories: state.categories.map((c) => ({ ...c, holding_count: counts.get(c.id) || 0 })) };
   });
 
   router.get('/api/settings', { auth: 'viewer' }, (ctx) => {
@@ -652,7 +658,7 @@ export function registerRoutes(router, deps) {
     const rates = db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates ORDER BY currency').all();
     const out = {
       base_currency: base,
-      stale_days: Number(getSetting(db, 'stale_days', '45')),
+      stale_days: staleDaysFor(db, ctx.user.id),
       rates,
       currencies_in_use: used.filter((c) => c !== base),
       missing_rates: used.filter((c) => c !== base && !rates.some((r) => r.currency === c)),
@@ -705,9 +711,10 @@ export function registerRoutes(router, deps) {
     return fail(400, 'invalid_field', 'Établissement inconnu.');
   };
 
-  router.get('/api/admin/logos', { auth: 'admin' }, () => ({
+  // Établissements en usage : seulement ceux des avoirs de l'administrateur, ceux des autres comptes restent privés.
+  router.get('/api/admin/logos', { auth: 'admin' }, (ctx) => ({
     ...logos.status(),
-    in_use: db.prepare("SELECT institution AS name, COUNT(*) AS count FROM holdings WHERE institution <> '' GROUP BY institution ORDER BY institution").all().map((r) => ({ ...r })),
+    in_use: db.prepare("SELECT institution AS name, COUNT(*) AS count FROM holdings WHERE institution <> '' AND account_user_id = ? GROUP BY institution ORDER BY institution").all(ctx.user.id).map((r) => ({ ...r })),
   }));
 
   router.post('/api/admin/logos/fetch', { auth: 'admin' }, async (ctx) => {
@@ -810,16 +817,16 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/categories', { auth: 'editor' }, (ctx) => {
     const f = categoryFields(ctx.body);
-    const order = (db.prepare('SELECT MAX(sort_order) AS m FROM categories').get().m || 0) + 10;
-    const r = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, target_pct, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(f.name, f.kind, f.description, f.liquidity, f.target, f.icon, order, Date.now());
+    const order = (db.prepare('SELECT MAX(sort_order) AS m FROM categories WHERE account_user_id = ?').get(ctx.user.id).m || 0) + 10;
+    const r = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, target_pct, icon, sort_order, created_at, account_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(f.name, f.kind, f.description, f.liquidity, f.target, f.icon, order, Date.now(), ctx.user.id);
     audit(ctx, 'categorie_creee', f.name);
     return { category: db.prepare('SELECT * FROM categories WHERE id = ?').get(Number(r.lastInsertRowid)) };
   });
 
   router.patch('/api/categories/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT * FROM categories WHERE id = ? AND account_user_id = ?').get(id, ctx.user.id);
     if (!existing) fail(404, 'not_found', 'Catégorie introuvable.');
     const f = categoryFields(ctx.body, existing);
     if (f.kind !== existing.kind && db.prepare('SELECT COUNT(*) AS n FROM holdings WHERE category_id = ?').get(id).n > 0) {
@@ -833,7 +840,7 @@ export function registerRoutes(router, deps) {
 
   router.delete('/api/categories/:id', { auth: 'editor' }, (ctx) => {
     const id = intId(ctx.params.id);
-    const existing = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT * FROM categories WHERE id = ? AND account_user_id = ?').get(id, ctx.user.id);
     if (!existing) fail(404, 'not_found', 'Catégorie introuvable.');
     if (db.prepare('SELECT COUNT(*) AS n FROM holdings WHERE category_id = ?').get(id).n > 0) {
       fail(409, 'category_not_empty', "Cette catégorie contient des avoirs : déplacez-les ou supprimez-les d'abord.");
@@ -845,7 +852,7 @@ export function registerRoutes(router, deps) {
 
   router.post('/api/categories/reorder', { auth: 'editor' }, (ctx) => {
     const ids = Array.isArray(ctx.body.ids) ? ctx.body.ids.map((x) => intId(x)) : fail(400, 'invalid_field', 'Liste attendue.');
-    transaction(db, () => ids.forEach((id, i) => db.prepare('UPDATE categories SET sort_order = ? WHERE id = ?').run((i + 1) * 10, id)));
+    transaction(db, () => ids.forEach((id, i) => db.prepare('UPDATE categories SET sort_order = ? WHERE id = ? AND account_user_id = ?').run((i + 1) * 10, id, ctx.user.id)));
     return { ok: true };
   });
 
@@ -862,8 +869,8 @@ export function registerRoutes(router, deps) {
   // --- Avoirs -----------------------------------------------------------------------------------------------
   function holdingFields(b, existing = {}, userId = null) {
     const categoryId = intId(b.category_id ?? existing.category_id, 'Catégorie');
-    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(categoryId);
-    if (!cat) fail(400, 'invalid_field', 'Catégorie introuvable.');
+    const cat = db.prepare('SELECT * FROM categories WHERE id = ? AND account_user_id = ?').get(categoryId, userId);
+    if (!cat) fail(400, 'invalid_field', 'Catégorie introuvable dans votre compte.');
     return {
       category_id: categoryId,
       name: text(b.name ?? existing.name, 'Nom', { required: true, max: 80 }),
@@ -1110,7 +1117,9 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Devises -------------------------------------------------------------------------------------------------
-  router.put('/api/fx', { auth: 'editor' }, (ctx) => {
+  // Taux de change communs à tous les comptes : les taux BCE se récupèrent par chacun,
+  // un taux saisi à la main n'est modifiable que par l'administrateur.
+  router.put('/api/fx', { auth: 'admin' }, (ctx) => {
     const base = getSetting(db, 'base_currency', 'EUR');
     const rates = ctx.body.rates && typeof ctx.body.rates === 'object' ? ctx.body.rates : fail(400, 'invalid_field', 'Taux attendus.');
     const entries = Object.entries(rates).map(([cur, val]) => {
@@ -1130,7 +1139,7 @@ export function registerRoutes(router, deps) {
     return { ok: true };
   });
 
-  router.delete('/api/fx/:currency', { auth: 'editor' }, (ctx) => {
+  router.delete('/api/fx/:currency', { auth: 'admin' }, (ctx) => {
     const c = currency(ctx.params.currency);
     db.prepare('DELETE FROM fx_rates WHERE currency = ?').run(c);
     audit(ctx, 'taux_supprime', c);
@@ -1164,15 +1173,18 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Réglages (administrateur) -----------------------------------------------------------------------------------
-  router.put('/api/settings', { auth: 'admin' }, (ctx) => {
+  // Le délai de rappel est propre à chaque compte ; la devise de référence est commune au serveur (administrateur).
+  router.put('/api/settings', { auth: 'viewer' }, (ctx) => {
     const changes = [];
     let warning = null;
     if (ctx.body.stale_days !== undefined) {
       const n = Number(ctx.body.stale_days);
       if (!Number.isInteger(n) || n < 0 || n > 3650) fail(400, 'invalid_field', 'Rappel : nombre de jours entre 0 et 3650.');
-      setSetting(db, 'stale_days', n);
+      setSetting(db, 'stale_days:' + ctx.user.id, n);
       changes.push(`rappel ${n} j`);
     }
+    if (ctx.body.base_currency !== undefined && ctx.user.role !== 'admin' && currency(ctx.body.base_currency) !== getSetting(db, 'base_currency', 'EUR'))
+      fail(403, 'forbidden', "Seul l'administrateur change la devise de référence, commune à tous les comptes.");
     if (ctx.body.base_currency !== undefined) {
       const c = currency(ctx.body.base_currency);
       const old = getSetting(db, 'base_currency', 'EUR');
@@ -1210,7 +1222,7 @@ export function registerRoutes(router, deps) {
   router.post('/api/users', { auth: 'admin' }, async (ctx) => {
     const uname = username(ctx.body.username);
     const person = personFields(ctx.body);
-    const role = oneOf(ctx.body.role, ROLES, 'Rôle');
+    const role = oneOf(ctx.body.role || 'editor', ROLES, 'Rôle'); // par défaut, un utilisateur qui gère son patrimoine
     const problem = passwordProblem(ctx.body.password);
     if (problem) fail(400, 'weak_password', problem);
     if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(uname)) fail(409, 'username_taken', "Ce nom d'utilisateur existe déjà.");
@@ -1218,8 +1230,12 @@ export function registerRoutes(router, deps) {
     assertEmailFree(email);
     const hash = await hashPassword(ctx.body.password);
     const now = Date.now();
-    const r = db.prepare('INSERT INTO users (username, display_name, first_name, last_name, email, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(uname, person.display_name, person.first_name, person.last_name, email, hash, role, now, now);
+    const r = transaction(db, () => {
+      const r = db.prepare('INSERT INTO users (username, display_name, first_name, last_name, email, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(uname, person.display_name, person.first_name, person.last_name, email, hash, role, now, now);
+      seedCategories(db, Number(r.lastInsertRowid)); // chaque compte a ses propres catégories
+      return r;
+    });
     audit(ctx, 'utilisateur_cree', `${uname} (${role})`);
     return { user: publicUser(getUser(Number(r.lastInsertRowid))) };
   });
@@ -1272,9 +1288,14 @@ export function registerRoutes(router, deps) {
     if (!u) fail(404, 'not_found', 'Utilisateur introuvable.');
     if (id === ctx.user.id) fail(400, 'self_protection', 'Vous ne pouvez pas supprimer votre propre compte.');
     if (u.role === 'admin' && !u.disabled && activeAdmins(id) === 0) fail(400, 'last_admin', 'Il doit rester au moins un administrateur actif.');
-    if (db.prepare('SELECT 1 FROM holdings WHERE account_user_id = ? LIMIT 1').get(id))
-      fail(409,'account_has_holdings','Ce compte possède encore des avoirs. Supprimez ou transférez ses biens avant de supprimer le compte : aucun patrimoine ne sera effacé automatiquement.');
+    // Un compte qui a des avoirs n'est supprimé avec eux que sur confirmation explicite (?avec_avoirs=1).
+    const owned = db.prepare('SELECT COUNT(*) AS n FROM holdings WHERE account_user_id = ?').get(id).n;
+    const withHoldings = ctx.query.get('avec_avoirs') === '1';
+    if (owned && !withHoldings)
+      fail(409, 'account_has_holdings', `Ce compte a ${owned} avoir(s). Ils seront supprimés avec lui, avec leurs valeurs et leurs partages.`, { holdings: owned });
     transaction(db, () => {
+      // Ses avoirs (et ce qui en dépend) puis ses catégories disparaissent avec le compte.
+      if (owned) db.prepare('DELETE FROM holdings WHERE account_user_id = ?').run(id);
       // Ses parts acceptées prennent fin : la part retirée à chaque titulaire lui est rendue.
       for (const s of db.prepare(`SELECT * FROM holding_shares WHERE recipient_id = ? AND accepted_at IS NOT NULL
           AND revoked_at IS NULL AND declined_at IS NULL AND deducted_bp > 0`).all(id)) {
@@ -1283,8 +1304,9 @@ export function registerRoutes(router, deps) {
         if (owner) setOwnerBp(s.holding_id, Math.min(10000 - sumAccepted.get(s.holding_id).bp, owner.ownership_bp + s.deducted_bp));
       }
       db.prepare('DELETE FROM users WHERE id = ?').run(id);
+      db.prepare('DELETE FROM settings WHERE key IN (?, ?)').run('owners:' + id, 'stale_days:' + id);
     });
-    audit(ctx, 'utilisateur_supprime', u.username);
+    audit(ctx, 'utilisateur_supprime', owned ? `${u.username}, avec ses ${owned} avoir(s)` : u.username);
     return { ok: true };
   });
 
@@ -1386,7 +1408,7 @@ export function registerRoutes(router, deps) {
     const email = emailField(ctx.body.email, { required: true });
     const first = text(ctx.body.first_name, 'Prénom', { max: 60 });
     const last = text(ctx.body.last_name, 'Nom', { max: 60 });
-    const role = oneOf(ctx.body.role || 'viewer', ROLES, 'Rôle');
+    const role = oneOf(ctx.body.role || 'editor', ROLES, 'Rôle'); // par défaut, un utilisateur qui gère son patrimoine
     const send = ctx.body.send !== false;
     assertEmailFree(email);
     if (db.prepare('SELECT 1 FROM invitations WHERE email = ? AND accepted_at IS NULL AND canceled_at IS NULL').get(email)) {
@@ -1476,6 +1498,7 @@ export function registerRoutes(router, deps) {
       const r = db.prepare('INSERT INTO users (username, display_name, first_name, last_name, email, password_hash, role, created_at, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(uname, person.display_name, person.first_name, person.last_name, inv.email, hash, inv.role, now, now);
       const id = Number(r.lastInsertRowid);
+      seedCategories(db, id);
       db.prepare('UPDATE invitations SET accepted_at = ?, user_id = ? WHERE id = ?').run(now, id, inv.id);
       return getUser(id);
     });
@@ -1566,12 +1589,19 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Journal ---------------------------------------------------------------------------------------------------------
-  router.get('/api/audit', { auth: 'admin' }, (ctx) => {
+  // Journal. Chaque compte consulte le sien (Mon compte). L'administrateur voit en plus les connexions, la sécurité
+  // et l'administration de tous les comptes, mais jamais le détail du patrimoine des autres (noms d'avoirs, montants).
+  const PERSONAL_ACTIONS = `(action GLOB 'avoir_*' OR action GLOB 'valeur_*' OR action = 'mise_a_jour_rapide'
+    OR action GLOB 'categorie_*' OR action GLOB 'titulaire_*' OR action GLOB 'echeancier_*' OR action GLOB 'partage_*'
+    OR action IN ('export', 'import'))`;
+  const auditPage = (ctx, where, params) => {
     const before = Number(ctx.query.get('before')) || Number.MAX_SAFE_INTEGER;
     const limit = Math.min(200, Math.max(1, Number(ctx.query.get('limit')) || 100));
-    const rows = db.prepare('SELECT * FROM audit_log WHERE id < ? ORDER BY id DESC LIMIT ?').all(before, limit);
+    const rows = db.prepare(`SELECT * FROM audit_log WHERE id < ? AND ${where} ORDER BY id DESC LIMIT ?`).all(before, ...params, limit);
     return { entries: rows, more: rows.length === limit };
-  });
+  };
+  router.get('/api/audit', { auth: 'admin' }, (ctx) => auditPage(ctx, `(user_id = ? OR NOT ${PERSONAL_ACTIONS})`, [ctx.user.id]));
+  router.get('/api/audit/mine', { auth: 'viewer' }, (ctx) => auditPage(ctx, 'user_id = ?', [ctx.user.id]));
 
   // --- Export, import, sauvegardes -------------------------------------------------------------------------------
   function exportObject(userId) {
@@ -1585,9 +1615,9 @@ export function registerRoutes(router, deps) {
       version: 1,
       app_version: cfg.VERSION,
       exported_at: new Date().toISOString(),
-      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: Number(getSetting(db, 'stale_days', '45')), owners: ownersList(userId).map((o) => o.name) },
+      settings: { base_currency: getSetting(db, 'base_currency', 'EUR'), stale_days: staleDaysFor(db, userId), owners: ownersList(userId).map((o) => o.name) },
       fx_rates: db.prepare('SELECT currency, rate, source, updated_at FROM fx_rates').all(),
-      categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories ORDER BY sort_order, id').all(),
+      categories: db.prepare('SELECT id, name, kind, description, default_liquidity, target_pct, icon, sort_order FROM categories WHERE account_user_id = ? ORDER BY sort_order, id').all(userId),
       holdings: db.prepare('SELECT id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, account_user_id, ownership_bp FROM holdings ORDER BY id').all().filter((h) => owned.has(h.id)),
       valuations: db.prepare('SELECT holding_id, valued_at, amount_cents, note FROM valuations ORDER BY holding_id, valued_at').all().filter((v) => owned.has(v.holding_id)),
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
@@ -1632,103 +1662,112 @@ export function registerRoutes(router, deps) {
     ctx.sendRaw(200, Buffer.from('\ufeff' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')), 'text/csv; charset=utf-8', `vigie-historique-${stampName()}.csv`);
   });
 
-  router.post('/api/admin/import', { auth: 'admin', bodyLimit: 25 * 1024 * 1024 }, (ctx) => {
+  // Restauration d'un export JSON personnel (0.11.0) : chaque compte restaure SON patrimoine. Seuls ses avoirs, ses
+  // catégories, ses titulaires et son délai de rappel sont remplacés ; les autres comptes ne sont jamais touchés.
+  // Les identifiants sont renumérotés pour ne pas entrer en collision avec ceux des autres comptes.
+  router.post('/api/import', { auth: 'editor', bodyLimit: 25 * 1024 * 1024 }, (ctx) => {
     const d = ctx.body;
     if (d.format !== 'vigie-export' || d.version !== 1) fail(400, 'invalid_import', "Ce fichier n'est pas un export Vigie (format vigie-export, version 1).");
-    for (const k of ['categories', 'holdings', 'valuations', 'fx_rates']) if (!Array.isArray(d[k])) fail(400, 'invalid_import', `Section ${k} manquante.`);
-    const base = currency(d.settings?.base_currency || 'EUR');
-    // Les exports personnels ne doivent pas détruire silencieusement les
-    // avoirs détenus par d'autres comptes lors d'une importation globale.
-    if (db.prepare('SELECT 1 FROM holdings WHERE account_user_id <> ? LIMIT 1').get(ctx.user.id))
-      fail(409,'multi_account_import','L’import global risquerait d’effacer les biens des autres comptes. Utilisez une sauvegarde serveur ou contactez l’administrateur.');
+    for (const k of ['categories', 'holdings', 'valuations']) if (!Array.isArray(d[k])) fail(400, 'invalid_import', `Section ${k} manquante.`);
+    const userId = ctx.user.id;
+    const isAdminUser = ctx.user.role === 'admin';
+    const serverBase = getSetting(db, 'base_currency', 'EUR');
+    const fileBase = d.settings?.base_currency ? currency(d.settings.base_currency) : serverBase;
     const backup = createBackup(db, paths.backups, 'avantimport');
+    const skippedShares = [];
     transaction(db, () => {
-      db.exec('DELETE FROM valuations; DELETE FROM holdings; DELETE FROM categories; DELETE FROM fx_rates;');
       const now = Date.now();
+      // Valeurs, échéanciers, biens, prix de revient et partages suivent leurs avoirs (ON DELETE CASCADE).
+      db.prepare('DELETE FROM holdings WHERE account_user_id = ?').run(userId);
+      db.prepare('DELETE FROM categories WHERE account_user_id = ?').run(userId);
+      const catMap = new Map(), holdMap = new Map();
       for (const c of d.categories) {
         const icon = CATEGORY_ICONS.includes(c.icon) ? c.icon : (c.kind === 'liability' ? 'loanDoc' : 'cube');
-        db.prepare('INSERT INTO categories (id, name, kind, description, default_liquidity, target_pct, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(intId(c.id), text(c.name, 'Catégorie', { required: true, max: 60 }), oneOf(c.kind, ['asset', 'liability'], 'Type'), text(c.description || '', 'Description', { max: 120 }),
-            oneOf(c.default_liquidity || 'immediate', LIQUIDITY, 'Liquidité'), targetPct(c.target_pct), icon, Number(c.sort_order) || 0, now);
+        const r = db.prepare('INSERT INTO categories (name, kind, description, default_liquidity, target_pct, icon, sort_order, created_at, account_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(text(c.name, 'Catégorie', { required: true, max: 60 }), oneOf(c.kind, ['asset', 'liability'], 'Type'), text(c.description || '', 'Description', { max: 120 }),
+            oneOf(c.default_liquidity || 'immediate', LIQUIDITY, 'Liquidité'), targetPct(c.target_pct), icon, Number(c.sort_order) || 0, now, userId);
+        catMap.set(intId(c.id), Number(r.lastInsertRowid));
       }
+      if (!catMap.size) seedCategories(db, userId);
       for (const h of d.holdings) {
         if (h.closed_at && !isIsoDate(h.closed_at)) fail(400, 'invalid_import', `Date de clôture invalide pour ${h.name}.`);
         const ownerBp = h.ownership_bp === undefined || h.ownership_bp === null ? 10000 : h.ownership_bp;
         if (!Number.isInteger(ownerBp) || ownerBp < 1 || ownerBp > 10000) fail(400, 'invalid_import', `Quote-part invalide pour ${h.name}.`);
-        db.prepare('INSERT INTO holdings (id, category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at, account_user_id, ownership_bp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(intId(h.id), intId(h.category_id), text(h.name, 'Avoir', { required: true, max: 80 }), text(h.institution || '', 'Établissement', { max: 80 }), text(h.owner || '', 'Titulaire', { max: 40 }),
+        const categoryId = catMap.get(intId(h.category_id));
+        if (!categoryId) fail(400, 'invalid_import', `Catégorie absente du fichier pour ${h.name}.`);
+        const r = db.prepare('INSERT INTO holdings (category_id, name, institution, owner, currency, liquidity, notes, closed_at, sort_order, created_at, updated_at, account_user_id, ownership_bp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(categoryId, text(h.name, 'Avoir', { required: true, max: 80 }), text(h.institution || '', 'Établissement', { max: 80 }), text(h.owner || '', 'Titulaire', { max: 40 }),
             currency(h.currency), oneOf(h.liquidity, LIQUIDITY, 'Liquidité'), longText(h.notes || '', 'Notes'), h.closed_at || null, Number(h.sort_order) || 0, now, now,
-            getUser(h.account_user_id)?.id ?? ctx.user.id, ownerBp);
+            userId, ownerBp);
+        holdMap.set(intId(h.id), Number(r.lastInsertRowid));
       }
+      const hid = (id, what) => holdMap.get(intId(id)) ?? fail(400, 'invalid_import', `${what} rattaché(e) à un avoir absent du fichier.`);
       for (const v of d.valuations) {
         if (!isIsoDate(v.valued_at) || !Number.isInteger(v.amount_cents)) fail(400, 'invalid_import', 'Valeur historique invalide.');
         db.prepare('INSERT INTO valuations (holding_id, valued_at, amount_cents, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(intId(v.holding_id), v.valued_at, v.amount_cents, text(v.note || '', 'Note', { max: 120 }), ctx.user.id, now);
+          .run(hid(v.holding_id, 'Valeur'), v.valued_at, v.amount_cents, text(v.note || '', 'Note', { max: 120 }), userId, now);
       }
       for (const a of Array.isArray(d.holding_acquisitions) ? d.holding_acquisitions : []) {
-        const hid = intId(a.holding_id);
-        const holding = db.prepare('SELECT * FROM holdings WHERE id = ?').get(hid);
-        if (!holding) fail(400, 'invalid_import', 'Acquisition sans avoir correspondant.');
+        const id = hid(a.holding_id, 'Prix de revient');
+        const holding = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
         const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(holding.category_id);
-        const validated = parseAcquisition({ acquisition: { purchase_amount: a.purchase_cents / 100, purchased_at: a.purchased_at } }, cat, null, false);
-        saveAcquisition(hid, validated);
+        saveAcquisition(id, parseAcquisition({ acquisition: { purchase_amount: a.purchase_cents / 100, purchased_at: a.purchased_at } }, cat, null, false));
       }
       for (const p of Array.isArray(d.real_estate) ? d.real_estate : []) {
-        const id = intId(p.holding_id);
+        const id = hid(p.holding_id, 'Bien immobilier');
         const holding = db.prepare('SELECT * FROM holdings WHERE id = ?').get(id);
-        if (!holding) fail(400, 'invalid_import', 'Bien immobilier sans avoir correspondant.');
         const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(holding.category_id);
-        const validated = propertyFields({ property: {
-          purchase_amount: p.purchase_cents / 100,
-          purchased_at: p.purchased_at,
-          property_type: p.property_type,
-          address: p.address || '', surface_m2: p.surface_m2,
-          condition: p.condition || 'correct',
+        writeProperty(id, propertyFields({ property: {
+          purchase_amount: p.purchase_cents / 100, purchased_at: p.purchased_at, property_type: p.property_type,
+          address: p.address || '', surface_m2: p.surface_m2, condition: p.condition || 'correct',
           ownership_pct: p.ownership_bp === undefined ? 100 : p.ownership_bp / 100,
-        } }, cat, holding.currency);
-        writeProperty(id, validated);
-      }
-      // Export JSON : seuls les partages déjà approuvés sont restaurés ;
-      // les invitations non acceptées ne sont pas réémises silencieusement.
-      // Les exports antérieurs à 0.10.0 nomment cette section real_estate_shares.
-      const importedShares = Array.isArray(d.holding_shares) ? d.holding_shares : Array.isArray(d.real_estate_shares) ? d.real_estate_shares : [];
-      for (const share of importedShares) {
-        const hid = intId(share.holding_id), target = intId(share.recipient_id);
-        const holding = db.prepare('SELECT ownership_bp FROM holdings WHERE id = ?').get(hid);
-        if (!holding || !getUser(target) || target === ctx.user.id)
-          fail(400, 'invalid_import', 'Partage invalide ou destinataire absent sur ce serveur.');
-        const deducted = Number.isInteger(share.deducted_bp) && share.deducted_bp > 0 ? share.deducted_bp : 0;
-        if (!Number.isInteger(share.ownership_bp) || share.ownership_bp < 1 ||
-            holding.ownership_bp + sumAccepted.get(hid).bp + share.ownership_bp > 10000)
-          fail(400, 'invalid_import', 'Quote-parts supérieures à 100 %.');
-        db.prepare(`INSERT INTO holding_shares
-          (holding_id,sender_id,recipient_id,ownership_bp,deducted_bp,created_at,expires_at,accepted_at,sent_at)
-          VALUES (?,?,?,?,?,?,?,?,?)`).run(hid,ctx.user.id,target,share.ownership_bp,deducted,now,now,now,now);
+        } }, cat, holding.currency));
       }
       for (const sc of Array.isArray(d.loan_schedules) ? d.loan_schedules : []) {
         if (!LOAN_KINDS.includes(sc.kind) || !Number.isInteger(sc.principal_cents) || sc.principal_cents <= 0 || !Number.isInteger(sc.months) || sc.months < 1 || sc.months > 600
           || typeof sc.annual_rate !== 'number' || !(sc.annual_rate >= 0 && sc.annual_rate <= 50) || !isIsoDate(sc.start_date)) fail(400, 'invalid_import', 'Échéancier invalide.');
-        const hid = intId(sc.holding_id);
-        if (!db.prepare('SELECT 1 FROM holdings WHERE id = ?').get(hid)) fail(400, 'invalid_import', 'Échéancier rattaché à un avoir absent du fichier.');
-        saveSchedule(hid, sc);
+        saveSchedule(hid(sc.holding_id, 'Échéancier'), sc);
       }
-      for (const r of d.fx_rates) {
-        const c = currency(r.currency);
-        if (c === base || !(r.rate > 0)) continue;
-        db.prepare('INSERT INTO fx_rates (currency, rate, source, updated_at) VALUES (?, ?, ?, ?)').run(c, Number(r.rate), String(r.source || 'import').slice(0, 40), Number(r.updated_at) || now);
+      // Seuls les partages déjà approuvés sont restaurés, vers des comptes présents sur ce serveur ;
+      // les demandes non acceptées ne sont pas réémises. Les exports antérieurs à 0.10.0 disent real_estate_shares.
+      const importedShares = Array.isArray(d.holding_shares) ? d.holding_shares : Array.isArray(d.real_estate_shares) ? d.real_estate_shares : [];
+      for (const share of importedShares) {
+        const id = hid(share.holding_id, 'Partage'), target = Number(share.recipient_id);
+        const recipient = Number.isInteger(target) ? getUser(target) : null;
+        if (!recipient || target === userId) { skippedShares.push(share.recipient_id); continue; }
+        const holding = db.prepare('SELECT ownership_bp FROM holdings WHERE id = ?').get(id);
+        const deducted = Number.isInteger(share.deducted_bp) && share.deducted_bp > 0 ? share.deducted_bp : 0;
+        if (!Number.isInteger(share.ownership_bp) || share.ownership_bp < 1 ||
+            holding.ownership_bp + sumAccepted.get(id).bp + share.ownership_bp > 10000)
+          fail(400, 'invalid_import', 'Quote-parts supérieures à 100 %.');
+        db.prepare(`INSERT INTO holding_shares
+          (holding_id,sender_id,recipient_id,ownership_bp,deducted_bp,created_at,expires_at,accepted_at,sent_at)
+          VALUES (?,?,?,?,?,?,?,?,?)`).run(id,userId,target,share.ownership_bp,deducted,now,now,now,now);
       }
-      for (const l of Array.isArray(d.institution_logos) ? d.institution_logos : []) {
+      // Données communes au serveur : seulement par l'administrateur, et seulement si la devise de référence est la même.
+      if (isAdminUser && fileBase === serverBase) {
+        for (const r of Array.isArray(d.fx_rates) ? d.fx_rates : []) {
+          const c = currency(r.currency);
+          if (c === serverBase || !(r.rate > 0)) continue;
+          db.prepare(`INSERT INTO fx_rates (currency, rate, source, updated_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(currency) DO UPDATE SET rate = excluded.rate, source = excluded.source, updated_at = excluded.updated_at`)
+            .run(c, Number(r.rate), String(r.source || 'import').slice(0, 40), Number(r.updated_at) || now);
+        }
+      }
+      if (isAdminUser) for (const l of Array.isArray(d.institution_logos) ? d.institution_logos : []) {
         const buf = typeof l.data === 'string' ? Buffer.from(l.data, 'base64') : null;
         const type = buf ? sniffImage(buf) : null;
         if ((!logos.catalogue.has(l.key) && !CUSTOM_KEY.test(String(l.key))) || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type) || buf.length > 600_000) fail(400, 'invalid_import', 'Image de logo invalide.');
-        logos.setCustom(l.key, text(l.name, 'Établissement', { required: true, max: 80 }), buf, ctx.user.id);
+        logos.setCustom(l.key, text(l.name, 'Établissement', { required: true, max: 80 }), buf, userId);
       }
-      setSetting(db, 'base_currency', base);
-      if (Number.isInteger(d.settings?.stale_days)) setSetting(db, 'stale_days', d.settings.stale_days);
-      if (Array.isArray(d.settings?.owners)) saveOwners(d.settings.owners.filter((x) => typeof x === 'string' && x.trim()).map((x) => ownerName(x)),ctx.user.id);
+      if (Number.isInteger(d.settings?.stale_days) && d.settings.stale_days >= 0 && d.settings.stale_days <= 3650) setSetting(db, 'stale_days:' + userId, d.settings.stale_days);
+      if (Array.isArray(d.settings?.owners)) saveOwners(d.settings.owners.filter((x) => typeof x === 'string' && x.trim()).map((x) => ownerName(x)), userId);
     });
+    const warning = fileBase !== serverBase
+      ? `Le fichier utilisait la devise de référence ${fileBase} ; ce serveur compte en ${serverBase}. Vérifiez les taux de change.` : null;
     audit(ctx, 'import', `${d.holdings.length} avoir(s), ${d.valuations.length} valeur(s) ; sauvegarde préalable ${backup.name}`);
-    return { ok: true, backup: backup.name, holdings: d.holdings.length, valuations: d.valuations.length };
+    return { ok: true, backup: backup.name, holdings: d.holdings.length, valuations: d.valuations.length,
+      skipped_shares: skippedShares.length, warning };
   });
 
   router.get('/api/admin/backups', { auth: 'admin' }, () => ({ backups: listBackups(paths.backups), keep_days: cfg.BACKUP_KEEP_DAYS, hour: cfg.BACKUP_HOUR }));
