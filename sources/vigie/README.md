@@ -51,7 +51,8 @@ Application auto-hébergée de suivi de patrimoine personnel : une valeur par av
 ## Logos : OpenFinTech et Wikidata par défaut (0.9.1)
 
 La recherche des logos suit désormais l'ordre suivant, pour **tous** les établissements
-du catalogue historique et les fiches Sirene :
+du catalogue historique et les fiches Sirene (depuis 0.9.10, une image horizontale n'est jamais
+retenue pour la pastille : voir « Pastilles carrées et logo complet ») :
 
 1. **OpenFinTech** : fournisseur français rapproché par nom exact ou par domaine officiel identique ; les URL de logos sont synchronisées et mises en cache en SQLite.
 2. **Wikidata** : recherche des noms exacts en français et en anglais, exclusivement pour les entités décrites comme financières ; récupération du logo P154, sous forme de miniature PNG via Wikimedia Commons.
@@ -61,6 +62,17 @@ du catalogue historique et les fiches Sirene :
 La recherche Wikidata conserve les résultats positifs 30 jours et les recherches sans correspondance 3 jours, afin de limiter les appels aux serveurs publics. Les images et les échecs sont conservés dans SQLite. Les anciennes images déjà valides restent utilisables pendant une mise à jour ; les échecs des versions précédentes sont réessayés après migration. La recherche de logos utilise le **nom de l'établissement**, jamais les montants ni les noms des avoirs ; aucune donnée personnelle n'est transmise à ces sources. Les images personnalisées restent prioritaires.
 
 La configuration `INSTITUTION_CATALOGUE=false` désactive les recherches Wikidata/OpenFinTech, et `INSTITUTION_LOGOS=false` désactive toutes les récupérations automatiques. Les échecs de téléchargement peuvent aussi provenir de la connexion Internet du conteneur Docker : le nouveau mécanisme ne résout pas à lui seul une panne DNS ou réseau.
+
+## Pastilles carrées et logo complet (0.9.10)
+
+Une pastille (24 à 36 px) n'affiche qu'une image dont le rapport largeur / hauteur reste entre 1/1,5 et 1,5 (`isSquarish` dans `server/logos.js`). Dans `LogoService.refresh`, chaque image des sources ouvertes est classée :
+
+- **à peu près carrée** : elle devient l'image de la pastille (`logo_cache.data`), dans l'ordre OpenFinTech, Wikidata, puis icône du site officiel ;
+- **horizontale ou de dimensions inconnues** : elle est gardée comme **logo complet** (`logo_cache.full_*`), jamais en pastille. La pastille prend alors l'icône du site officiel, sinon le monogramme (statut `wide_only` dans la page Établissements).
+
+Wikidata est consulté même quand la pastille vient d'OpenFinTech, pour proposer le logo complet ; la recherche Wikidata reste mise en cache 30 jours (3 jours sans résultat). Le logo complet est servi par `GET /api/institutions/logo/:id/full` (404 s'il n'existe pas) et listé avec sa version dans `GET /api/institutions/logos` (`full`). L'interface l'affiche sur fond blanc dans le détail d'un avoir et dans Réglages → Établissements.
+
+La migration 16 ajoute les colonnes `full_*` et `full_checked_at`, supprime du cache les pastilles horizontales enregistrées par 0.9.0 à 0.9.9 (recherchées de nouveau au préchargement) et laisse `full_checked_at` vide pour les autres, qui sont complétées une seule fois par leur logo complet.
 
 ## Correspondances vérifiées (0.9.1)
 

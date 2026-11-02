@@ -281,6 +281,18 @@ export const MIGRATIONS = [
     purchased_at TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );`,
+  // 0.9.10 : la pastille n'affiche qu'une image à peu près carrée ; un logo horizontal (Wikidata) est gardé
+  // à part comme logo complet. Les logos horizontaux mis en pastille par 0.9.0 à 0.9.9 sont recherchés de nouveau.
+  `
+  ALTER TABLE logo_cache ADD COLUMN full_content_type TEXT;
+  ALTER TABLE logo_cache ADD COLUMN full_data BLOB;
+  ALTER TABLE logo_cache ADD COLUMN full_width INTEGER;
+  ALTER TABLE logo_cache ADD COLUMN full_height INTEGER;
+  ALTER TABLE logo_cache ADD COLUMN full_source TEXT;
+  ALTER TABLE logo_cache ADD COLUMN full_checked_at INTEGER;
+  DELETE FROM logo_cache WHERE ok = 1 AND width > 0 AND height > 0
+    AND (width * 1.0 / height > 1.5 OR height * 1.0 / width > 1.5);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

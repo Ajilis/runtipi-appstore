@@ -1,12 +1,44 @@
 # Vigie Patrimoine
 
-## Nouveauté 0.9.9 — Plus-values latentes multi-actifs
+**Version du catalogue Runtipi : 19** · **Version de Vigie : 0.9.10** · **Runtipi minimum : 4.9.1**
+
+## Nouveautés de la version 0.9.10 : pastilles lisibles, logo complet dans le détail
+
+- Une **pastille d'établissement** n'affiche plus qu'une image à peu près carrée. Les logos horizontaux de Wikidata (nom de la marque écrit en long) devenaient un trait illisible dans 24 à 36 pixels : la pastille prend désormais l'icône carrée d'OpenFinTech ou du site officiel, et à défaut le monogramme.
+- Le **logo complet** horizontal est conservé à part. Il s'affiche, sur fond blanc pour rester lisible en thème sombre, dans le **détail d'un avoir** (ligne Établissement) et sur la page **Réglages → Établissements**, avec sa taille et sa provenance.
+- Les logos horizontaux enregistrés comme pastille par les versions 0.9.0 à 0.9.9 sont oubliés par la migration et recherchés de nouveau peu après le démarrage. Les autres logos sont complétés une fois par leur logo complet, sans action de votre part.
+- Si un établissement n'a qu'un logo horizontal, la page Établissements l'indique : ajoutez une image carrée pour sa pastille.
+
+## Nouveauté 0.9.9 : plus-values latentes multi-actifs
 
 Pour les actifs non immobiliers éligibles (or, métaux précieux, cryptomonnaies, bourse et autres placements), renseignez facultativement le **prix de revient total** et la **date d'acquisition** dans la fiche de l'avoir. Vigie affiche le gain ou la perte latent(e) brut(e) dans le détail de l'avoir et dans une synthèse sur la page **Avoirs**. Les montants sont inclus dans les exports CSV et les sauvegardes/restaurations JSON. L'immobilier conserve son calcul par quote-part.
 
 Les résultats restent indicatifs : aucun calcul fiscal, aucun mouvement d'achat/vente, et aucun prix de revient supposé pour les anciens avoirs.
 
-**Version du catalogue Runtipi : 8** · **Version de Vigie : 0.8.0** · **Runtipi minimum : 4.9.1**
+## Nouveautés des versions 0.9.0 à 0.9.8
+
+### Annuaire d'établissements en ligne et Réglages en onglets (0.9.0 à 0.9.2)
+
+- Les suggestions du champ **Établissement** s'enrichissent en direct depuis trois sources ouvertes : **OpenFinTech** (fournisseurs actifs en France, liste mise à jour chaque jour et vérifiée par empreinte SHA-256), **Wikidata** (recherche dès 3 lettres, entités financières uniquement) et le **registre public des entreprises** (API Recherche d'entreprises, activités financières, codes NAF 64 à 66). Ce registre ne garantit pas qu'un établissement soit agréé.
+- Les logos viennent d'OpenFinTech, de Wikidata (Wikimedia Commons), puis du site officiel. Seul le texte recherché est envoyé à ces services, jamais vos avoirs ni vos montants. Les résultats sont gardés en base et servent si une source est indisponible. `INSTITUTION_CATALOGUE=false` coupe ces requêtes.
+- **Réglages en onglets** : Général, Titulaires, Devises, Établissements, Données, E-mails et Sécurité, chacun accessible directement (par exemple `#/reglages/etablissements`).
+
+### Immobilier : achat, quote-part, estimation et plus-value (0.9.3 à 0.9.7)
+
+- **Valeur d'achat** et **date d'achat** distinctes de la **valeur actuelle** ; **plus-value latente brute** affichée (sans frais, travaux, crédit ni fiscalité).
+- **Quote-part de propriété** de 0,01 % à 100 % : vous saisissez la valeur du bien entier, le patrimoine compte votre part.
+- **Estimation sur demande** (bouton « Estimer » à côté de la valeur actuelle), à partir des ventes DVF via le service tiers **GeoRegistry**. L'adresse, le type, la surface et l'état du bien ne lui sont transmis que lorsque vous cliquez. Le résultat (valeur, fourchette, ventes comparables) remplit la valeur actuelle et un compte rendu s'ajoute aux notes ; rien n'est enregistré avant « Enregistrer ».
+- Les versions 0.9.5 et 0.9.6 expliquent précisément un échec d'estimation (adresse non reconnue, service limité, réponse inattendue) et lisent correctement les ventes du fournisseur.
+
+### Sécurité modifiable dans Vigie (0.9.4)
+
+- **Réglages → Sécurité** : délai d'inactivité, durée des sessions, seuil et durée du blocage, double authentification obligatoire, logos et service de secours se règlent par un administrateur, après confirmation de son mot de passe. Ces valeurs, enregistrées en base, priment sur `vigie.env`. La double authentification imposée par le formulaire Runtipi ou par `vigie.env` ne peut pas être retirée depuis Vigie.
+
+### Un patrimoine par compte, partage d'un bien immobilier (0.9.8)
+
+- **Changement important :** chaque avoir appartient désormais au **compte Vigie qui l'a créé**. Tableau de bord, avoirs, historique et exports sont personnels. À la mise à jour vers 0.9.8, tous les avoirs existants ont été attribués au **premier administrateur** : les autres comptes (par exemple un conjoint en lecture seule) ne voient plus ce patrimoine.
+- **Partager ce bien** : le propriétaire d'un bien immobilier propose une quote-part à un autre compte du serveur ayant une adresse e-mail. Le destinataire reçoit un e-mail, puis accepte ou refuse dans **Partages immobiliers** ; le bien apparaît alors dans son patrimoine pour sa part, en lecture seule. La proposition expire après 7 jours et le partage est révocable.
+- La **restauration d'un export JSON** est refusée si d'autres comptes ont des avoirs : utilisez alors les sauvegardes du serveur.
 
 ## Nouveautés de la version 0.8.0 : e-mails, invitations et mot de passe oublié
 
@@ -104,6 +136,9 @@ Vigie donne une vue globale et privée de votre patrimoine. Vous ne gérez aucun
 
 - **Avoirs par catégorie** : comptes courants, épargne réglementée, assurance-vie, bourse, épargne retraite, épargne salariale, immobilier, crypto-actifs, métaux précieux, prêts accordés, autres actifs. Catégories modifiables.
 - **Patrimoine net** : les passifs (crédit immobilier, autres crédits) sont déduits des actifs.
+- **Immobilier** : valeur d'achat, quote-part, estimation sur demande et plus-value latente ; **plus-values latentes** aussi pour l'or, la crypto, la bourse et les autres placements dont vous indiquez le prix de revient.
+- **Un patrimoine par compte**, avec partage d'un bien immobilier entre comptes après acceptation.
+- **Annuaire d'établissements** enrichi en direct (OpenFinTech, Wikidata, registre des entreprises) et logos des établissements.
 - **Échéancier automatique** pour les prêts accordés et les crédits : capital restant calculé chaque mois à partir du montant, du taux, de la durée et de la date de versement.
 - **Historique automatique** : chaque valeur saisie est conservée. Courbe d'évolution sur 3 mois à 3 ans, variations sur 1 mois, 1 an et depuis janvier.
 - **Mise à jour rapide** : un écran pour actualiser tous les avoirs d'un coup, avec l'estimation du nouveau patrimoine avant d'enregistrer.
@@ -148,7 +183,7 @@ Tout est dans le dossier de l'application Runtipi, `APP_DATA_DIR/data/` :
 
 ## Fichier de configuration
 
-Modifier `APP_DATA_DIR/data/config/vigie.env`, puis redémarrer l'application dans Runtipi.
+Modifier `APP_DATA_DIR/data/config/vigie.env`, puis redémarrer l'application dans Runtipi. Les réglages de session, de blocage, de double authentification et de logos peuvent aussi être changés dans **Réglages → Sécurité** : ces valeurs, enregistrées en base, priment sur le fichier (sauf la double authentification imposée, qui reste obligatoire).
 
 | Réglage | Par défaut | Rôle |
 | --- | --- | --- |
@@ -164,6 +199,7 @@ Modifier `APP_DATA_DIR/data/config/vigie.env`, puis redémarrer l'application da
 | `BACKUP_HOUR` | 3 | Heure de la sauvegarde quotidienne |
 | `BACKUP_KEEP_DAYS` | 30 | Durée de conservation (0 désactive) |
 | `ECB_RATES_ENABLED` | true | Bouton de récupération des taux BCE |
+| `INSTITUTION_CATALOGUE` | true | Suggestions d'établissements enrichies depuis OpenFinTech, Wikidata et le registre public des entreprises (false : catalogue embarqué uniquement, aucune requête vers ces services) |
 | `INSTITUTION_LOGOS` | true | Logos des établissements récupérés sur leur site officiel (false : aucune connexion sortante, images personnelles ou monogrammes) |
 | `INSTITUTION_LOGOS_FALLBACK` | true | Si le site bloque ou n'offre qu'une petite icône, icône demandée au service d'icônes de Google (seul le nom de domaine de l'établissement est transmis) |
 | `LOG_LEVEL` | info | Détail des journaux du conteneur |

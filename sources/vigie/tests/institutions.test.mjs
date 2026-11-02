@@ -256,7 +256,8 @@ test('OpenFinTech prioritaire sur Wikidata, puis site officiel en secours', asyn
   logos.directory = dir;
   logos.catalogue = dir.catalogue;
   assert.equal((await logos.get('n26')).type, 'image/png');
-  assert.deepEqual(calls, ['https://static.openfintech.io/vendors/n26-ref/icon.png']);
+  assert.equal(calls[0], 'https://static.openfintech.io/vendors/n26-ref/icon.png', 'OpenFinTech consulté en premier');
+  assert.ok(!calls.some((u) => new URL(u).hostname.endsWith('n26.com')), 'pas de requête au site officiel quand OpenFinTech a une icône carrée');
   assert.equal(logos.status().catalogue.n26.source, 'static.openfintech.io');
   logos.close(); dir.close();
 }));

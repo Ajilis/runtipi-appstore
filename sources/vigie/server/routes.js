@@ -657,7 +657,15 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Logos des établissements ----------------------------------------------------------------------------------
-  router.get('/api/institutions/logos', { auth: 'viewer' }, () => ({ enabled: cfg.INSTITUTION_LOGOS, versions: logos.versions() }));
+  router.get('/api/institutions/logos', { auth: 'viewer' }, () => ({ enabled: cfg.INSTITUTION_LOGOS, versions: logos.versions(), full: logos.fullVersions() }));
+
+  // Logo complet (horizontal) affiché dans le détail d'un avoir ; 404 s'il n'existe pas.
+  router.get('/api/institutions/logo/:id/full', { auth: 'viewer' }, (ctx) => {
+    if (!/^[a-z0-9-]{1,90}$/.test(ctx.params.id)) fail(404, 'not_found', 'Établissement inconnu.');
+    const full = logos.full(ctx.params.id);
+    if (!full) fail(404, 'not_found', 'Aucun logo complet pour cet établissement.');
+    ctx.sendBody(200, Buffer.from(full.data), full.type, { 'Cache-Control': 'private, max-age=604800' });
+  });
 
   router.get('/api/institutions/logo/:id', { auth: 'viewer' }, async (ctx) => {
     if (!/^[a-z0-9-]{1,90}$/.test(ctx.params.id)) fail(404, 'not_found', 'Établissement inconnu.');

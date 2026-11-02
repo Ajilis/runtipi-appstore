@@ -533,6 +533,14 @@ details.amort > p { margin-top: 8px; }
   .copy-row { flex-direction: column; }
 }
 
+/* --- Logo complet (horizontal) : sur fond blanc, quel que soit le thème, car dessiné pour un fond clair ---------- */
+.inst-full { display: inline-flex; align-items: center; max-width: 100%; padding: 6px 10px; background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-s); }
+.inst-full img { display: block; height: 22px; width: auto; max-width: min(200px, 100%); object-fit: contain; }
+.inst-full-row { display: flex; margin-top: 8px; }
+.logos-table .sub.full-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.logos-table .full-line .inst-full { padding: 4px 8px; }
+.logos-table .full-line .inst-full img { height: 16px; max-width: 140px; }
+
 /* --- Logos des établissements ------------------------------------------------------------------------------------ */
 .logo-summary { display: grid; gap: 14px; justify-items: start; }
 .logo-summary p { margin: 0; }

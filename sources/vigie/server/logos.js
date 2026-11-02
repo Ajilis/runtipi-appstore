@@ -242,6 +242,15 @@ export async function fetchLogo(host, fetcher = globalThis.fetch, { fallback = f
   return best;
 }
 
+// Forme d'une image : une pastille n'affiche lisiblement qu'une image à peu près carrée. Un logo horizontal
+// (nom de la marque en long, fréquent sur Wikidata) devient illisible dans 24 à 36 px : il est gardé comme
+// « logo complet » pour le détail d'un avoir, et la pastille prend l'icône carrée du site officiel.
+export const SQUARISH_MAX_RATIO = 1.5;
+export function isSquarish(img) {
+  if (!img || !img.width || !img.height) return false;
+  return Math.max(img.width, img.height) / Math.min(img.width, img.height) <= SQUARISH_MAX_RATIO;
+}
+
 // Les URLs externes ne proviennent jamais d'un champ libre : seuls les deux
 // hébergeurs de ressources du catalogue ouvert sont acceptés.
 export async function fetchDirectoryLogo(url, fetcher = globalThis.fetch) {
@@ -282,36 +291,48 @@ export class LogoService {
     return this.db.prepare('SELECT content_type, data, ok, fetched_at, width, height FROM logo_cache WHERE host = ?').get(host);
   }
 
+  // Cherche l'image de la pastille (carrée) et, s'il existe, le logo complet (horizontal) d'un établissement.
+  // Ordre : OpenFinTech, Wikidata, puis icône du site officiel. Renvoie l'image de la pastille ou null.
   refresh(host) {
     if (this.pending.has(host)) return this.pending.get(host);
     const p = (async () => {
       let logo = null;
+      let full = null;
+      const consider = (img) => {
+        if (!img) return;
+        if (isSquarish(img)) { if (!logo) logo = img; } else if (!full) full = img;
+      };
       try {
         const entry = [...this.catalogue.values()].find((e) => this.cacheKeyOf(e) === host);
         // Les sources ouvertes sont recherchées en premier, pour les fiches historiques
         // comme pour les établissements Sirene (même sans site officiel connu).
         const candidates = [this.directory?.openFinTechLogo(entry), entry?.logo_url].filter(Boolean);
         for (const url of new Set(candidates)) {
-          logo = await fetchDirectoryLogo(url, this.fetcher);
+          consider(await fetchDirectoryLogo(url, this.fetcher));
           if (logo) break;
         }
-        if (!logo && entry && this.directory?.enabled) {
+        // Wikidata est aussi consulté quand la pastille est déjà trouvée, pour le logo complet.
+        if (entry && this.directory?.enabled && !full) {
           const wikidataUrl = await this.directory.wikidataLogo(entry).catch((err) => {
             this.log.debug?.('Wikidata logo ' + entry.id + ' : ' + err.message);
             return null;
           });
-          if (wikidataUrl && !candidates.includes(wikidataUrl)) logo = await fetchDirectoryLogo(wikidataUrl, this.fetcher);
+          if (wikidataUrl && !candidates.includes(wikidataUrl)) consider(await fetchDirectoryLogo(wikidataUrl, this.fetcher));
         }
         if (!logo && entry?.host) logo = await fetchLogo(entry.host, this.fetcher, { fallback: this.fallback });
       } catch (err) { this.log.debug?.(`Logo ${host} : ${err.message}`); }
       if (this.closed) return logo;
       try {
-        this.db.prepare(`INSERT INTO logo_cache (host, content_type, data, ok, fetched_at, width, height, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        this.db.prepare(`INSERT INTO logo_cache (host, content_type, data, ok, fetched_at, width, height, source,
+            full_content_type, full_data, full_width, full_height, full_source, full_checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(host) DO UPDATE SET content_type = excluded.content_type, data = excluded.data, ok = excluded.ok, fetched_at = excluded.fetched_at,
-          width = excluded.width, height = excluded.height, source = excluded.source`)
-          .run(host, logo ? logo.type : null, logo ? logo.data : null, logo ? 1 : 0, Date.now(), logo ? logo.width : null, logo ? logo.height : null, logo ? String(logo.source).slice(0, 300) : null);
+          width = excluded.width, height = excluded.height, source = excluded.source, full_content_type = excluded.full_content_type, full_data = excluded.full_data,
+          full_width = excluded.full_width, full_height = excluded.full_height, full_source = excluded.full_source, full_checked_at = excluded.full_checked_at`)
+          .run(host, logo ? logo.type : null, logo ? logo.data : null, logo ? 1 : 0, Date.now(), logo ? logo.width : null, logo ? logo.height : null,
+            logo ? String(logo.source).slice(0, 300) : null, full ? full.type : null, full ? full.data : null, full ? full.width : null, full ? full.height : null,
+            full ? String(full.source).slice(0, 300) : null, Date.now());
       } catch (err) { this.log.warn?.(`Logo ${host} non enregistré : ${err.message}`); }
-      if (!logo) this.log.info?.(`Logo indisponible pour ${host} : monogramme affiché`);
+      if (!logo) this.log.info?.(`Logo indisponible pour ${host} : monogramme affiché${full ? ' (seul un logo horizontal existe)' : ''}`);
       return logo;
     })().finally(() => this.pending.delete(host));
     this.pending.set(host, p);
@@ -336,6 +357,16 @@ export class LogoService {
     if (fresh) return fresh;
     // Pas encore de réponse : ancien logo s'il existe, sinon monogramme (le prochain affichage aura le logo).
     return row && row.ok ? { type: row.content_type, data: row.data } : null;
+  }
+
+  // Logo complet (horizontal) d'un établissement du catalogue, déjà en cache : { type, data } ou null.
+  // Jamais de requête sortante ici ; il est cherché avec la pastille.
+  full(id) {
+    const entry = this.catalogue.get(id);
+    const key = entry && this.enabled ? this.cacheKeyOf(entry) : null;
+    if (!key) return null;
+    const row = this.db.prepare('SELECT full_content_type, full_data FROM logo_cache WHERE host = ? AND full_data IS NOT NULL').get(key);
+    return row ? { type: row.full_content_type, data: row.full_data } : null;
   }
 
   // --- Images déposées par l'administrateur ---------------------------------------------------------------------
@@ -366,19 +397,29 @@ export class LogoService {
     return out;
   }
 
+  // Établissements dont un logo complet est en cache, avec sa version.
+  fullVersions() {
+    const out = {};
+    if (!this.enabled) return out;
+    const full = new Map(this.db.prepare('SELECT host, fetched_at FROM logo_cache WHERE full_data IS NOT NULL').all().map((r) => [r.host, r.fetched_at]));
+    for (const [id, e] of this.catalogue) { const k = this.cacheKeyOf(e); if (k && full.has(k)) out[id] = `w${full.get(k)}`; }
+    return out;
+  }
+
   // État détaillé pour la page « Logos des établissements ».
   status() {
-    const rows = new Map(this.db.prepare('SELECT host, ok, fetched_at, width, height, source FROM logo_cache').all().map((r) => [r.host, r]));
+    const rows = new Map(this.db.prepare('SELECT host, ok, fetched_at, width, height, source, full_width, full_height, full_source, full_data IS NOT NULL AS has_full FROM logo_cache').all().map((r) => [r.host, r]));
     const catalogue = {};
     for (const [id, e] of this.catalogue) {
       const key = this.cacheKeyOf(e);
       const r = key ? rows.get(key) : null;
-      let status = !key ? 'no_site' : !r ? 'missing' : r.ok ? 'ok' : 'failed';
+      let status = !key ? 'no_site' : !r ? 'missing' : r.ok ? 'ok' : r.has_full ? 'wide_only' : 'failed';
       if (key && this.pending.has(key)) status = 'fetching';
       catalogue[id] = {
         status, host: e.host || (this.directory?.enabled || e.logo_url ? 'Wikidata / OpenFinTech' : null),
         fetched_at: r ? r.fetched_at : null, width: r && r.ok ? r.width : null, height: r && r.ok ? r.height : null, source: r && r.ok ? r.source : null,
         retry_after: r && !r.ok ? r.fetched_at + FAIL_TTL_MS : null,
+        full: r && r.has_full ? { width: r.full_width, height: r.full_height, source: r.full_source } : null,
       };
     }
     const custom = {};
@@ -392,11 +433,12 @@ export class LogoService {
     if (!this.enabled || this.closed) return null;
     if (this.batch) return this.batch;
     const now = Date.now();
-    const rows = new Map(this.db.prepare('SELECT host, ok, fetched_at, width FROM logo_cache').all().map((r) => [r.host, r]));
+    const rows = new Map(this.db.prepare('SELECT host, ok, fetched_at, width, full_checked_at FROM logo_cache').all().map((r) => [r.host, r]));
     const hosts = [...new Set([...this.catalogue.values()].map((e) => this.cacheKeyOf(e)).filter(Boolean))].filter((h) => {
       const r = rows.get(h);
       if (!r) return true;
-      if (r.ok) return now - r.fetched_at >= OK_TTL_MS || r.width === null;
+      // Logos des versions antérieures à 0.9.10 : jamais examinés pour un logo complet, repris une fois.
+      if (r.ok) return now - r.fetched_at >= OK_TTL_MS || r.width === null || (Boolean(this.directory?.enabled) && r.full_checked_at === null);
       return includeFailed || now - r.fetched_at >= FAIL_TTL_MS;
     });
     const batch = { total: hosts.length, done: 0, found: 0, started_at: now };

@@ -26,6 +26,7 @@
     inst: { list: [], map: new Map() },
     logos: false,
     logoVersions: null,
+    logoFull: {},
     filter: '',
     base: 'EUR',
     charts: [],
@@ -205,7 +206,16 @@
     return html`<span class="inst ${cls} ${txt.length > 2 ? 'm3' : ''}" style="--h:${monoHue(label)}" aria-hidden="true"><span class="mono">${txt}</span>${img ? html`<img class="inst-img" src="/api/institutions/logo/${key}${v ? `?v=${v}` : ''}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
   }
   async function loadLogoVersions() {
-    try { const r = await api('GET', '/api/institutions/logos'); state.logoVersions = r.versions || {}; state.logos = Boolean(r.enabled); } catch { state.logoVersions = {}; }
+    try { const r = await api('GET', '/api/institutions/logos'); state.logoVersions = r.versions || {}; state.logoFull = r.full || {}; state.logos = Boolean(r.enabled); }
+    catch { state.logoVersions = {}; state.logoFull = {}; }
+  }
+  // Logo complet (souvent horizontal) d'un établissement, sur fond blanc : seulement là où la place le permet.
+  function instFullLogo(name) {
+    const key = String(name || '').trim() ? logoKeyFor(name) : null;
+    const v = key && state.logoFull ? state.logoFull[key] : null;
+    if (!v) return '';
+    const entry = findInstitution(name);
+    return html`<span class="inst-full"><img src="/api/institutions/logo/${key}/full?v=${v}" alt="Logo ${entry ? entry.name : name}" loading="lazy" decoding="async"></span>`;
   }
   const initials = (u) => (((u.first_name || u.display_name || u.username || '?').trim().charAt(0)) + ((u.last_name || '').trim().charAt(0))).toUpperCase();
   const nameFields = (u = {}, autofocus = false) => html`<div class="grid-2">
@@ -1419,7 +1429,7 @@
         <small class="muted">Une seule valeur par date : enregistrer à une date existante remplace la valeur de ce jour.</small>
       </form>` : ''}
       <dl class="kv">
-        <dt>${icon('bank')}Établissement</dt><dd>${h.institution ? html`<span class="cell-lead">${instLogo(h.institution, 's24')}<span>${h.institution}</span></span>` : '—'}</dd>
+        <dt>${icon('bank')}Établissement</dt><dd>${h.institution ? html`<span class="cell-lead">${instLogo(h.institution, 's24')}<span>${h.institution}</span></span>${instFullLogo(h.institution) ? html`<span class="inst-full-row">${instFullLogo(h.institution)}</span>` : ''}` : '—'}</dd>
         <dt>${icon('user')}Titulaire</dt><dd>${h.owner || '—'}</dd>
         <dt>${icon('exchange')}Devise</dt><dd>${h.currency}</dd>
         <dt>${icon(LIQ_ICON[h.liquidity])}Liquidité</dt><dd>${LIQ[h.liquidity]}</dd>
@@ -1953,6 +1963,9 @@
       <input type="file" id="logo-file" accept="image/*" hidden></div>`);
     const root = $('#logos-page');
 
+    // Logo complet (horizontal) trouvé en plus de la pastille : aperçu et provenance.
+    const fullCell = (r) => (r.st && r.st.full && state.logoFull && state.logoFull[r.key]
+      ? html`<span class="sub full-line">${instFullLogo(r.name)}<span>Logo complet ${r.st.full.width} × ${r.st.full.height} px${r.st.full.source === 'commons.wikimedia.org' ? ', Wikimedia Commons' : ''}</span></span>` : '');
     const statusCell = (r) => {
       if (r.custom) return html`<span class="tag brand">${icon('pencil')}Image personnelle</span><span class="sub">${r.custom.width && r.custom.height ? `${r.custom.width} × ${r.custom.height} px, ` : ''}ajoutée le ${msDate(r.custom.updated_at)}</span>`;
       if (!r.st) return html`<span class="tag">${icon('info')}Monogramme</span><span class="sub">Hors catalogue : ajoutez une image</span>`;
@@ -1963,8 +1976,9 @@
         let from = '';
         try { from = new URL(s.source).host; } catch { from = s.source || ''; }
         const provenance = s.source === 'commons.wikimedia.org' ? 'Wikimedia Commons' : s.source === 'static.openfintech.io' ? 'OpenFinTech' : 'Logo trouvé';
-        return html`<span class="tag brand">${icon('check')}${provenance}</span><span class="sub">${s.width ? `${s.width} × ${s.height} px` : 'taille inconnue'}${from ? `, ${from}` : ''}, le ${msDate(s.fetched_at)}</span>${small ? html`<span class="sub warn">${icon('alert')}Petite icône : une image plus grande sera plus nette</span>` : ''}`;
+        return html`<span class="tag brand">${icon('check')}${provenance}</span><span class="sub">${s.width ? `${s.width} × ${s.height} px` : 'taille inconnue'}${from ? `, ${from}` : ''}, le ${msDate(s.fetched_at)}</span>${small ? html`<span class="sub warn">${icon('alert')}Petite icône : une image plus grande sera plus nette</span>` : ''}${fullCell(r)}`;
       }
+      if (s.status === 'wide_only') return html`<span class="tag">${icon('info')}Monogramme</span><span class="sub">Seul un logo horizontal existe : il s'affiche dans le détail des avoirs. Pour la pastille, ajoutez une image carrée.</span>${fullCell(r)}`;
       if (s.status === 'fetching') return html`<span class="tag">${icon('clock')}Recherche en cours…</span>`;
       if (s.status === 'failed') return html`<span class="tag stale">${icon('alert')}Introuvable</span><span class="sub">Site inaccessible ou sans icône. Nouvel essai automatique le ${msDate(s.retry_after)}</span>`;
       if (s.status === 'no_site') return html`<span class="tag">${icon('info')}Monogramme</span><span class="sub">Aucun site officiel connu</span>`;
