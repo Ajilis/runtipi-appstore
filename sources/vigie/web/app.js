@@ -461,7 +461,9 @@
     d.scrollTop = 0;
     if (!d.open) d.showModal();
     const first = d.querySelector('[autofocus]') || d.querySelector('input:not([type=hidden]), select, textarea, button');
-    if (first) first.focus();
+    // Un panneau latéral s'ouvre toujours en haut (nom, valeur, partage) : le focus ne doit pas le faire défiler.
+    if (first) first.focus(drawer ? { preventScroll: true } : undefined);
+    if (drawer) d.scrollTop = 0;
     return d;
   }
   const closeDialog = () => { if (modal().open) modal().close(); };
@@ -1581,7 +1583,7 @@
       ${sc ? loanPanel(h, sc, w) : ''}
       ${mayEdit && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
         ${h3i('plus', 'Nouvelle valeur')}
-        <div class="grid-2"><label class="field"><span>${property ? 'Valeur du bien entier' : partial ? "Valeur de l'avoir entier" : 'Valeur'} en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" autofocus placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
+        <div class="grid-2"><label class="field"><span>${property ? 'Valeur du bien entier' : partial ? "Valeur de l'avoir entier" : 'Valeur'} en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
         <label class="field"><span>Note (facultative)</span><input class="input" name="note" maxlength="120" placeholder="Relevé annuel, estimation notaire…"></label>
         <div class="form-actions"><button class="btn primary" type="submit">${icon('check')}Enregistrer la valeur</button></div>

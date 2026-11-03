@@ -275,6 +275,9 @@ test('partage : plus de menu dédié, état affiché sur les avoirs, demandes en
   assert.match(ui,/\$\{sharePanel\(h, sharing, mayEdit, property\)\}/,'section Partage dans chaque avoir');
   assert.match(ui,/\$\{shareTop\(h, sharing, mayEdit, property\)\}/,'bouton Partager en tête du détail');
   assert.match(ui,/'Partager ce bien'/);
+  // Le détail d'un avoir s'ouvre en haut (nom, valeur, partage), sans défiler jusqu'au champ « Nouvelle valeur ».
+  assert.match(ui,/first\.focus\(drawer \? \{ preventScroll: true \} : undefined\)/);
+  assert.doesNotMatch(ui,/name="amount" inputmode="decimal" required autocomplete="off" autofocus/);
   assert.match(ui,/<dt>Partagé<\/dt>/);
   assert.match(ui,/Approuvé le/);
   assert.match(ui,/En attente de son accord/);
