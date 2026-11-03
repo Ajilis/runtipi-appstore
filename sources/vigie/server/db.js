@@ -348,6 +348,10 @@ export const MIGRATIONS = [
   DROP TABLE mig_max;
   CREATE INDEX idx_categories_account ON categories(account_user_id);
   `,
+  // 1.1.0 : « Rester connecté » — session mémorisée sur l'appareil, prolongée à chaque usage.
+  `
+  ALTER TABLE sessions ADD COLUMN remember INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

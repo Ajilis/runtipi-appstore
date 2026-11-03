@@ -48,31 +48,46 @@ export class SessionStore {
     this.cfg = cfg;
   }
 
-  create(userId, ip, userAgent) {
+  // « Rester connecté » actif : nombre de jours (0 si l'administrateur a retiré l'option).
+  get rememberMs() { return Math.max(0, Number(this.cfg.SESSION_REMEMBER_DAYS) || 0) * 86400_000; }
+
+  // Session ordinaire : cookie de navigateur, délai d'inactivité et durée maximale des Réglages.
+  // Session mémorisée (« Rester connecté ») : cookie conservé, valable N jours sans utilisation, prolongé à chaque usage.
+  create(userId, ip, userAgent, { remember = false } = {}) {
     const token = randomToken(32);
     const now = Date.now();
-    const expires = now + this.cfg.SESSION_MAX_HOURS * 3600_000;
-    this.db.prepare('INSERT INTO sessions (id, user_id, created_at, last_seen_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(sha256(token), userId, now, now, expires, ip, String(userAgent || '').slice(0, 300));
-    return { token, expires };
+    const keep = remember && this.rememberMs > 0;
+    const expires = now + (keep ? this.rememberMs : this.cfg.SESSION_MAX_HOURS * 3600_000);
+    this.db.prepare('INSERT INTO sessions (id, user_id, created_at, last_seen_at, expires_at, ip, user_agent, remember) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(sha256(token), userId, now, now, expires, ip, String(userAgent || '').slice(0, 300), keep ? 1 : 0);
+    return { token, expires, maxAge: keep ? Math.floor(this.rememberMs / 1000) : undefined };
   }
 
   // Renvoie { session, user } ou null ; prolonge l'activité au plus une fois par minute.
   resolve(token) {
     if (!token || typeof token !== 'string' || token.length > 100) return null;
     const id = sha256(token);
-    const row = this.db.prepare(`SELECT s.id AS sid, s.created_at AS s_created, s.last_seen_at, s.expires_at, s.ip AS s_ip, u.*
+    const row = this.db.prepare(`SELECT s.id AS sid, s.created_at AS s_created, s.last_seen_at, s.expires_at, s.ip AS s_ip, s.remember AS s_remember, u.*
       FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`).get(id);
     if (!row) return null;
     const now = Date.now();
-    const idleLimit = this.cfg.SESSION_IDLE_MINUTES * 60_000;
+    // Une session mémorisée redevient ordinaire si l'administrateur retire l'option.
+    const remembered = row.s_remember === 1 && this.rememberMs > 0;
+    const idleLimit = remembered ? this.rememberMs : this.cfg.SESSION_IDLE_MINUTES * 60_000;
     if (row.expires_at < now || row.last_seen_at + idleLimit < now || row.disabled) {
       this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
       return null;
     }
-    if (now - row.last_seen_at > 60_000) this.db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(now, id);
-    const { sid, s_created, last_seen_at, expires_at, s_ip, ...user } = row;
-    return { session: { id: sid, created_at: s_created, last_seen_at, expires_at, ip: s_ip }, user };
+    let renew = null;
+    let expiresAt = row.expires_at;
+    if (remembered && now - row.last_seen_at > 3600_000) {
+      // Au plus une fois par heure : nouvelle échéance et cookie renvoyé pour la même durée.
+      expiresAt = now + this.rememberMs;
+      this.db.prepare('UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?').run(now, expiresAt, id);
+      renew = { token, maxAge: Math.floor(this.rememberMs / 1000) };
+    } else if (now - row.last_seen_at > 60_000) this.db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(now, id);
+    const { sid, s_created, last_seen_at, expires_at, s_ip, s_remember, ...user } = row;
+    return { session: { id: sid, created_at: s_created, last_seen_at, expires_at: expiresAt, ip: s_ip, remember: remembered }, user, renew };
   }
 
   destroy(sessionId) {
@@ -86,7 +101,8 @@ export class SessionStore {
 
   purgeExpired() {
     const now = Date.now();
-    this.db.prepare('DELETE FROM sessions WHERE expires_at < ? OR last_seen_at < ?').run(now, now - this.cfg.SESSION_IDLE_MINUTES * 60_000);
+    this.db.prepare('DELETE FROM sessions WHERE expires_at < ? OR (last_seen_at < ? AND (remember = 0 OR ? = 0))')
+      .run(now, now - this.cfg.SESSION_IDLE_MINUTES * 60_000, this.rememberMs);
   }
 
   cookie(req, token, maxAgeSeconds) {
@@ -126,9 +142,9 @@ export class IpLimiter {
 // Défis de double authentification en attente (après un mot de passe correct), valables 5 minutes.
 export class PendingChallenges {
   constructor() { this.map = new Map(); }
-  create(userId) {
+  create(userId, extra = {}) {
     const token = randomToken(24);
-    this.map.set(token, { userId, expires: Date.now() + 5 * 60_000, attempts: 0 });
+    this.map.set(token, { ...extra, userId, expires: Date.now() + 5 * 60_000, attempts: 0 });
     for (const [k, v] of this.map) if (v.expires < Date.now()) this.map.delete(k);
     return token;
   }

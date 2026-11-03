@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 25** · **Version de Vigie : 1.0.2** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 26** · **Version de Vigie : 1.1.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -77,7 +77,8 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Invitations par e-mail** : la personne reçoit un lien valable 7 jours et à usage unique, choisit son identifiant et son mot de passe, puis arrive connectée. Sans e-mail, un lien peut être transmis à la main ; l'ajout direct avec un mot de passe provisoire reste possible.
 - **Partage d'un avoir** avec un autre compte du serveur (compte joint, livret, assurance-vie, bien immobilier, crédit…) : bouton **Partager cet avoir** dans le détail de l'avoir, quote-part proposée (la moitié par défaut, ou la part non attribuée d'un bien en indivision). Le destinataire voit la demande **en haut de ses Avoirs et de son tableau de bord**, avec **Accepter** et **Refuser** (et un e-mail si l'envoi est configuré). Chaque avoir indique s'il est **partagé ou non**, avec qui, **depuis quand** et si le destinataire **a approuvé**, est **en attente** ou **a refusé** ; une étiquette le résume dans la liste. Après accord, chacun ne compte que sa part ; le destinataire voit l'avoir en lecture seule. Le partage se retire à tout moment.
 - **Quote-part** : pour un compte joint ou un placement à deux, indiquez votre part (100 % par défaut) ; seule celle-ci entre dans votre patrimoine.
-- **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes.
+- **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes (les connexions mémorisées y sont signalées), mon journal.
+- **Rester connecté** : case sur l'écran de connexion, cochée par défaut dans l'application installée. La connexion est mémorisée sur l'appareil jusqu'à 30 jours sans utilisation (réglable, ou retirée, dans Réglages → Sécurité) et se prolonge à chaque usage ; sans la case, elle se ferme avec le navigateur ou après le délai d'inactivité.
 
 ### Sécurité et contrôle d'accès
 
@@ -114,6 +115,15 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.1.0 : « Rester connecté » et version au-dessus du nom
+
+- **Rester connecté sur cet appareil** : nouvelle case sur l'écran de connexion, dans le navigateur comme dans l'application installée (PWA), où elle est cochée par défaut. Ailleurs, Vigie retient le dernier choix fait sur l'appareil.
+  - Case cochée : la connexion est mémorisée **30 jours sans utilisation** et se prolonge à chaque usage ; plus besoin de se reconnecter à chaque ouverture de l'application. La double authentification reste demandée à la connexion.
+  - Case décochée : comme avant, la connexion se ferme avec le navigateur ou après le délai d'inactivité.
+  - **Réglages → Sécurité** (administrateur) : durée de « Rester connecté » de 1 à 365 jours, ou 0 pour retirer la case ; les connexions déjà mémorisées repassent alors au délai d'inactivité ordinaire. Fichier de configuration : `SESSION_REMEMBER_DAYS`.
+  - **Mon compte → Sessions ouvertes** signale les connexions mémorisées et leur échéance ; « Fermer » ou « Fermer les autres sessions » les arrête comme les autres.
+- Le **numéro de version** s'affiche désormais au-dessus du nom, en bas à gauche.
 
 ### Version 1.0.2 : bouton Partager en tête du détail
 
@@ -312,6 +322,7 @@ Modifier `APP_DATA_DIR/data/config/vigie.env`, puis redémarrer l'application da
 | --- | --- | --- |
 | `SESSION_IDLE_MINUTES` | 120 | Déconnexion après inactivité |
 | `SESSION_MAX_HOURS` | 72 | Durée maximale d'une session |
+| `SESSION_REMEMBER_DAYS` | 30 | « Rester connecté » : jours sans utilisation avant déconnexion (0 retire la case) |
 | `LOGIN_MAX_ATTEMPTS` | 5 | Échecs avant blocage du compte |
 | `LOGIN_LOCK_MINUTES` | 15 | Durée du blocage |
 | `IP_MAX_FAILURES` | 20 | Échecs tolérés par adresse IP sur 15 min |

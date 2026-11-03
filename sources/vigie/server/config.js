@@ -19,6 +19,7 @@ const SECRET_FILE = path.join(paths.config, 'secret.key');
 const SPEC = {
   SESSION_IDLE_MINUTES: { type: 'int', def: 120, min: 5, max: 10080, doc: "Déconnexion automatique après cette durée d'inactivité (minutes)." },
   SESSION_MAX_HOURS: { type: 'int', def: 72, min: 1, max: 2160, doc: 'Durée de vie maximale d\'une session, même active (heures).' },
+  SESSION_REMEMBER_DAYS: { type: 'int', def: 30, min: 0, max: 365, doc: '« Rester connecté » : la connexion mémorisée dure ce nombre de jours sans utilisation, prolongée à chaque usage. 0 retire la case.' },
   LOGIN_MAX_ATTEMPTS: { type: 'int', def: 5, min: 3, max: 50, doc: 'Nombre d\'échecs de connexion avant blocage temporaire du compte.' },
   LOGIN_LOCK_MINUTES: { type: 'int', def: 15, min: 1, max: 1440, doc: 'Durée du blocage temporaire du compte (minutes).' },
   IP_MAX_FAILURES: { type: 'int', def: 20, min: 5, max: 1000, doc: 'Nombre d\'échecs tolérés par adresse IP sur 15 minutes avant refus.' },

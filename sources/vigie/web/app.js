@@ -567,11 +567,25 @@
     });
   }
 
+  // « Rester connecté » : proposé si l'administrateur ne l'a pas retiré ; coché par défaut dans l'application
+  // installée (PWA), sinon selon le dernier choix fait sur cet appareil.
+  const rememberDays = () => (state.boot && state.boot.remember_days) || 0;
+  function rememberDefault(value) {
+    try {
+      if (value !== undefined) { localStorage.setItem('vigie.remember', value ? '1' : '0'); return value; }
+      const saved = localStorage.getItem('vigie.remember');
+      if (saved !== null) return saved === '1';
+    } catch { /* stockage indisponible : valeur par défaut */ }
+    return pwa.standalone();
+  }
+
   function showLogin(message, username = '') {
     gate(html`<div><h1>Connexion</h1>${message ? html`<p class="lead">${message}</p>` : ''}</div>
       <form class="form" id="login-form">
         <label class="field"><span>Nom d'utilisateur</span><input class="input" name="username" autocomplete="username" required value="${username}" ${username ? '' : raw('autofocus')}></label>
         <label class="field"><span>Mot de passe</span><input class="input" type="password" name="password" autocomplete="current-password" required ${username ? raw('autofocus') : ''}></label>
+        ${rememberDays() ? html`<div class="field remember-field"><label class="check"><input type="checkbox" name="remember" ${rememberDefault() ? 'checked' : ''}><span>Rester connecté sur cet appareil</span></label>
+          <small>La connexion dure jusqu'à ${rememberDays()} jours sans utilisation et se prolonge à chaque usage. À éviter sur un appareil partagé.</small></div>` : ''}
         <p class="error-text" id="login-error" role="alert" hidden></p>
         <button class="btn primary" type="submit">${icon('login')}Se connecter</button>
       </form>
@@ -584,7 +598,9 @@
       const errEl = $('#login-error');
       await withBusy(e.submitter, async () => {
         try {
-          const r = await api('POST', '/api/auth/login', formData(e.target));
+          const body = formData(e.target);
+          if ('remember' in body) rememberDefault(body.remember);
+          const r = await api('POST', '/api/auth/login', body);
           if (r.totp_required) return showTotp(r.challenge);
           await boot();
         } catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
@@ -757,10 +773,10 @@
             ${link('compte')}${link('utilisateurs')}${link('journal')}
           </nav>
           <div class="rail-foot">
+            <span class="version">Version ${state.boot.version}</span>
             <div class="who"><span class="avatar" aria-hidden="true">${initials(u)}</span><div><b>${u.display_name}</b><span>${ROLE[u.role]}</span></div></div>
             <button class="btn ghost small" type="button" data-action="install-app" data-install-btn ${pwa.state() === 'prompt' ? '' : raw('hidden')}>${icon('download')}<span class="txt">Installer l'application</span></button>
             <button class="btn ghost small" type="button" data-action="logout">${icon('logout')}<span class="txt">Se déconnecter</span></button>
-            <span class="version">Version ${state.boot.version}</span>
           </div>
         </div>
       </aside>
@@ -1925,6 +1941,7 @@
           <div class="grid-2">
             <label class="field"><span>Déconnexion après inactivité (minutes)</span><input class="input" type="number" name="session_idle_minutes" min="5" max="10080" step="1" required value="${s.security.session_idle_minutes}"><small>De 5 à 10 080 minutes. Applicable aux sessions ouvertes.</small></label>
             <label class="field"><span>Durée maximale d'une session (heures)</span><input class="input" type="number" name="session_max_hours" min="1" max="2160" step="1" required value="${s.security.session_max_hours}"><small>De 1 à 2 160 heures. Applicable aux nouvelles sessions.</small></label>
+            <label class="field"><span>« Rester connecté » (jours)</span><input class="input" type="number" name="session_remember_days" min="0" max="365" step="1" required value="${s.security.session_remember_days}"><small>Durée d'une connexion mémorisée sans utilisation, renouvelée à chaque usage. 0 retire la case de l'écran de connexion et ferme ces connexions à la fin du délai d'inactivité.</small></label>
             <label class="field"><span>Échecs avant blocage du compte</span><input class="input" type="number" name="login_max_attempts" min="3" max="50" step="1" required value="${s.security.login_max_attempts}"><small>De 3 à 50 échecs consécutifs.</small></label>
             <label class="field"><span>Durée du blocage (minutes)</span><input class="input" type="number" name="login_lock_minutes" min="1" max="1440" step="1" required value="${s.security.login_lock_minutes}"><small>De 1 à 1 440 minutes.</small></label>
           </div>
@@ -1995,6 +2012,7 @@
       const policy = {
         session_idle_minutes: Number(values.session_idle_minutes),
         session_max_hours: Number(values.session_max_hours),
+        session_remember_days: Number(values.session_remember_days),
         login_max_attempts: Number(values.login_max_attempts),
         login_lock_minutes: Number(values.login_lock_minutes),
         institution_logos: values.institution_logos,
@@ -2266,7 +2284,7 @@
           </div></section>
           <section class="section"><div class="section-head">${h2i('devices', 'Sessions ouvertes')}${sessions.length > 1 ? html`<button class="btn small" data-action="revoke-others">${icon('logout')}Fermer les autres sessions</button>` : ''}</div>
             <div class="panel flush table-wrap"><table class="table"><thead><tr><th>Appareil</th><th>Adresse IP</th><th>Dernière activité</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
-            ${sessions.map((x) => html`<tr><td>${il(/iPhone|Android|Mobile/.test(x.user_agent || '') ? 'phone' : 'devices', uaLabel(x.user_agent))}${x.current ? html` <span class="tag brand">Cette session</span>` : ''}</td><td>${x.ip || '—'}</td><td>${dateTime(x.last_seen_at)}</td>
+            ${sessions.map((x) => html`<tr><td>${il(/iPhone|Android|Mobile/.test(x.user_agent || '') ? 'phone' : 'devices', uaLabel(x.user_agent))}${x.current ? html` <span class="tag brand">Cette session</span>` : ''}${x.remember ? html` <span class="tag" title="Connexion mémorisée : « Rester connecté »">${icon('lock')}Mémorisée jusqu'au ${msDay(x.expires_at)}</span>` : ''}</td><td>${x.ip || '—'}</td><td>${dateTime(x.last_seen_at)}</td>
               <td class="num">${x.current ? '' : html`<button class="btn small" data-action="revoke-session" data-id="${x.id}">${icon('logout')}Fermer</button>`}</td></tr>`)}
             </tbody></table></div></section>
         </div>

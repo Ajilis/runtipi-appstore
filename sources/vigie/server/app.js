@@ -70,7 +70,10 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
       const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
       if (token) {
         const resolved = sessions.resolve(token);
-        if (resolved) { ctx.user = resolved.user; ctx.session = resolved.session; }
+        if (resolved) {
+          ctx.user = resolved.user; ctx.session = resolved.session;
+          if (resolved.renew) ctx.setCookie(sessions.cookie(req, resolved.renew.token, resolved.renew.maxAge));
+        }
         else ctx.setCookie(sessions.clearCookie(req));
       }
       const match = router.match(req.method, url.pathname);

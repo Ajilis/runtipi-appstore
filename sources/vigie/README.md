@@ -79,7 +79,8 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Invitations par e-mail** : la personne reçoit un lien valable 7 jours et à usage unique, choisit son identifiant et son mot de passe, puis arrive connectée. Sans e-mail, un lien peut être transmis à la main ; l'ajout direct avec un mot de passe provisoire reste possible.
 - **Partage d'un avoir** avec un autre compte du serveur (compte joint, livret, assurance-vie, bien immobilier, crédit…) : bouton **Partager cet avoir** dans le détail de l'avoir, quote-part proposée (la moitié par défaut, ou la part non attribuée d'un bien en indivision). Le destinataire voit la demande **en haut de ses Avoirs et de son tableau de bord**, avec **Accepter** et **Refuser** (et un e-mail si l'envoi est configuré). Chaque avoir indique s'il est **partagé ou non**, avec qui, **depuis quand** et si le destinataire **a approuvé**, est **en attente** ou **a refusé** ; une étiquette le résume dans la liste. Après accord, chacun ne compte que sa part ; le destinataire voit l'avoir en lecture seule. Le partage se retire à tout moment.
 - **Quote-part** : pour un compte joint ou un placement à deux, indiquez votre part (100 % par défaut) ; seule celle-ci entre dans votre patrimoine.
-- **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes.
+- **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes (les connexions mémorisées y sont signalées), mon journal.
+- **Rester connecté** : case sur l'écran de connexion, cochée par défaut dans l'application installée. La connexion est mémorisée sur l'appareil jusqu'à 30 jours sans utilisation (réglable, ou retirée, dans Réglages → Sécurité) et se prolonge à chaque usage ; sans la case, elle se ferme avec le navigateur ou après le délai d'inactivité.
 
 ### Sécurité et contrôle d'accès
 

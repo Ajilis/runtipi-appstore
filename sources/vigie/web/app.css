@@ -694,3 +694,6 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
 .share-headline:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 999px; }
 .share-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; }
 .share-top .share-headline { margin-top: 0; }
+/* « Rester connecté » sur l'écran de connexion (1.1.0). */
+.remember-field { gap: 4px; }
+.remember-field .check span { font-weight: 500; }

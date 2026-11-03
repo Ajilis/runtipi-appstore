@@ -6,6 +6,7 @@ const KEY = 'security_';
 const RANGES = Object.freeze({
   SESSION_IDLE_MINUTES: [5, 10080],
   SESSION_MAX_HOURS: [1, 2160],
+  SESSION_REMEMBER_DAYS: [0, 365],
   LOGIN_MAX_ATTEMPTS: [3, 50],
   LOGIN_LOCK_MINUTES: [1, 1440],
 });
@@ -40,6 +41,7 @@ export function createServerSecuritySettings(db, cfg, { ipLimiter, logos } = {})
   const view = () => ({
     session_idle_minutes: cfg.SESSION_IDLE_MINUTES,
     session_max_hours: cfg.SESSION_MAX_HOURS,
+    session_remember_days: cfg.SESSION_REMEMBER_DAYS,
     login_max_attempts: cfg.LOGIN_MAX_ATTEMPTS,
     login_lock_minutes: cfg.LOGIN_LOCK_MINUTES,
     require_2fa: cfg.REQUIRE_2FA,

@@ -206,14 +206,15 @@ export function registerRoutes(router, deps) {
 
   const activeAdmins = (exceptId = 0) => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0 AND id <> ?").get(exceptId).n;
 
-  function completeLogin(ctx, user) {
+  // remember : case « Rester connecté » cochée (cookie conservé sur l'appareil, sinon cookie de navigateur).
+  function completeLogin(ctx, user, { remember = false } = {}) {
     const now = Date.now();
     db.prepare('UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = ? WHERE id = ?').run(now, user.id);
-    const { token } = sessions.create(user.id, ctx.ip, ctx.req.headers['user-agent']);
-    ctx.setCookie(sessions.cookie(ctx.req, token, cfg.SESSION_MAX_HOURS * 3600));
+    const { token, maxAge } = sessions.create(user.id, ctx.ip, ctx.req.headers['user-agent'], { remember });
+    ctx.setCookie(sessions.cookie(ctx.req, token, maxAge));
     ipLimiter.success(ctx.ip);
     ctx.user = { ...user, last_login_at: now };
-    audit(ctx, 'connexion', 'Connexion réussie');
+    audit(ctx, 'connexion', maxAge ? `Connexion réussie, appareil mémorisé ${cfg.SESSION_REMEMBER_DAYS} jours` : 'Connexion réussie');
     return { user: publicUser(ctx.user), needs_2fa_setup: cfg.REQUIRE_2FA && !user.totp_enabled };
   }
 
@@ -247,6 +248,7 @@ export function registerRoutes(router, deps) {
       require_2fa: cfg.REQUIRE_2FA,
       logos_enabled: cfg.INSTITUTION_LOGOS,
       password_reset: mailReady(),
+      remember_days: cfg.SESSION_REMEMBER_DAYS,
       currencies: CURRENCIES,
     };
   });
@@ -300,8 +302,9 @@ export function registerRoutes(router, deps) {
       audit({ ...ctx, user }, 'connexion_refusee', 'Compte désactivé');
       fail(403, 'account_disabled', 'Ce compte est désactivé. Contactez un administrateur.');
     }
-    if (user.totp_enabled) return { totp_required: true, challenge: challenges.create(user.id) };
-    return completeLogin(ctx, user);
+    const remember = ctx.body.remember === true;
+    if (user.totp_enabled) return { totp_required: true, challenge: challenges.create(user.id, { remember }) };
+    return completeLogin(ctx, user, { remember });
   });
 
   router.post('/api/auth/totp', { auth: 'public' }, (ctx) => {
@@ -332,7 +335,7 @@ export function registerRoutes(router, deps) {
       fail(401, 'invalid_code', 'Code incorrect ou déjà utilisé.');
     }
     challenges.consume(ctx.body.challenge);
-    return completeLogin(ctx, user);
+    return completeLogin(ctx, user, { remember: challenge.remember === true });
   });
 
   router.post('/api/auth/logout', { auth: 'public' }, (ctx) => {
@@ -407,8 +410,9 @@ export function registerRoutes(router, deps) {
   });
 
   router.get('/api/account/sessions', { auth: 'viewer', allowWithout2fa: true }, (ctx) => {
-    const rows = db.prepare('SELECT id, created_at, last_seen_at, expires_at, ip, user_agent FROM sessions WHERE user_id = ? ORDER BY last_seen_at DESC').all(ctx.user.id);
-    return { sessions: rows.map((s) => ({ ...s, current: s.id === ctx.session.id })) };
+    const rows = db.prepare('SELECT id, created_at, last_seen_at, expires_at, ip, user_agent, remember FROM sessions WHERE user_id = ? ORDER BY last_seen_at DESC').all(ctx.user.id);
+    const keep = cfg.SESSION_REMEMBER_DAYS > 0;
+    return { sessions: rows.map((s) => ({ ...s, remember: Boolean(s.remember && keep), current: s.id === ctx.session.id })) };
   });
 
   router.delete('/api/account/sessions/:id', { auth: 'viewer', allowWithout2fa: true }, (ctx) => {
