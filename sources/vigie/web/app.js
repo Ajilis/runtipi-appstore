@@ -977,6 +977,8 @@
   // Partage d'un avoir avec un autre compte du serveur (compte joint, bien en indivision, crédit à deux…)
   // ---------------------------------------------------------------------------------------------------------
   const msDay = (ms) => (ms ? new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+  // Date et heure d'un événement de partage : « 3 nov. 2026 à 10:21 ».
+  const msAt = (ms) => (ms ? `${msDay(ms)} à ${new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : '—');
   const pctBp = (bp) => `${num(bp / 100)} %`;
   const activeShare = (x) => x.status === 'accepted' || x.status === 'pending';
   // Après un changement de partage : la liste des avoirs (étiquettes) et le panneau de l'avoir sont redessinés.
@@ -989,11 +991,11 @@
   function shareTag(h) {
     const s = h.sharing;
     if (!s) return '';
-    if (s.role === 'recipient') return html`<span class="tag share ok" title="Partage approuvé le ${msDay(s.share.accepted_at)}">${icon('users')}Partagé par ${s.owner_name || 'un autre compte'}</span>`;
+    if (s.role === 'recipient') return html`<span class="tag share ok" title="Partage approuvé le ${msAt(s.share.accepted_at)}">${icon('users')}Partagé par ${s.owner_name || 'un autre compte'}</span>`;
     const accepted = s.shares.filter((x) => x.status === 'accepted');
     const pending = s.shares.filter((x) => x.status === 'pending');
-    if (accepted.length) return html`<span class="tag share ok" title="${accepted.map((x) => `${x.recipient_name} : approuvé le ${msDay(x.accepted_at)}`).join(' · ')}">${icon('users')}Partagé, approuvé${pending.length ? ` (+${pending.length} en attente)` : ''}</span>`;
-    if (pending.length) return html`<span class="tag share wait" title="${pending.map((x) => `${x.recipient_name} : proposé le ${msDay(x.created_at)}`).join(' · ')}">${icon('clock')}Partage en attente d'accord</span>`;
+    if (accepted.length) return html`<span class="tag share ok" title="${accepted.map((x) => `${x.recipient_name} : approuvé le ${msAt(x.accepted_at)}`).join(' · ')}">${icon('users')}Partagé, approuvé${pending.length ? ` (+${pending.length} en attente)` : ''}</span>`;
+    if (pending.length) return html`<span class="tag share wait" title="${pending.map((x) => `${x.recipient_name} : demande du ${msAt(x.created_at)}`).join(' · ')}">${icon('clock')}Partage en attente d'accord</span>`;
     const last = s.shares[0];
     if (last && last.status === 'declined') return html`<span class="tag share bad">${icon('close')}Partage refusé</span>`;
     if (last && last.status === 'expired') return html`<span class="tag">${icon('clock')}Partage expiré</span>`;
@@ -1001,37 +1003,54 @@
   }
 
   function shareState(x) {
-    if (x.status === 'accepted') return html`<span class="tag share ok">${icon('check')}Approuvé le ${msDay(x.accepted_at)}</span>`;
-    if (x.status === 'pending') return html`<span class="tag share wait">${icon('clock')}En attente de son accord</span> <span class="small muted">jusqu'au ${msDay(x.expires_at)}</span>`;
-    if (x.status === 'declined') return html`<span class="tag share bad">${icon('close')}Refusé le ${msDay(x.declined_at)}</span>`;
-    if (x.status === 'expired') return html`<span class="tag">${icon('clock')}Expiré le ${msDay(x.expires_at)}, sans réponse</span>`;
-    return html`<span class="tag">${icon('close')}Partage terminé le ${msDay(x.revoked_at)}</span>`;
+    if (x.status === 'accepted') return html`<span class="tag share ok">${icon('check')}Approuvé le ${msAt(x.accepted_at)}</span>`;
+    if (x.status === 'pending') return html`<span class="tag share wait">${icon('clock')}En attente de validation</span> <span class="small muted">expire le ${msAt(x.expires_at)}</span>`;
+    if (x.status === 'declined') return html`<span class="tag share bad">${icon('close')}Refusé le ${msAt(x.declined_at)}</span>`;
+    if (x.status === 'expired') return html`<span class="tag">${icon('clock')}Expiré le ${msAt(x.expires_at)}, sans réponse</span>`;
+    return html`<span class="tag">${icon('close')}Partage terminé le ${msAt(x.revoked_at)}</span>`;
   }
 
   // État du partage en tête du détail d'un avoir, visible sans faire défiler ; un clic mène à la section Partage.
   function shareHeadline(sharing) {
     if (!sharing) return '';
-    const tags = [];
+    // Une fiche par partage : avec qui, l'état et sa date et heure, la date et heure de la demande.
+    const card = (tone, ico, title, state, asked) => html`<span class="share-card ${tone}">
+      <span class="sc-title">${icon(ico)}<span>${title}</span></span>
+      <span class="sc-row"><span class="sc-k">État</span><span>${state}</span></span>
+      <span class="sc-row"><span class="sc-k">Demande</span><span>${asked}</span></span></span>`;
+    const cards = [];
     if (sharing.role === 'recipient') {
       const s = sharing.share;
-      tags.push(html`<span class="tag share ok">${icon('users')}Partagé par ${sharing.owner_name || 'un autre compte'} · votre part ${pctBp(s.ownership_bp)} · approuvé le ${msDay(s.accepted_at)}</span>`);
+      cards.push(card('ok', 'users', html`Partagé par <b>${sharing.owner_name || 'un autre compte'}</b> · votre part ${pctBp(s.ownership_bp)}`,
+        `approuvé par vous le ${msAt(s.accepted_at)}`, `reçue le ${msAt(s.created_at)}`));
     } else {
-      for (const x of sharing.shares.filter(activeShare)) tags.push(x.status === 'accepted'
-        ? html`<span class="tag share ok">${icon('users')}Partagé avec ${x.recipient_name} (${pctBp(x.ownership_bp)}) · approuvé le ${msDay(x.accepted_at)}</span>`
-        : html`<span class="tag share wait">${icon('clock')}En attente de validation par ${x.recipient_name} (${pctBp(x.ownership_bp)}) · proposé le ${msDay(x.created_at)}</span>`);
+      for (const x of sharing.shares.filter(activeShare)) cards.push(x.status === 'accepted'
+        ? card('ok', 'users', html`Partagé avec <b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}`, `approuvé le ${msAt(x.accepted_at)}`, `envoyée le ${msAt(x.created_at)}${x.sent_at ? ', par e-mail' : ''}`)
+        : card('wait', 'clock', html`Partage demandé à <b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}`, `en attente de validation, jusqu'au ${msAt(x.expires_at)}`, `envoyée le ${msAt(x.created_at)}${x.sent_at ? ', par e-mail' : ''}`));
       const last = sharing.shares[0];
-      if (!tags.length && last && last.status === 'declined') tags.push(html`<span class="tag share bad">${icon('close')}Partage refusé par ${last.recipient_name} le ${msDay(last.declined_at)}</span>`);
-      if (!tags.length && last && last.status === 'expired') tags.push(html`<span class="tag">${icon('clock')}Demande à ${last.recipient_name} expirée sans réponse le ${msDay(last.expires_at)}</span>`);
+      if (!cards.length && last && last.status === 'declined')
+        cards.push(card('bad', 'close', html`Partage refusé par <b>${last.recipient_name}</b> · ${pctBp(last.ownership_bp)}`, `refusé le ${msAt(last.declined_at)}`, `envoyée le ${msAt(last.created_at)}`));
+      if (!cards.length && last && last.status === 'expired')
+        cards.push(card('', 'clock', html`Demande à <b>${last.recipient_name}</b> restée sans réponse · ${pctBp(last.ownership_bp)}`, `expirée le ${msAt(last.expires_at)}`, `envoyée le ${msAt(last.created_at)}`));
     }
-    return tags.length ? html`<button type="button" class="share-headline" data-action="goto-share" aria-label="Voir le détail du partage">${tags}</button>` : '';
+    return cards.length ? html`<button type="button" class="share-headline" data-action="goto-share" aria-label="Voir le détail du partage">${cards}</button>` : '';
   }
 
   // En tête du détail d'un avoir : l'état du partage et, pour le titulaire, le bouton Partager, sans avoir à faire défiler.
   function shareTop(h, sharing, mayEdit, property) {
     const status = shareHeadline(sharing);
-    const button = mayEdit && !h.closed_at
-      ? html`<button class="btn small" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${property ? 'Partager ce bien' : 'Partager cet avoir'}</button>` : '';
+    const why = shareBlocked(h, mayEdit);
+    const button = !why && mayEdit
+      ? html`<button class="btn small" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${property ? 'Partager ce bien' : 'Partager cet avoir'}</button>`
+      : why ? html`<span class="small muted share-why">${icon('info')}${why}</span>` : '';
     return status || button ? html`<div class="share-top">${status}${button}</div>` : '';
+  }
+  // Pourquoi le titulaire ne peut pas partager cet avoir (rien pour un avoir reçu en partage).
+  function shareBlocked(h, mayEdit) {
+    if (h.shared_with_me) return '';
+    if (!canEdit()) return 'Compte en lecture seule : le partage demande le rôle Utilisateur (page Utilisateurs, administrateur).';
+    if (h.closed_at) return 'Avoir clôturé : rouvrez-le pour le partager.';
+    return mayEdit ? '' : 'Partage indisponible pour cet avoir.';
   }
 
   // « Partagé » : oui seulement après l'accord du destinataire ; une demande en attente est dite comme telle.
@@ -1051,7 +1070,7 @@
         <dl class="kv">
           <dt>Partagé</dt><dd>Oui, par ${sharing.owner_name || s.sender_name || 'un autre compte'}</dd>
           <dt>Votre quote-part</dt><dd>${pctBp(s.ownership_bp)}</dd>
-          <dt>Proposé le</dt><dd>${msDay(s.created_at)}</dd>
+          <dt>Demande reçue le</dt><dd>${msAt(s.created_at)}</dd>
           <dt>Votre accord</dt><dd>${shareState(s)}</dd>
         </dl>
         <p class="small muted">Lecture seule : le titulaire tient la valeur à jour. Seule votre quote-part est comptée dans votre patrimoine.</p>
@@ -1068,7 +1087,7 @@
     const line = (x) => html`<li class="share-line">
       ${avatar(x.recipient_name, 'sm')}
       <div class="share-who"><span><b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}</span>
-        <span class="small muted">Proposé le ${msDay(x.created_at)}${x.sent_at ? ', prévenu par e-mail' : ''}</span>
+        <span class="small muted">Demande du ${msAt(x.created_at)}${x.sent_at ? ', prévenu par e-mail' : ''}</span>
         <span class="state">${shareState(x)}</span></div>
       ${mayEdit && activeShare(x) ? html`<button class="btn small ghost" type="button" data-action="share-revoke" data-id="${x.id}" data-holding="${h.id}" data-role="owner" data-status="${x.status}" data-name="${x.recipient_name}">${icon('close')}${x.status === 'pending' ? 'Annuler' : 'Retirer'}</button>` : ''}
     </li>`;
@@ -1079,6 +1098,7 @@
       </dl>
       ${current.length ? html`<ul class="share-list">${current.map(line)}</ul>` : ''}
       ${history.length ? html`<details class="share-history"><summary>Partages précédents (${history.length})</summary><ul class="share-list">${history.map(line)}</ul></details>` : ''}
+      ${shareBlocked(h, mayEdit) ? html`<p class="small muted">${shareBlocked(h, mayEdit)}</p>` : ''}
       ${mayEdit && !h.closed_at ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${active.length ? 'Partager avec une autre personne' : property ? 'Partager ce bien' : 'Partager cet avoir'}</button></div>` : ''}
       ${!shares.length ? html`<p class="small muted">Un avoir partagé apparaît dans les Avoirs de l'autre compte après son accord, à hauteur de sa quote-part ; il n'accède à rien d'autre.</p>` : ''}
     </div></section>`;
@@ -1094,7 +1114,7 @@
       ${icon('users')}<div class="grow">
         <b>${p.sender_name || p.owner_name || 'Un autre compte'} vous propose de partager « ${p.holding_name} »</b>
         <p>${p.category_name ? `${p.category_name} · ` : ''}votre quote-part : <b>${pctBp(p.ownership_bp)}</b>${p.part_cents !== null && p.part_cents !== undefined ? html`, soit ${money(p.part_cents, p.currency)} aujourd'hui${p.category_kind === 'liability' ? ' de dette' : ''}` : ''}.</p>
-        <p class="small muted">Proposé le ${msDay(p.created_at)}, sans réponse la demande expire le ${msDay(p.expires_at)}. Rien n'est ajouté à votre patrimoine sans votre accord.</p>
+        <p class="small muted">Demande du ${msAt(p.created_at)} ; sans réponse, elle expire le ${msAt(p.expires_at)}. Rien n'est ajouté à votre patrimoine sans votre accord.</p>
       </div>
       <div class="share-actions">
         <button class="btn primary small" type="button" data-action="share-decision" data-id="${p.id}" data-decision="accept">${icon('check')}Accepter</button>
@@ -2927,11 +2947,34 @@
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !state.boot) boot(); });
 
+  // Version du code chargé dans cette page (app.js?v=…). L'application installée reste souvent ouverte en
+  // arrière-plan : si le serveur a été mis à jour entre-temps, on recharge pour ne pas garder l'ancienne interface.
+  const LOADED_VERSION = (() => {
+    const tag = document.querySelector('script[src*="app.js?v="]');
+    const m = tag && /[?&]v=([^&]+)/.exec(tag.getAttribute('src'));
+    return m ? decodeURIComponent(m[1]) : null;
+  })();
+  function reloadIfOutdated(serverVersion) {
+    if (!LOADED_VERSION || !serverVersion || serverVersion === LOADED_VERSION || LOADED_VERSION === '__VERSION__') return false;
+    try { if (sessionStorage.getItem('vigie.reloaded') === serverVersion) return false; sessionStorage.setItem('vigie.reloaded', serverVersion); } catch { /* sans stockage : un seul essai */ }
+    if (modal().open) { toast('Nouvelle version de Vigie installée : elle s’affichera à la prochaine ouverture.'); return false; }
+    location.reload();
+    return true;
+  }
+  let versionCheckedAt = Date.now();
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || Date.now() - versionCheckedAt < 60_000) return;
+    versionCheckedAt = Date.now();
+    try { const r = await fetch('/api/auth/state', { credentials: 'same-origin', headers: { 'x-vigie-request': '1' } }); if (r.ok) reloadIfOutdated((await r.json()).version); }
+    catch { /* hors ligne : on réessaiera au prochain retour */ }
+  });
+
   async function boot() {
     lostShown = false;
     clearTimeout(retryTimer);
     try { state.boot = await api('GET', '/api/auth/state'); }
     catch (err) { state.boot = null; showUnreachable(err); return; }
+    if (reloadIfOutdated(state.boot.version)) return;
     retryCount = 0;
     state.logos = Boolean(state.boot.logos_enabled);
     if (!state.inst.list.length) {

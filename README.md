@@ -19,6 +19,8 @@ Accès direct LAN : `http://IP_DU_SERVEUR:8291` ; Cloudflare Tunnel vers ce port
 Fichiers : [Docker Compose](apps/cloakbrowser/docker-compose.yml) · [Configuration Runtipi](apps/cloakbrowser/config.json) · [Documentation de CloakBrowser](apps/cloakbrowser/metadata/description.md).
 
 ---
+**Vigie Patrimoine V28 (1.1.2)** : fiche de partage en tête de l'avoir (avec qui, état, date et heure de la demande et de la réponse) ; raison affichée quand le partage est impossible ; l'application installée se recharge d'elle-même après une mise à jour du serveur. [Documentation](apps/vigie/metadata/description.md#version-112--état-du-partage-détaillé-mise-à-jour-automatique-de-lapplication).
+
 **Vigie Patrimoine V27 (1.1.1)** : le détail d'un avoir s'ouvre toujours en haut, avec l'état du partage et le bouton « Partager ce bien » visibles (il s'ouvrait défilé jusqu'à « Nouvelle valeur » sur téléphone). [Documentation](apps/vigie/metadata/description.md#version-111--le-détail-dun-avoir-souvre-en-haut).
 
 **Vigie Patrimoine V26 (1.1.0)** : case « Rester connecté sur cet appareil » à la connexion (cochée par défaut dans l'application installée, 30 jours réglables) ; numéro de version au-dessus du nom. [Documentation](apps/vigie/metadata/description.md#version-110--rester-connecté-et-version-au-dessus-du-nom).
@@ -174,7 +176,7 @@ Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/d
 
 ## Installer Vigie Patrimoine (suivi de patrimoine, Cloudflare Tunnel, sans Traefik)
 
-**Version du catalogue Runtipi : 27** · **Version du logiciel : Vigie 1.1.1** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 28** · **Version du logiciel : Vigie 1.1.2** · **Runtipi minimum : 4.9.1**
 
 Vigie donne une vue globale de votre patrimoine sans gérer les mouvements : une valeur par avoir et par date. Patrimoine net (passifs déduits), prêts accordés et crédits avec échéancier automatique, immobilier avec quote-part, estimation et plus-value latente, un patrimoine par compte avec partage d'un bien, annuaire d'établissements en ligne, historique et variations, répartition par catégorie, établissement, titulaire, devise et liquidité, allocation cible, mise à jour rapide, rappels, multi-devises (taux BCE), mode discret, exports et sauvegardes. Un seul conteneur (Node.js + SQLite, image `ghcr.io/ajilis/vigie`).
 

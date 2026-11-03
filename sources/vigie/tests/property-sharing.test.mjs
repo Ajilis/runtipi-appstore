@@ -280,14 +280,18 @@ test('partage : plus de menu dédié, état affiché sur les avoirs, demandes en
   assert.doesNotMatch(ui,/name="amount" inputmode="decimal" required autocomplete="off" autofocus/);
   assert.match(ui,/<dt>Partagé<\/dt>/);
   assert.match(ui,/Approuvé le/);
-  assert.match(ui,/En attente de son accord/);
+  assert.match(ui,/En attente de validation<\/span>/);
+  assert.match(ui,/envoyée le \$\{msAt\(x\.created_at\)\}/,'date et heure de la demande');
+  assert.match(ui,/Partagé avec <b>\$\{x\.recipient_name\}<\/b>/,'avec qui');
+  assert.match(ui,/Compte en lecture seule : le partage demande le rôle Utilisateur/);
+  assert.match(ui,/function reloadIfOutdated/);
   assert.match(ui,/Refusé le/);
   assert.match(ui,/data-action="share-decision"/);
   assert.match(ui,/share-request-form/);
   assert.match(ui,/name="holding_pct"/);
   assert.match(ui,/const status = shareHeadline\(sharing\)/,'état du partage en tête du détail de l’avoir');
-  assert.match(ui,/En attente de validation par/);
-  assert.match(ui,/Partage refusé par/);
+  assert.match(ui,/en attente de validation, jusqu'au/);
+  assert.match(ui,/Partage refusé par <b>/);
 });
 
 test('comptes Vigie indépendants : patrimoines et exports séparés, contrôle des URL et de la mise à jour rapide', async () => {

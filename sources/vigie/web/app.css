@@ -689,11 +689,24 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
 .field .static-value { margin: 0; padding: 9px 0; font-weight: 500; }
 /* État du partage en tête du détail d'un avoir (1.0.1). */
 .share-headline { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
-.share-headline .tag { white-space: normal; font-size: 0.8125rem; padding: 3px 10px; line-height: 1.35; border-radius: 12px; }
-.share-headline:hover .tag { filter: brightness(0.97); }
-.share-headline:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 999px; }
+.share-headline { width: 100%; }
+.share-card { display: grid; gap: 3px; width: 100%; padding: 10px 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--panel-2); font-size: 0.875rem; }
+.share-card.ok { background: var(--brand-soft); border-color: transparent; }
+.share-card.wait { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.share-card.bad { background: transparent; border-color: var(--bad); }
+.share-card .sc-title { display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; }
+.share-card .sc-title svg { width: 16px; height: 16px; flex: none; }
+.share-card.ok .sc-title svg { color: var(--brand); }
+.share-card.bad .sc-title svg { color: var(--bad); }
+.share-card .sc-row { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; padding-left: 24px; }
+.share-card .sc-k { color: var(--muted); }
+.share-card.wait .sc-k { color: inherit; opacity: 0.8; }
+.share-headline:hover .share-card { filter: brightness(0.98); }
+.share-headline:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: var(--radius-s); }
 .share-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; }
 .share-top .share-headline { margin-top: 0; }
 /* « Rester connecté » sur l'écran de connexion (1.1.0). */
 .remember-field { gap: 4px; }
 .remember-field .check span { font-weight: 500; }
+.share-why { display: inline-flex; align-items: center; gap: 6px; }
+.share-why svg { width: 14px; height: 14px; flex: none; }
