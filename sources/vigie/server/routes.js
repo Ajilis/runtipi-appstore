@@ -10,7 +10,7 @@ import {
 import { ROLES, publicUser, getDummyHash, isPrivateIp, cameThroughCloudflare, isHttps } from './auth.js';
 import { sendMail, buildMessage, templates, isEmail, SmtpError, SECURITY_MODES } from './mail.js';
 import {
-  LIQUIDITY, dashboard, history, holdingsView, loadState, holdingSnapshot, parseAmountToCents, isIsoDate, todayIso, addDays, staleDaysFor,
+  LIQUIDITY, dashboard, history, report, holdingsView, loadState, holdingSnapshot, parseAmountToCents, isIsoDate, todayIso, addDays, staleDaysFor,
   SHARE_ROW_SQL, shareView, shareStatus, sharingByHolding,
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
@@ -854,6 +854,13 @@ export function registerRoutes(router, deps) {
   });
 
   router.get('/api/holdings', { auth: 'viewer' }, (ctx) => holdingsView(db, ctx.user.id));
+
+  // Bilan patrimonial imprimable, à la date choisie (aujourd'hui par défaut).
+  router.get('/api/report', { auth: 'viewer' }, (ctx) => {
+    const date = ctx.query.get('date') || todayIso();
+    if (!isIsoDate(date) || date < '1950-01-01' || date > todayIso()) fail(400, 'invalid_field', 'Date du bilan : une date passée ou celle du jour.');
+    return { ...report(db, { userId: ctx.user.id, date }), generated_at: Date.now() };
+  });
 
   router.get('/api/holdings/:id', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);

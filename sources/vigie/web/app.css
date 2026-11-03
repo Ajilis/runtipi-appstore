@@ -774,3 +774,91 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
   .holding .amount span { overflow-wrap: anywhere; }
   .holding .meta .tag { white-space: normal; }
 }
+
+/* --- Bilan patrimonial à imprimer (1.5.0) ------------------------------------------------------------------------ */
+.report-controls { display: grid; gap: 14px; }
+.report-controls .rc-row { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; }
+.report-controls .rc-date { max-width: 200px; }
+.report-controls .rc-opts { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.report-controls .rc-opts legend { font-size: 0.8125rem; font-weight: 500; color: var(--muted); margin-bottom: 4px; padding: 0; }
+.report-controls .rc-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.report-controls .notice .btn { margin-left: 6px; }
+.report-sheet { display: grid; gap: 22px; max-width: 920px; padding: 32px 36px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow); color: var(--ink); }
+.report-sheet h2, .report-sheet h3, .report-sheet h4 { margin: 0; }
+.report-sheet h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.report-sheet h4 { font-size: 0.8125rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; text-transform: none; }
+.rp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px 24px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 2px solid var(--brand); }
+.rp-brand { display: flex; align-items: center; gap: 12px; }
+.rp-brand > svg { width: 40px; height: 40px; flex: none; }
+.rp-brand h2 { font-size: 1.375rem; font-weight: 600; }
+.rp-brand p { margin: 2px 0 0; color: var(--muted); }
+.rp-meta { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin: 0; font-size: 0.8125rem; }
+.rp-meta dt { color: var(--muted); }
+.rp-meta dd { margin: 0; text-align: right; font-weight: 500; }
+.rp-kpis { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
+.rp-kpis > div { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel-2); }
+.rp-kpis span, .rp-vars span { color: var(--muted); font-size: 0.8125rem; }
+.rp-kpis b { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rp-kpis .rp-net { background: var(--brand-soft); border-color: transparent; }
+.rp-kpis .rp-net b { font-size: 1.75rem; color: var(--brand); }
+.rp-vars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: -8px; }
+.rp-vars > div { display: grid; gap: 1px; padding: 0 14px; border-left: 3px solid var(--line); }
+.rp-vars b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.rp-vars small { color: var(--muted); font-size: 0.75rem; }
+.rp-section .chart { margin-top: 0; }
+.rp-two { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; }
+.rp-two h3 + .rp-table, .rp-two .rp-table + h3, .rp-two p + h3 { margin-top: 0; }
+.rp-two > div > h3:not(:first-child) { margin-top: 18px; }
+.rp-three { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.rp-table th, .rp-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.rp-table thead th { font-size: 0.75rem; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line-strong); }
+.rp-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-table td:first-child { overflow-wrap: break-word; hyphens: auto; }
+.rp-table .rp-total td { font-weight: 600; border-bottom: 0; border-top: 1px solid var(--line-strong); }
+.rp-holdings + .rp-holdings { margin-top: 14px; }
+.rp-holdings .rp-cat th { padding-top: 12px; font-size: 0.875rem; font-weight: 600; color: var(--ink); background: var(--panel-2); border-bottom: 1px solid var(--line-strong); }
+.rp-holdings td b { font-weight: 500; }
+.rp-sub { display: block; color: var(--muted); font-size: 0.75rem; font-weight: 400; white-space: normal; }
+.rp-foot { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.75rem; line-height: 1.5; }
+.rp-foot p { margin: 0; }
+@media (max-width: 760px) {
+  .report-sheet { padding: 18px 14px; gap: 18px; border-radius: var(--radius-m); }
+  .rp-kpis { grid-template-columns: 1fr 1fr; }
+  .rp-kpis .rp-net { grid-column: 1 / -1; }
+  .rp-vars { grid-template-columns: 1fr; gap: 8px; margin-top: 0; }
+  .rp-two, .rp-three { grid-template-columns: minmax(0, 1fr); }
+  .rp-meta dd { text-align: left; }
+}
+@media print {
+  @page { size: A4; margin: 12mm; }
+  :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
+    --paper: #ffffff; --panel: #ffffff; --panel-2: #f6f8f7; --ink: #111816; --muted: #55625e; --faint: #7d8a86;
+    --line: #d9e1df; --line-strong: #b6c4c0; --brand: #1e5a4e; --brand-soft: #e7f1ee; --good: #0b6b0b; --bad: #a42a2a;
+    --grid: #e6ecea; --chart-line: #1e5a4e; --chart-fill: rgba(30, 90, 78, 0.08); --liq-1: #7db5a6; --liq-2: #3f8775; --liq-3: #1e5a4e;
+  }
+  html, body { background: #fff !important; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .main { padding: 0 !important; }
+  .topbar, .no-print, #toasts, .share-inbox, .menu-toggle { display: none !important; }
+  .page { gap: 0 !important; }
+  /* Bloc plutôt que grille : Chrome découpe mal une grille sur plusieurs pages (textes superposés). */
+  .report-sheet { display: block; max-width: none; padding: 0; border: 0; border-radius: 0; box-shadow: none; font-size: 10.5pt; }
+  .report-sheet > * + * { margin-top: 16px; }
+  .rp-vars { margin-top: 10px !important; }
+  .rp-three .rp-table { font-size: 8.5pt; }
+  .rp-three .rp-table th, .rp-three .rp-table td { padding: 4px 3px; }
+  .rp-kpis, .rp-vars, .rp-section, .rp-head, .rp-foot, .rp-two > div, .rp-three > div { break-inside: avoid; }
+  .rp-detail { break-inside: auto; }
+  .rp-table tr { break-inside: avoid; }
+  .rp-table thead { display: table-header-group; }
+  .rp-holdings .rp-cat { break-after: avoid; }
+}
+@media (max-width: 400px) {
+  .report-sheet { padding: 16px 12px; }
+  .rp-kpis { grid-template-columns: minmax(0, 1fr); }
+  .rp-kpis b { font-size: 1.125rem; }
+  .rp-kpis .rp-net b { font-size: 1.5rem; }
+  .rp-table { font-size: 0.8125rem; }
+  .rp-table th, .rp-table td { padding: 5px 4px; }
+}

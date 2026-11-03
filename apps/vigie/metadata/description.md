@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 31** · **Version de Vigie : 1.4.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 32** · **Version de Vigie : 1.5.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -38,6 +38,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Répartitions** par catégorie (avec l'**allocation cible** et l'écart en euros), par établissement, par titulaire et par devise.
 - **Liquidité des actifs** : disponible, sous quelques semaines, bloqué ou illiquide.
 - **Avoirs à actualiser** et **mode discret** qui masque tous les montants d'un clic.
+- **Bilan patrimonial à imprimer** (1.5.0) : bouton **Bilan à imprimer** du tableau de bord. Une synthèse datée, à la date du jour ou à une date passée (au 1er janvier, au 31 décembre…) : patrimoine net, actifs et passifs, variations, évolution sur 12 mois, actifs par catégorie avec l'allocation cible, liquidité, passifs, plus-values latentes, répartition par établissement, titulaire et devise, et détail de chaque avoir (valeur connue à la date, quote-part). **Imprimer ou enregistrer en PDF** depuis la fenêtre d'impression, au format A4, toujours en clair même en thème sombre.
 
 ### Prêts et crédits
 
@@ -126,6 +127,13 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.5.0 : bilan patrimonial à imprimer ou en PDF
+
+- Bouton **Bilan à imprimer** sur le tableau de bord : une page de synthèse datée, avec l'en-tête (votre nom, date du bilan, date d'édition), le patrimoine net, les totaux d'actifs et de passifs, les variations sur 1 mois, 1 an et depuis le 1er janvier, et la courbe des 12 derniers mois.
+- Tableaux : actifs par catégorie (montant, part, allocation cible), liquidité, passifs, plus-values latentes, actifs par établissement, titulaire et devise, et **détail de chaque avoir** (valeur et date de cette valeur, quote-part, montant en devise d'origine et en devise de référence).
+- **Bilan à une date passée** (par exemple au 1er janvier) : chaque avoir y figure avec la dernière valeur connue à cette date ; un avoir clôturé ensuite y figure encore. Les conversions utilisent les taux de change actuels, ce que précise le pied de page.
+- Options : sans la courbe, sans les répartitions ou sans le détail des avoirs. **Imprimer ou enregistrer en PDF** ouvre la fenêtre d'impression (« Enregistrer au format PDF ») ; mise en page A4, toujours claire même en thème sombre. Le mode discret masque aussi les montants du bilan.
 
 ### Version 1.4.0 : corriger la répartition d'un avoir partagé
 

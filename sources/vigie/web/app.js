@@ -765,6 +765,7 @@
     utilisateurs: { title: 'Utilisateurs', icon: 'users', render: pageUsers, admin: true },
     journal: { title: 'Journal', icon: 'journal', render: pageAudit, admin: true },
     logos: { title: 'Logos des établissements', icon: 'bank', render: pageLogos, admin: true, parent: 'reglages' },
+    bilan: { title: 'Bilan patrimonial', icon: 'journal', render: pageReport, parent: '' },
   };
 
   function shell() {
@@ -856,7 +857,7 @@
     const [d, h, inbox] = await Promise.all([api('GET', '/api/dashboard'), api('GET', `/api/history?range=${state.range}`), shareInbox()]);
     if (!current()) return;
     state.base = d.base_currency;
-    setHeader('Tableau de bord', `Au ${dateLong(d.today)}`, discretButton());
+    setHeader('Tableau de bord', `Au ${dateLong(d.today)}`, html`${discretButton()}${d.counts.total ? html`<a class="btn" href="#/bilan">${icon('journal')}Bilan à imprimer</a>` : ''}`);
 
     if (d.counts.total === 0) {
       el.innerHTML = part(html`${shareBanner(inbox)}<section class="hero">${engraving()}
@@ -924,6 +925,123 @@
         <div class="panel">${bars(d.groups[state.breakdown], { total: d.totals.assets, lead: (g) => groupLead(state.breakdown, g) })}</div>
       </section>`);
     lineChart($('#net-chart'), h.points.map((p) => ({ date: p.date, value: p.net })), { label: 'Évolution du patrimoine net', height: 240 });
+  }
+
+  // ---------------------------------------------------------------------------------------------------------
+  // Bilan patrimonial (1.5.0) : une synthèse datée à imprimer ou à enregistrer en PDF
+  // ---------------------------------------------------------------------------------------------------------
+  async function pageReport(el, route, current) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(route.arg || '') && route.arg <= todayIso() ? route.arg : todayIso();
+    const r = await api('GET', `/api/report?date=${date}`);
+    if (!current()) return;
+    state.base = r.base_currency;
+    const opts = { chart: true, groups: true, detail: true, ...store.get('reportOpts', {}) };
+    setHeader('Bilan patrimonial', `Au ${dateLong(r.date)}`, html`${discretButton()}<a class="btn" href="#/">${icon('dashboard')}Tableau de bord</a>`);
+    el.innerHTML = part(html`
+      <section class="panel report-controls no-print" aria-label="Options du bilan">
+        <div class="rc-row">
+          <label class="field rc-date"><span>Bilan au</span><input class="input" type="date" id="report-date" value="${r.date}" max="${todayIso()}" min="1950-01-01"></label>
+          <fieldset class="rc-opts"><legend>Contenu</legend>
+            <label class="check"><input type="checkbox" data-opt="chart" ${opts.chart ? 'checked' : ''}><span>Évolution sur 12 mois</span></label>
+            <label class="check"><input type="checkbox" data-opt="groups" ${opts.groups ? 'checked' : ''}><span>Par établissement, titulaire et devise</span></label>
+            <label class="check"><input type="checkbox" data-opt="detail" ${opts.detail ? 'checked' : ''}><span>Détail des avoirs</span></label>
+          </fieldset>
+        </div>
+        ${state.discret ? html`<div class="notice">${icon('eyeOff')}<div>Mode discret : les montants sont masqués sur le bilan. <button class="btn small" type="button" data-action="toggle-discret">${icon('eye')}Afficher les montants</button></div></div>` : ''}
+        <div class="rc-actions"><button class="btn primary" type="button" data-action="print-report">${icon('download')}Imprimer ou enregistrer en PDF</button>
+          <span class="small muted">Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF » pour obtenir un fichier.</span></div>
+      </section>
+      <article class="report-sheet" id="report-sheet" aria-label="Bilan patrimonial au ${dateLong(r.date)}"></article>`);
+    const sheet = $('#report-sheet', el);
+    const draw = () => {
+      sheet.innerHTML = part(reportSheet(r, opts));
+      const chart = $('#report-chart', sheet);
+      if (chart) lineChart(chart, r.history.map((p) => ({ date: p.date, value: p.net })), { label: 'Évolution du patrimoine net sur 12 mois', height: 170 });
+    };
+    draw();
+    $('#report-date', el).addEventListener('change', (e) => {
+      const v = e.target.value;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v <= todayIso()) location.hash = v === todayIso() ? '#/bilan' : `#/bilan/${v}`;
+    });
+    $$('[data-opt]', el).forEach((cb) => cb.addEventListener('change', () => {
+      opts[cb.dataset.opt] = cb.checked;
+      store.set('reportOpts', { chart: opts.chart, groups: opts.groups, detail: opts.detail });
+      draw();
+    }));
+  }
+
+  function reportSheet(r, opts) {
+    const base = r.base_currency;
+    const T = r.totals;
+    const assetsCats = r.categories.filter((c) => c.kind === 'asset' && c.value);
+    const liabCats = r.categories.filter((c) => c.kind === 'liability' && c.value);
+    const targets = assetsCats.some((c) => c.target_pct !== null);
+    const variation = (v, label) => v ? html`<div><span>${label}</span><b class="${v.delta > 0 ? 'pos' : v.delta < 0 ? 'neg' : ''}">${money(v.delta, base, { sign: true })}</b><small>${v.pct !== null ? pct(v.pct, { sign: true }) : ''}</small></div>`
+      : html`<div><span>${label}</span><b class="muted">—</b><small>historique insuffisant</small></div>`;
+    const L = r.liquidity, la = T.assets || 1;
+    const share = (v, total) => (total > 0 ? pct(v / total, { digits: 1 }) : '—');
+    const groupTable = (title, rows, max = 8) => {
+      const top = rows.slice(0, max), rest = rows.slice(max);
+      const other = rest.reduce((t, g) => t + g.value, 0);
+      return html`<div><h4>${title}</h4><table class="rp-table"><tbody>
+        ${top.map((g) => html`<tr><td>${g.label}</td><td class="num">${money(g.value, base)}</td><td class="num muted">${share(g.value, T.assets)}</td></tr>`)}
+        ${rest.length ? html`<tr><td class="muted">${rest.length} autre${rest.length > 1 ? 's' : ''}</td><td class="num">${money(other, base)}</td><td class="num muted">${share(other, T.assets)}</td></tr>` : ''}
+      </tbody></table></div>`;
+    };
+    const detailRows = (kind) => r.categories.filter((c) => c.kind === kind).map((c) => ({ c, items: r.holdings.filter((h) => h.category_id === c.id) })).filter((g) => g.items.length);
+    const holdingRow = (h) => {
+      const sub = [h.institution, h.owner, `valeur du ${dateFr(h.valued_at)}`,
+        h.ownership_bp < 10000 ? `quote-part ${pctBp(h.ownership_bp)} de ${money(h.value_cents, h.currency)}` : null,
+        h.shared_by ? `partagé par ${h.shared_by}` : null].filter(Boolean).join(' · ');
+      return html`<tr><td><b>${h.name}</b><span class="rp-sub">${sub}</span></td>
+        <td class="num">${money(h.kind === 'liability' ? -h.owned_cents : h.owned_cents, h.currency)}${h.currency !== base ? html`<span class="rp-sub">${h.missing_rate ? 'taux manquant' : money(h.kind === 'liability' ? -h.base : h.base, base)}</span>` : ''}</td></tr>`;
+    };
+    const detailTable = (kind) => detailRows(kind).map(({ c, items }) => html`<tbody class="rp-group">
+      <tr class="rp-cat"><th scope="rowgroup">${c.name}</th><th class="num">${money(kind === 'liability' ? -c.value : c.value, base)}</th></tr>
+      ${items.map(holdingRow)}</tbody>`);
+    const gains = r.holdings.filter((h) => h.latent_gain_cents !== null && h.owned_cents);
+    const gainBase = gains.reduce((t, h) => t + (h.base === null ? 0 : Math.round(h.latent_gain_cents * h.base / h.owned_cents)), 0);
+    const stale = r.stale.length;
+    return html`
+      <header class="rp-head">
+        <div class="rp-brand">${MARK}<div><h2>Bilan patrimonial</h2><p>${r.user_name || ''}</p></div></div>
+        <dl class="rp-meta"><dt>Date du bilan</dt><dd>${dateLong(r.date)}</dd><dt>Édité le</dt><dd>${msAt(r.generated_at)}</dd><dt>Devise</dt><dd>${base}</dd></dl>
+      </header>
+      <section class="rp-kpis" aria-label="Chiffres clés">
+        <div class="rp-net"><span>Patrimoine net</span><b>${money(T.net, base)}</b></div>
+        <div><span>Total des actifs</span><b>${money(T.assets, base)}</b></div>
+        <div><span>Total des passifs</span><b>${money(T.liabilities ? -T.liabilities : 0, base)}</b></div>
+      </section>
+      <section class="rp-vars" aria-label="Variations du patrimoine net">${variation(r.variations.month, 'Sur 1 mois')}${variation(r.variations.year, 'Sur 1 an')}${variation(r.variations.ytd, 'Depuis le 1er janvier')}</section>
+      ${opts.chart && r.history.length > 1 ? html`<section class="rp-section"><h3>Évolution du patrimoine net sur 12 mois</h3><div class="chart" id="report-chart"></div></section>` : ''}
+      <section class="rp-section rp-two">
+        <div><h3>Actifs par catégorie</h3>
+          <table class="rp-table"><thead><tr><th>Catégorie</th><th class="num">Montant</th><th class="num">Part</th>${targets ? html`<th class="num">Cible</th>` : ''}</tr></thead><tbody>
+            ${assetsCats.map((c) => html`<tr><td>${c.name}</td><td class="num">${money(c.value, base)}</td><td class="num">${pct(c.pct)}</td>${targets ? html`<td class="num muted">${c.target_pct === null ? '—' : pct(c.target_pct, { digits: 0 })}</td>` : ''}</tr>`)}
+            <tr class="rp-total"><td>Total</td><td class="num">${money(T.assets, base)}</td><td class="num">${T.assets ? '100 %' : '—'}</td>${targets ? html`<td></td>` : ''}</tr>
+          </tbody></table></div>
+        <div>
+          <h3>Liquidité des actifs</h3>
+          <table class="rp-table"><tbody>${['immediate', 'short', 'locked'].map((k) => html`<tr><td>${LIQ[k]}</td><td class="num">${money(L[k], base)}</td><td class="num">${pct(L[k] / la)}</td></tr>`)}</tbody></table>
+          <h3>Passifs</h3>
+          ${liabCats.length ? html`<table class="rp-table"><tbody>${liabCats.map((c) => html`<tr><td>${c.name}</td><td class="num">${money(-c.value, base)}</td></tr>`)}
+            <tr class="rp-total"><td>Total</td><td class="num">${money(-T.liabilities, base)}</td></tr></tbody></table>` : html`<p class="muted">Aucun passif.</p>`}
+          ${gains.length ? html`<h3>Plus-values latentes</h3><p><b class="${gainBase >= 0 ? 'pos' : 'neg'}">${money(gainBase, base, { sign: true })}</b> <span class="muted">sur ${gains.length} avoir${gains.length > 1 ? 's' : ''} avec prix de revient, montant brut</span></p>` : ''}
+        </div>
+      </section>
+      ${opts.groups ? html`<section class="rp-section"><h3>Actifs par établissement, titulaire et devise</h3><div class="rp-three">
+        ${groupTable('Établissement', r.groups.institution)}${groupTable('Titulaire', r.groups.owner)}${groupTable('Devise', r.groups.currency)}</div></section>` : ''}
+      ${opts.detail ? html`<section class="rp-section rp-detail"><h3>Détail des avoirs</h3>
+        <table class="rp-table rp-holdings"><thead><tr><th>Actifs</th><th class="num">Votre part</th></tr></thead>${detailTable('asset')}</table>
+        ${detailRows('liability').length ? html`<table class="rp-table rp-holdings"><thead><tr><th>Passifs</th><th class="num">Votre part</th></tr></thead>${detailTable('liability')}</table>` : ''}
+      </section>` : ''}
+      <footer class="rp-foot">
+        <p>Valeurs connues au ${dateLong(r.date)} : pour chaque avoir, la dernière valeur saisie ou calculée à cette date. Seule votre quote-part est comptée ; les avoirs clôturés avant cette date sont exclus.
+          ${r.rates.length ? `Conversion en ${base} aux taux actuels : ${r.rates.map((x) => x.rate === null ? `${x.currency} sans taux` : `1 ${x.currency} = ${num(x.rate, { max: 4 })} ${base}`).join(', ')}.` : ''}
+          ${r.missing_rates.length ? ` Avoirs en ${r.missing_rates.join(', ')} non comptés faute de taux.` : ''}
+          ${stale && r.date === todayIso() ? ` ${stale} avoir${stale > 1 ? 's ont' : ' a'} une valeur de plus de ${r.stale_days} jours.` : ''}</p>
+        <p>Document indicatif établi par Vigie Patrimoine. Il ne constitue ni un conseil, ni une évaluation officielle, ni une déclaration fiscale.</p>
+      </footer>`;
   }
 
   // ---------------------------------------------------------------------------------------------------------
@@ -2946,6 +3064,7 @@
       pwa.refresh();
       if (choice && choice.outcome === 'accepted') toast('Installation de Vigie en cours');
     },
+    'print-report': () => window.print(),
     'toggle-discret': () => { state.discret = !state.discret; store.set('discret', state.discret); render(); },
     range: (b) => { state.range = b.dataset.range; store.set('range', state.range); render(); },
     breakdown: (b) => { state.breakdown = b.dataset.key; store.set('breakdown', state.breakdown); render(); },

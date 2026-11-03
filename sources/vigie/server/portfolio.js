@@ -235,10 +235,11 @@ export function dashboard(db, options = {}) {
   // Crypto-actif suivi automatiquement : sa valeur se calcule seule, il n'est jamais « à actualiser » à la main.
   const autoCrypto = new Set(db.prepare("SELECT holding_id FROM crypto_holdings WHERE mode <> 'manual'").all().map((r) => r.holding_id));
 
+  const at = options.today ? today : null; // bilan à une date passée : valeurs connues à cette date
   for (const h of state.holdings) {
     const cat = state.catById.get(h.category_id);
     if (!cat) continue;
-    const snap = holdingSnapshot(state, h);
+    const snap = holdingSnapshot(state, h, at);
     if (!h.closed_at) {
       openCount += 1;
       const last = snap.valuation ? snap.valuation.valued_at : null;
@@ -354,6 +355,36 @@ export function sharingByHolding(db, state) {
     }
   }
   return out;
+}
+
+// Bilan patrimonial à une date (1.5.0) : chiffres du tableau de bord à cette date, évolution sur 12 mois
+// et détail de chaque avoir (valeur connue à la date, quote-part, part en devise de référence).
+export function report(db, { userId = null, date = todayIso() } = {}) {
+  const d = dashboard(db, { userId, today: date });
+  const state = loadState(db, date, userId);
+  const names = new Map(db.prepare('SELECT id, display_name FROM users').all().map((u) => [u.id, u.display_name]));
+  const holdings = [];
+  for (const h of state.holdings) {
+    const cat = state.catById.get(h.category_id);
+    if (!cat) continue;
+    const snap = holdingSnapshot(state, h, date);
+    if (snap.cents === null) continue; // pas encore de valeur à cette date
+    if (h.closed_at && h.closed_at <= date && snap.cents === 0) continue; // clôturé avant la date
+    const property = state.properties.get(h.id) || null;
+    const acquisition = !property ? state.acquisitions.get(h.id) || null : null;
+    const basis = property || acquisition;
+    const gain = basis && cat.kind === 'asset' && (property ? property.purchased_at : acquisition.purchased_at) <= date
+      ? latentGain(snap.cents, basis.purchase_cents, snap.ownership_bp) : null;
+    holdings.push({ id: h.id, name: h.name, category_id: cat.id, kind: cat.kind, institution: h.institution || null, owner: h.owner || null,
+      currency: h.currency, liquidity: h.liquidity, value_cents: snap.cents, owned_cents: snap.owned, base: snap.base,
+      ownership_bp: snap.ownership_bp, valued_at: snap.valuation.valued_at, missing_rate: snap.missingRate,
+      shared_with_me: snap.shared_with_me, shared_by: snap.shared_with_me ? names.get(h.account_user_id) || null : null,
+      latent_gain_cents: gain ? gain.gain_cents : null });
+  }
+  const used = [...new Set(holdings.map((h) => h.currency))].filter((c) => c !== state.base).sort();
+  return { ...d, date, holdings, user_name: userId !== null ? names.get(userId) || null : null,
+    rates: used.map((c) => ({ currency: c, rate: state.rates[c] ?? null })),
+    history: history(db, '1y', { userId, today: date }).points };
 }
 
 // Liste des avoirs avec leur valeur actuelle et une mini-série pour l'aperçu.
