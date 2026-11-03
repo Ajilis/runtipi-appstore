@@ -1011,6 +1011,8 @@
   }
 
   // État du partage en tête du détail d'un avoir, visible sans faire défiler ; un clic mène à la section Partage.
+  // Demande : date et heure, puis l'e-mail (envoyé, renvoyé, ou pas d'e-mail).
+  const askedText = (x) => `envoyée le ${msAt(x.created_at)}${!x.sent_at ? ', sans e-mail' : x.send_count > 1 ? ` ; e-mail renvoyé le ${msAt(x.sent_at)} (${x.send_count} envois)` : ', par e-mail'}`;
   function shareHeadline(sharing) {
     if (!sharing) return '';
     // Une fiche par partage : avec qui, l'état et sa date et heure, la date et heure de la demande.
@@ -1025,25 +1027,28 @@
         `approuvé par vous le ${msAt(s.accepted_at)}`, `reçue le ${msAt(s.created_at)}`));
     } else {
       for (const x of sharing.shares.filter(activeShare)) cards.push(x.status === 'accepted'
-        ? card('ok', 'users', html`Partagé avec <b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}`, `approuvé le ${msAt(x.accepted_at)}`, `envoyée le ${msAt(x.created_at)}${x.sent_at ? ', par e-mail' : ''}`)
-        : card('wait', 'clock', html`Partage demandé à <b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}`, `en attente de validation, jusqu'au ${msAt(x.expires_at)}`, `envoyée le ${msAt(x.created_at)}${x.sent_at ? ', par e-mail' : ''}`));
+        ? card('ok', 'users', html`Partagé avec <b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}`, `approuvé le ${msAt(x.accepted_at)}`, askedText(x))
+        : card('wait', 'clock', html`Partage demandé à <b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}`, `en attente de validation, jusqu'au ${msAt(x.expires_at)}`, askedText(x)));
       const last = sharing.shares[0];
       if (!cards.length && last && last.status === 'declined')
-        cards.push(card('bad', 'close', html`Partage refusé par <b>${last.recipient_name}</b> · ${pctBp(last.ownership_bp)}`, `refusé le ${msAt(last.declined_at)}`, `envoyée le ${msAt(last.created_at)}`));
+        cards.push(card('bad', 'close', html`Partage refusé par <b>${last.recipient_name}</b> · ${pctBp(last.ownership_bp)}`, `refusé le ${msAt(last.declined_at)}`, askedText(last)));
       if (!cards.length && last && last.status === 'expired')
-        cards.push(card('', 'clock', html`Demande à <b>${last.recipient_name}</b> restée sans réponse · ${pctBp(last.ownership_bp)}`, `expirée le ${msAt(last.expires_at)}`, `envoyée le ${msAt(last.created_at)}`));
+        cards.push(card('', 'clock', html`Demande à <b>${last.recipient_name}</b> restée sans réponse · ${pctBp(last.ownership_bp)}`, `expirée le ${msAt(last.expires_at)}`, askedText(last)));
     }
     return cards.length ? html`<button type="button" class="share-headline" data-action="goto-share" aria-label="Voir le détail du partage">${cards}</button>` : '';
   }
 
   // En tête du détail d'un avoir : l'état du partage et, pour le titulaire, le bouton Partager, sans avoir à faire défiler.
-  function shareTop(h, sharing, mayEdit, property) {
+  function shareTop(h, sharing, mayEdit, property, mailOk = false) {
     const status = shareHeadline(sharing);
+    const relaunch = sharing && sharing.role === 'owner' ? sharing.shares.filter((x) => canResend(x, mayEdit, mailOk) && (x.status === 'pending' || x === sharing.shares[0])) : [];
+    const resend = relaunch.length === 1
+      ? html`<button class="btn small" type="button" data-action="share-resend" data-id="${relaunch[0].id}" data-holding="${h.id}" data-name="${relaunch[0].recipient_name}">${icon('mail')}Renvoyer l'e-mail à ${relaunch[0].recipient_name}</button>` : '';
     const why = shareBlocked(h, mayEdit);
     const button = !why && mayEdit
       ? html`<button class="btn small" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${property ? 'Partager ce bien' : 'Partager cet avoir'}</button>`
       : why ? html`<span class="small muted share-why">${icon('info')}${why}</span>` : '';
-    return status || button ? html`<div class="share-top">${status}${button}</div>` : '';
+    return status || button ? html`<div class="share-top">${status}${resend}${button}</div>` : '';
   }
   // Pourquoi le titulaire ne peut pas partager cet avoir (rien pour un avoir reçu en partage).
   function shareBlocked(h, mayEdit) {
@@ -1063,7 +1068,9 @@
   }
 
   // Section « Partage » du panneau d'un avoir : partagé oui ou non, avec qui, quand, approuvé ou non.
-  function sharePanel(h, sharing, mayEdit, property = null) {
+  // Relance par e-mail : demande en attente (ou expirée), destinataire avec adresse, envoi d'e-mails configuré.
+  const canResend = (x, mayEdit, mailOk) => Boolean(mayEdit && mailOk && x.recipient_has_email && (x.status === 'pending' || x.status === 'expired'));
+  function sharePanel(h, sharing, mayEdit, property = null, mailOk = false) {
     if (sharing && sharing.role === 'recipient') {
       const s = sharing.share;
       return html`<section class="section share-panel" id="share-section">${h3i('users', 'Partage')}<div class="panel">
@@ -1087,8 +1094,9 @@
     const line = (x) => html`<li class="share-line">
       ${avatar(x.recipient_name, 'sm')}
       <div class="share-who"><span><b>${x.recipient_name}</b> · ${pctBp(x.ownership_bp)}</span>
-        <span class="small muted">Demande du ${msAt(x.created_at)}${x.sent_at ? ', prévenu par e-mail' : ''}</span>
+        <span class="small muted">Demande ${askedText(x)}</span>
         <span class="state">${shareState(x)}</span></div>
+      ${canResend(x, mayEdit, mailOk) ? html`<button class="btn small ghost" type="button" data-action="share-resend" data-id="${x.id}" data-holding="${h.id}" data-name="${x.recipient_name}">${icon('mail')}Renvoyer l'e-mail</button>` : ''}
       ${mayEdit && activeShare(x) ? html`<button class="btn small ghost" type="button" data-action="share-revoke" data-id="${x.id}" data-holding="${h.id}" data-role="owner" data-status="${x.status}" data-name="${x.recipient_name}">${icon('close')}${x.status === 'pending' ? 'Annuler' : 'Retirer'}</button>` : ''}
     </li>`;
     return html`<section class="section share-panel" id="share-section">${h3i('users', 'Partage')}<div class="panel">
@@ -1572,7 +1580,7 @@
   async function openHolding(id) {
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
-    const { holding: h, valuations, schedule: sc, base_currency: base, property, acquisition, latent_gain: latent, sharing } = data;
+    const { holding: h, valuations, schedule: sc, base_currency: base, property, acquisition, latent_gain: latent, sharing, mail_ready: mailOk } = data;
     const partial = h.total_ownership_bp < 10000; // avoir détenu en partie (indivision, compte joint, partage)
     const mayEdit = canEdit() && !h.shared_with_me;
     const cats = holdingsCache ? holdingsCache.categories : (await api('GET', '/api/categories')).categories;
@@ -1588,7 +1596,7 @@
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p>
-        ${shareTop(h, sharing, mayEdit, property)}</div>
+        ${shareTop(h, sharing, mayEdit, property, mailOk)}</div>
       ${property ? html`<div class="panel"><dl class="kv">
         <dt>Votre quote-part</dt><dd>${num(h.total_ownership_bp / 100)} %</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
@@ -1616,7 +1624,7 @@
         <dt>${icon(LIQ_ICON[h.liquidity])}Liquidité</dt><dd>${LIQ[h.liquidity]}</dd>
         ${h.notes ? html`<dt>${icon('journal')}Notes</dt><dd style="white-space:pre-wrap">${h.notes}</dd>` : ''}
       </dl>
-      ${sharePanel(h, sharing, mayEdit, property)}
+      ${sharePanel(h, sharing, mayEdit, property, mailOk)}
       ${sc && !shown.length ? '' : html`<section class="section">${h3i('clock', sc ? "Valeurs saisies avant l'échéancier" : 'Historique des valeurs')}
         ${shown.length ? html`<div class="panel flush table-wrap"><table class="table"><thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Écart</th>${mayEdit ? html`<th><span class="sr-only">Actions</span></th>` : ''}</tr></thead><tbody>
           ${shown.map((v, i) => {
@@ -2609,7 +2617,7 @@
     utilisateur_supprime: 'Utilisateur supprimé', email_reglages: "Envoi d'e-mails configuré", email_desactive: "Envoi d'e-mails désactivé", email_test: "Test d'envoi d'e-mail",
     email_modifie: 'Adresse e-mail modifiée', invitation_envoyee: 'Invitation envoyée', invitation_creee: "Lien d'invitation créé", invitation_renvoyee: 'Invitation renvoyée',
     invitation_lien: "Nouveau lien d'invitation", invitation_annulee: 'Invitation annulée', invitation_acceptee: 'Invitation acceptée', mot_de_passe_oublie: 'Mot de passe oublié',
-    partage_envoye: 'Partage proposé', partage_accepte: 'Partage accepté', partage_refuse: 'Partage refusé', partage_revoque: 'Partage retiré',
+    partage_envoye: 'Partage proposé', partage_relance: 'E-mail de partage renvoyé', partage_accepte: 'Partage accepté', partage_refuse: 'Partage refusé', partage_revoque: 'Partage retiré',
     partage_immobilier_envoye: 'Partage proposé', partage_immobilier_accepte: 'Partage accepté', partage_immobilier_refuse: 'Partage refusé', partage_immobilier_revoque: 'Partage retiré',
     lien_mot_de_passe: 'Lien de réinitialisation envoyé', logo_personnalise: 'Logo personnalisé', logo_retire: 'Logo personnalisé retiré', logo_recherche: 'Logo recherché', logos_recherche: 'Logos recherchés', logos_reessai: 'Logos réessayés', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
   };
@@ -2669,6 +2677,13 @@
     breakdown: (b) => { state.breakdown = b.dataset.key; store.set('breakdown', state.breakdown); render(); },
     logout: async () => { try { await api('POST', '/api/auth/logout'); } catch { /* déjà déconnecté */ } state.user = null; state.logoVersions = null; location.hash = '#/'; showLogin('Vous êtes déconnecté.'); },
     'share-holding': (b) => shareHoldingForm(Number(b.dataset.id)).catch(fail),
+    'share-resend': async (b) => withBusy(b, async () => {
+      try {
+        const r = await api('POST', `/api/shares/${b.dataset.id}/resend`, {});
+        toast(`E-mail renvoyé à ${r.invitation.recipient_name} ; la demande est valable jusqu'au ${msAt(r.invitation.expires_at)}.`);
+        reopenHolding(Number(b.dataset.holding));
+      } catch (err) { fail(err); }
+    }),
     'goto-share': () => { const sec = $('dialog[open] #share-section'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     'share-decision': async (b) => withBusy(b, async () => {
       try {

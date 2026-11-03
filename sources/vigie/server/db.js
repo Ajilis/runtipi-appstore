@@ -352,6 +352,11 @@ export const MIGRATIONS = [
   `
   ALTER TABLE sessions ADD COLUMN remember INTEGER NOT NULL DEFAULT 0;
   `,
+  // 1.2.0 : e-mail de partage renvoyable ; nombre d'envois réussis.
+  `
+  ALTER TABLE holding_shares ADD COLUMN send_count INTEGER NOT NULL DEFAULT 0;
+  UPDATE holding_shares SET send_count = 1 WHERE sent_at IS NOT NULL;
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

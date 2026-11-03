@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 28** · **Version de Vigie : 1.1.2** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 29** · **Version de Vigie : 1.2.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -75,7 +75,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Un patrimoine par compte** : avoirs, catégories et allocation cible, titulaires, délai de rappel, tableau de bord, historique, journal, exports et restauration sont personnels. Les autres comptes, administrateur compris, ne voient ni vos avoirs ni vos montants, sauf ce que vous partagez.
 - **Rôles** : **Utilisateur** (rôle par défaut : gère son propre patrimoine), **Administrateur** (son patrimoine, plus les comptes, les e-mails, la sécurité, les taux saisis à la main, les sauvegardes et les logos) et **Lecture seule** (ne crée rien, consulte les avoirs que d'autres comptes lui partagent). Supprimer un compte qui a des avoirs les supprime avec lui, après une seconde confirmation.
 - **Invitations par e-mail** : la personne reçoit un lien valable 7 jours et à usage unique, choisit son identifiant et son mot de passe, puis arrive connectée. Sans e-mail, un lien peut être transmis à la main ; l'ajout direct avec un mot de passe provisoire reste possible.
-- **Partage d'un avoir** avec un autre compte du serveur (compte joint, livret, assurance-vie, bien immobilier, crédit…) : bouton **Partager cet avoir** dans le détail de l'avoir, quote-part proposée (la moitié par défaut, ou la part non attribuée d'un bien en indivision). Le destinataire voit la demande **en haut de ses Avoirs et de son tableau de bord**, avec **Accepter** et **Refuser** (et un e-mail si l'envoi est configuré). Chaque avoir indique s'il est **partagé ou non**, avec qui, **depuis quand** et si le destinataire **a approuvé**, est **en attente** ou **a refusé** ; une étiquette le résume dans la liste. Après accord, chacun ne compte que sa part ; le destinataire voit l'avoir en lecture seule. Le partage se retire à tout moment.
+- **Partage d'un avoir** avec un autre compte du serveur (compte joint, livret, assurance-vie, bien immobilier, crédit…) : bouton **Partager cet avoir** dans le détail de l'avoir, quote-part proposée (la moitié par défaut, ou la part non attribuée d'un bien en indivision). Le destinataire voit la demande **en haut de ses Avoirs et de son tableau de bord**, avec **Accepter** et **Refuser** (et un e-mail si l'envoi est configuré, que le titulaire peut **renvoyer** tant que la demande attend). Chaque avoir indique s'il est **partagé ou non**, avec qui, **depuis quand** et si le destinataire **a approuvé**, est **en attente** ou **a refusé** ; une étiquette le résume dans la liste. Après accord, chacun ne compte que sa part ; le destinataire voit l'avoir en lecture seule. Le partage se retire à tout moment.
 - **Quote-part** : pour un compte joint ou un placement à deux, indiquez votre part (100 % par défaut) ; seule celle-ci entre dans votre patrimoine.
 - **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes (les connexions mémorisées y sont signalées), mon journal.
 - **Rester connecté** : case sur l'écran de connexion, cochée par défaut dans l'application installée. La connexion est mémorisée sur l'appareil jusqu'à 30 jours sans utilisation (réglable, ou retirée, dans Réglages → Sécurité) et se prolonge à chaque usage ; sans la case, elle se ferme avec le navigateur ou après le délai d'inactivité.
@@ -115,6 +115,12 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.2.0 : renvoyer l'e-mail d'une demande de partage
+
+- Une demande de partage en attente (ou expirée sans réponse) peut être relancée : bouton **Renvoyer l'e-mail à…** en tête du détail de l'avoir, et **Renvoyer l'e-mail** sur la ligne de la personne dans la section Partage. La relance renvoie l'e-mail avec le lien vers les Avoirs du destinataire et redonne **7 jours** pour répondre ; une demande expirée redevient en attente.
+- La fiche du partage indique pour la demande : date et heure d'envoi, puis « par e-mail », « sans e-mail » (destinataire sans adresse ou envoi d'e-mails non configuré) ou « e-mail renvoyé le … à … (n envois) ».
+- Garde-fous : seul le titulaire relance ; pas deux e-mails dans la même minute ; une demande acceptée, refusée ou retirée ne se relance pas (proposez un nouveau partage) ; un message clair si l'envoi d'e-mails n'est pas configuré ou si la personne n'a pas d'adresse. Chaque relance est inscrite au journal.
 
 ### Version 1.1.2 : état du partage détaillé, mise à jour automatique de l'application
 

@@ -312,7 +312,8 @@ export function history(db, range = '1y', options = {}) {
 export const shareStatus = (r, now = Date.now()) => r.revoked_at ? 'revoked' : r.declined_at ? 'declined'
   : r.accepted_at ? 'accepted' : r.expires_at <= now ? 'expired' : 'pending';
 export const SHARE_ROW_SQL = `SELECT s.*, h.name AS holding_name, h.account_user_id AS holding_owner_id,
-    u.display_name AS sender_name, r.display_name AS recipient_name, o.display_name AS owner_name
+    u.display_name AS sender_name, r.display_name AS recipient_name, o.display_name AS owner_name,
+    (r.email IS NOT NULL AND r.email <> '') AS recipient_has_email
   FROM holding_shares s JOIN holdings h ON h.id = s.holding_id
   LEFT JOIN users u ON u.id = s.sender_id
   JOIN users r ON r.id = s.recipient_id
@@ -320,6 +321,7 @@ export const SHARE_ROW_SQL = `SELECT s.*, h.name AS holding_name, h.account_user
 export function shareView(row, now = Date.now()) {
   return { id: row.id, holding_id: row.holding_id, holding_name: row.holding_name,
     sender_name: row.sender_name, owner_name: row.owner_name, recipient_id: row.recipient_id, recipient_name: row.recipient_name,
+    recipient_has_email: Boolean(row.recipient_has_email), send_count: row.send_count ?? (row.sent_at ? 1 : 0),
     ownership_bp: row.ownership_bp, deducted_bp: row.deducted_bp, status: shareStatus(row, now),
     created_at: row.created_at, sent_at: row.sent_at, expires_at: row.expires_at,
     accepted_at: row.accepted_at, declined_at: row.declined_at, revoked_at: row.revoked_at };

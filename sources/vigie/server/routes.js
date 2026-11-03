@@ -542,21 +542,57 @@ export function registerRoutes(router, deps) {
     // L'e-mail prévient le destinataire ; la demande l'attend de toute façon en haut de ses Avoirs.
     let sent = false, mailError = null;
     if (recipient.email && mailReady() && mailConf()) {
-      try {
-        await deliver(recipient.email, 'holdingShare', {
-          firstName: recipient.first_name, inviter: ctx.user.display_name, holdingName: h.name,
-          categoryName: h.category_name, ownershipPct: pct / 100,
-          url: String(mailSettings().public_url).replace(/\/$/, '') + '/#/avoirs', expiresAt: now + SHARE_TTL,
-        });
-        sent = true;
-        db.prepare('UPDATE holding_shares SET sent_at = ? WHERE id = ?').run(Date.now(), invitationId);
-      } catch (err) {
+      try { await sendShareMail(invitationId, ctx.user); sent = true; }
+      catch (err) {
         if (!(err instanceof SmtpError) && !err.status) throw err;
         mailError = err.message;
       }
     }
     audit(ctx, 'partage_envoye', `${h.name} : ${pctText(pct)} proposé à ${recipient.display_name}${sent ? ', prévenu par e-mail' : ''}`);
     return { invitation: shareView(shareRow.get(invitationId)), sent, mail_error: mailError };
+  });
+
+  // E-mail de demande de partage (premier envoi ou relance) : lien vers les Avoirs du destinataire.
+  async function sendShareMail(shareId, sender) {
+    const row = shareRow.get(shareId);
+    const recipient = getUser(row.recipient_id);
+    const h = sharedHolding(row.holding_id);
+    await deliver(recipient.email, 'holdingShare', {
+      firstName: recipient.first_name, inviter: sender.display_name, holdingName: h.name,
+      categoryName: h.category_name, ownershipPct: row.ownership_bp / 100,
+      url: String(mailSettings().public_url).replace(/\/$/, '') + '/#/avoirs', expiresAt: row.expires_at,
+    });
+    db.prepare('UPDATE holding_shares SET sent_at = ?, send_count = send_count + 1 WHERE id = ?').run(Date.now(), shareId);
+  }
+
+  // Relancer une demande en attente : nouvel e-mail et 7 jours de plus pour répondre.
+  router.post('/api/shares/:id/resend', { auth: 'editor' }, async (ctx) => {
+    const id = intId(ctx.params.id);
+    const row = shareRow.get(id);
+    if (!row || row.holding_owner_id !== ctx.user.id) fail(404, 'not_found', 'Demande de partage introuvable.');
+    const status = shareStatus(row);
+    if (status !== 'pending' && status !== 'expired')
+      fail(409, 'share_inactive', status === 'accepted' ? 'Ce partage est déjà approuvé.' : 'Cette demande est close : proposez un nouveau partage.');
+    if (status === 'expired' && db.prepare(`SELECT 1 FROM holding_shares WHERE holding_id = ? AND recipient_id = ? AND id <> ?
+        AND declined_at IS NULL AND revoked_at IS NULL AND (accepted_at IS NOT NULL OR expires_at > ?)`).get(row.holding_id, row.recipient_id, id, Date.now()))
+      fail(409, 'already_shared', 'Une autre demande est déjà en cours pour cette personne.');
+    if (status === 'expired' && row.ownership_bp > shareCapacity(row.holding_id))
+      fail(409, 'share_capacity', 'Cette quote-part n’est plus disponible : proposez un nouveau partage.');
+    if (!mailReady() || !mailConf()) fail(409, 'mail_not_configured', "L'envoi d'e-mails n'est pas configuré (Réglages → Envoi d'e-mails). La demande attend la personne dans ses Avoirs.");
+    if (!row.recipient_has_email) fail(409, 'no_email', `${row.recipient_name} n'a pas d'adresse e-mail : la demande l'attend en haut de ses Avoirs à sa prochaine connexion.`);
+    if (row.sent_at && Date.now() - row.sent_at < 60_000) fail(429, 'too_soon', 'Un e-mail vient d’être envoyé : patientez une minute avant de le renvoyer.');
+    // La relance redonne 7 jours, y compris à une demande expirée.
+    const before = { expires_at: row.expires_at };
+    db.prepare('UPDATE holding_shares SET expires_at = ? WHERE id = ?').run(Date.now() + SHARE_TTL, id);
+    try { await sendShareMail(id, ctx.user); }
+    catch (err) {
+      db.prepare('UPDATE holding_shares SET expires_at = ? WHERE id = ?').run(before.expires_at, id);
+      if (err instanceof SmtpError) fail(502, 'smtp_error', 'E-mail non envoyé : ' + err.message);
+      throw err;
+    }
+    const data = shareView(shareRow.get(id));
+    audit(ctx, 'partage_relance', `${data.holding_name} : ${pctText(data.ownership_bp)}, e-mail renvoyé à ${data.recipient_name}`);
+    return { invitation: data, sent: true };
   });
 
   router.post('/api/shares/:id/decision', { auth: 'viewer' }, (ctx) => {
@@ -640,6 +676,7 @@ export function registerRoutes(router, deps) {
       latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp)
         : acquisition && snap.cents !== null ? latentGain(snap.cents, acquisition.purchase_cents, snap.ownership_bp) : null,
       sharing: sharingByHolding(db, state).get(id) || null,
+      mail_ready: Boolean(mailReady() && mailConf()),
       valuations, schedule, base_currency: state.base };
   });
 
