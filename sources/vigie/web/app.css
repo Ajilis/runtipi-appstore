@@ -577,6 +577,25 @@ details.amort > p { margin-top: 8px; }
 }
 
 
+/* --- Crypto-actifs ------------------------------------------------------------------------------------------------ */
+.crypto-fields { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel-2); }
+.crypto-fields > p { margin: 0; }
+.input.mono, .crypto-addr { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.875rem; }
+.crypto-addr { overflow-wrap: anywhere; }
+.seg-radio label:has(input:disabled) { cursor: not-allowed; }
+.seg-radio input:disabled { cursor: not-allowed; }
+.seg-radio input:disabled + span { opacity: 0.45; }
+.panel.crypto-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 16px; }
+.panel.crypto-panel > * { min-width: 0; }
+.panel.crypto-panel .kv { grid-template-columns: max-content 1fr; }
+.panel.crypto-panel .kv dd { text-align: right; font-variant-numeric: tabular-nums; }
+.panel.crypto-panel > p { margin: 0; }
+@media (max-width: 480px) {
+  .panel.crypto-panel { padding: 14px 12px; }
+  .panel.crypto-panel .kv { grid-template-columns: max-content minmax(0, 1fr); gap: 8px 12px; }
+  .panel.crypto-panel .kv dt { margin-top: 0; }
+}
+
 /* --- Réglages : onglets par thème ------------------------------------------------------------------------------- */
 .settings-tabs {
   display: flex;

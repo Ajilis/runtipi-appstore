@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 29** · **Version de Vigie : 1.2.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 30** · **Version de Vigie : 1.3.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -11,7 +11,7 @@ Un patrimoine est éparpillé : comptes courants et livrets dans plusieurs banqu
 Vigie prend le parti inverse :
 
 - **Pas de mouvements à saisir.** On ne gère ni opérations ni budget : pour chaque avoir, on note simplement sa valeur à une date (relevé, estimation). Vigie conserve chaque valeur et en tire l'historique, les tendances et les répartitions. Une mise à jour mensuelle prend quelques minutes.
-- **Privé et auto-hébergé.** Les données restent sur votre serveur, dans votre installation Runtipi. Aucun identifiant bancaire n'est demandé et aucun montant ne quitte votre serveur. Les seuls échanges avec l'extérieur (nom d'un établissement recherché, logos, taux de la BCE, adresse d'un bien quand vous demandez son estimation) sont décrits plus bas. L'application s'ouvre sur le réseau local ou à distance par Cloudflare Tunnel, avec double authentification.
+- **Privé et auto-hébergé.** Les données restent sur votre serveur, dans votre installation Runtipi. Aucun identifiant bancaire n'est demandé et aucun montant ne quitte votre serveur. Les seuls échanges avec l'extérieur (nom d'un établissement recherché, logos, taux de la BCE, adresse d'un bien quand vous demandez son estimation, adresse publique d'un portefeuille crypto et cours des crypto-actifs) sont décrits plus bas. L'application s'ouvre sur le réseau local ou à distance par Cloudflare Tunnel, avec double authentification.
 - **Une vue globale et utile.** Patrimoine net (passifs déduits), évolution dans le temps, répartition par catégorie, établissement, titulaire, devise et liquidité, écart à l'allocation visée : de quoi décider d'un rééquilibrage, d'une épargne de précaution ou d'un remboursement anticipé.
 - **Pensé pour un foyer.** Plusieurs comptes, et **chacun a son propre patrimoine** (avoirs, catégories, objectifs, réglages, journal) ; invitations par e-mail ; partage de n'importe quel avoir détenu à plusieurs (compte joint, bien en indivision, crédit à deux), chacun ne comptant que sa part.
 
@@ -55,6 +55,16 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 ### Plus-values latentes des autres placements
 
 - Pour l'or, la crypto, la bourse et les autres actifs, un **prix de revient** et une **date d'acquisition** facultatifs donnent le **gain ou la perte latente brute**, dans le détail de l'avoir et en synthèse sur la page Avoirs, convertis en devise de référence. Ni frais, ni fiscalité, ni mouvements ne sont modélisés.
+
+### Crypto-actifs
+
+- **Actif choisi dans une liste déroulante** : Bitcoin, Ether, USDC et USDT (réseau Ethereum), Solana, Litecoin, Dogecoin et XRP se suivent **par adresse blockchain** ; BNB, Cardano, Polkadot, Avalanche, TRON, Chainlink, Stellar, Cosmos et Monero **par quantité saisie**.
+- **Par adresse** : Vigie lit la quantité détenue à l'adresse publique du portefeuille sur un explorateur public (mempool.space, litecoinspace.org, PublicNode pour Ethereum, RPC public Solana, BlockCypher, XRPL Cluster), puis la **valorise au cours du jour** (CoinGecko) dans la devise de l'avoir. Le format de l'adresse est vérifié à la saisie.
+- **Actualisation automatique** à l'enregistrement, peu après le démarrage puis **toutes les 6 heures**, et à la demande (**Actualiser maintenant**). Une valeur par jour dans l'historique, avec la quantité et le cours en note (« Auto : 0,6221 BTC × 61.234,56 EUR ») ; la courbe et les totaux se mettent à jour seuls.
+- **Détail de l'avoir** : actif, adresse abrégée avec lien vers l'explorateur, quantité, cours retenu, date et heure de la dernière actualisation. En cas d'échec (explorateur ou CoinGecko indisponible), le message s'affiche et la dernière valeur calculée est conservée.
+- **Valeur à la main** toujours possible : on indique l'actif sans suivi automatique, comme avant.
+- **Limites** : une adresse par avoir. Un portefeuille à plusieurs adresses (portefeuille HD, Ledger, Trezor…) se suit avec un avoir par adresse ou en quantité saisie. Les jetons hors réseau Ethereum (USDC sur Solana, par exemple) et les montants placés sur une plateforme d'échange se suivent en quantité.
+- **Confidentialité** : seuls l'adresse publique et le nom de l'actif sont envoyés, jamais un montant, un nom ou une clé ; ne saisissez jamais de clé privée ni de phrase de récupération. Une adresse publique dévoile son solde à qui la connaît : l'explorateur interrogé voit l'adresse IP de votre serveur. L'administrateur coupe ces échanges dans **Réglages → Sécurité** (« Lire les soldes et les cours des crypto-actifs ») ou par `CRYPTO_LOOKUPS=false`.
 
 ### Établissements et logos
 
@@ -115,6 +125,14 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.3.0 : crypto-actifs suivis par adresse blockchain
+
+- Dans un avoir de la catégorie Crypto-actifs, le **crypto-actif se choisit dans une liste déroulante**, puis le suivi : **adresse blockchain**, **quantité** ou **valeur à la main**.
+- **Par adresse** (BTC, ETH, USDC, USDT, SOL, LTC, DOGE, XRP) : Vigie récupère la quantité à l'adresse et la valorise au cours du jour (CoinGecko), dès l'enregistrement puis toutes les 6 heures ; **par quantité** (ADA, DOT, BNB…) : la quantité saisie est valorisée de la même façon.
+- Détail de l'avoir : quantité, cours, dernière actualisation, lien vers l'explorateur et bouton **Actualiser maintenant** ; la saisie manuelle de valeur est remplacée par le calcul automatique. Liste des avoirs : « Suivi auto » et quantité détenue ; Mise à jour rapide : ligne calculée.
+- Administrateur : **Réglages → Sécurité → Services externes : crypto-actifs** pour couper ces échanges ; clé CoinGecko facultative (`COINGECKO_API_KEY`) si la limite gratuite est atteinte.
+- Les suivis crypto sont inclus dans l'export JSON et restaurés avec lui.
 
 ### Version 1.2.0 : renvoyer l'e-mail d'une demande de partage
 
@@ -352,6 +370,8 @@ Modifier `APP_DATA_DIR/data/config/vigie.env`, puis redémarrer l'application da
 | `INSTITUTION_CATALOGUE` | true | Suggestions d'établissements enrichies depuis OpenFinTech, Wikidata et le registre public des entreprises (false : catalogue embarqué uniquement, aucune requête vers ces services) |
 | `INSTITUTION_LOGOS` | true | Logos des établissements récupérés sur leur site officiel (false : aucune connexion sortante, images personnelles ou monogrammes) |
 | `INSTITUTION_LOGOS_FALLBACK` | true | Si le site bloque ou n'offre qu'une petite icône, icône demandée au service d'icônes de Google (seul le nom de domaine de l'établissement est transmis) |
+| `CRYPTO_LOOKUPS` | true | Crypto-actifs : soldes lus aux adresses publiques sur des explorateurs publics et cours CoinGecko, toutes les 6 heures (false : aucune requête, valeur saisie à la main) |
+| `COINGECKO_API_KEY` | (vide) | Clé de démonstration CoinGecko facultative, envoyée dans l'en-tête `x-cg-demo-api-key` |
 | `LOG_LEVEL` | info | Détail des journaux du conteneur |
 
 ## Mises à jour et sauvegardes

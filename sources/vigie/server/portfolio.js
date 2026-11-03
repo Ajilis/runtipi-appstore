@@ -232,6 +232,8 @@ export function dashboard(db, options = {}) {
   const stale = [];
   const missingRates = new Set();
   let openCount = 0;
+  // Crypto-actif suivi automatiquement : sa valeur se calcule seule, il n'est jamais « à actualiser » à la main.
+  const autoCrypto = new Set(db.prepare("SELECT holding_id FROM crypto_holdings WHERE mode <> 'manual'").all().map((r) => r.holding_id));
 
   for (const h of state.holdings) {
     const cat = state.catById.get(h.category_id);
@@ -241,7 +243,7 @@ export function dashboard(db, options = {}) {
       openCount += 1;
       const last = snap.valuation ? snap.valuation.valued_at : null;
       const age = last ? daysBetween(last, today) : null;
-      if (!state.schedules.has(h.id) && staleDays > 0 && (age === null || age > staleDays)) stale.push({ id: h.id, name: h.name, category: cat.name, category_icon: cat.icon, kind: cat.kind, last_date: last, age_days: age });
+      if (!state.schedules.has(h.id) && !autoCrypto.has(h.id) && staleDays > 0 && (age === null || age > staleDays)) stale.push({ id: h.id, name: h.name, category: cat.name, category_icon: cat.icon, kind: cat.kind, last_date: last, age_days: age });
     }
     if (snap.missingRate) { missingRates.add(h.currency); continue; }
     if (snap.base === null || (h.closed_at && snap.base === 0)) continue;
@@ -352,6 +354,8 @@ export function holdingsView(db, userId = null) {
   const staleDays = staleDaysFor(db, userId);
   const properties = state.properties;
   const sharing = sharingByHolding(db, state);
+  // Crypto-actifs : actif, mode de suivi et dernière quantité lue, pour la liste et la mise à jour rapide.
+  const cryptos = new Map(db.prepare('SELECT holding_id, asset, mode, last_quantity, last_error, last_ok_at FROM crypto_holdings').all().map((c) => [c.holding_id, { ...c }]));
   return {
     base_currency: state.base,
     stale_days: staleDays,
@@ -376,6 +380,7 @@ export function holdingsView(db, userId = null) {
         latent_gain_cents: properties.has(h.id) ? latentGain(snap.cents, properties.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null
           : state.acquisitions.has(h.id) && snap.cents !== null && !h.closed_at ? latentGain(snap.cents, state.acquisitions.get(h.id).purchase_cents, snap.ownership_bp)?.gain_cents ?? null : null,
         sharing: sharing.get(h.id) || null,
+        crypto: cryptos.get(h.id) || null,
         value_base: snap.base,
         missing_rate: snap.missingRate,
         last_date: last,

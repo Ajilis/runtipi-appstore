@@ -136,6 +136,17 @@
     return /^-?\d+(\.\d+)?$/.test(t) ? Math.round(Number(t) * 100) : NaN;
   }
   const centsInput = (cents) => (cents / 100).toFixed(2).replace('.', ',').replace(',00', '');
+  // Quantité de crypto-actif, même lecture que server/crypto.js : chaîne décimale « 1234.56 », ou null.
+  function parseQuantity(raw) {
+    let t = String(raw ?? '').replace(/[\s\u00a0\u202f]/g, '');
+    if (!t) return null;
+    if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+    else if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    else t = t.replace(',', '.');
+    return /^\d+(\.\d{1,18})?$/.test(t) && t.length <= 40 && Number(t) > 0 ? t : null;
+  }
+  const deAsset = (id) => (/^[AEIOUY]/.test(id) ? `d’${id}` : `de ${id}`); // « d’ADA », « de BTC »
+  const qtyFmt = (q, asset) => `${num(Number(q), { max: Number(q) < 1 ? 8 : 6 })} ${asset}`;
 
   // Échéancier de prêt : même calcul que server/loans.js, pour l'aperçu immédiat du formulaire.
   const LOAN_ICONS = ['handshake', 'loanHouse', 'loanDoc'];
@@ -934,19 +945,23 @@
         return html`<section class="panel flush group" aria-label="${c.name}">
           <div class="group-head"><div class="gh">${catPict(c)}<div><h3>${c.name}</h3><span class="sub">${c.kind === 'liability' ? 'Passif' : c.description || ''}</span></div></div><b>${money(c.kind === 'liability' ? -sum : sum)}</b></div>
           ${items.map((h) => {
-            const stale = !h.closed_at && !h.schedule && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
+            const autoCrypto = h.crypto && h.crypto.mode !== 'manual' ? h.crypto : null;
+            const stale = !h.closed_at && !h.schedule && !autoCrypto && v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             const diff = h.previous_cents !== null && h.value_cents !== null
               ? Math.round(h.value_cents * (h.total_ownership_bp ?? h.property?.ownership_bp ?? 10000) / 10000)
                 - Math.round(h.previous_cents * (h.total_ownership_bp ?? h.property?.ownership_bp ?? 10000) / 10000)
               : null;
             const when = h.closed_at ? html`<span class="tag">${icon('lock')}Clôturé le ${dateFr(h.closed_at)}</span>`
               : h.schedule ? (h.schedule.done ? html`<span class="tag brand">${icon('check')}Remboursé</span>` : html`<span class="tag brand">${icon('calendar')}Échéancier</span><br>prochaine le ${dateFr(h.schedule.next_date)}`)
+              : autoCrypto ? (autoCrypto.last_error ? html`<span class="tag bad">${icon('alert')}Lecture impossible</span><br>${h.last_date ? `dernière valeur le ${dateFr(h.last_date)}` : 'sans valeur'}`
+                : html`<span class="tag brand">${icon('crypto')}Suivi auto</span><br>${h.last_date ? `mis à jour ${ago(h.age_days)}` : 'en attente'}`)
               : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`;
             return html`<button type="button" class="holding ${h.closed_at ? 'closed' : ''}" data-action="open-holding" data-id="${h.id}">
-              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}${shareTag(h)}</span></span></span>
+              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}${autoCrypto && !h.closed_at ? html`<span class="m-only">${il(autoCrypto.last_error ? 'alert' : 'crypto', autoCrypto.last_error ? 'Lecture impossible' : 'Suivi auto')}</span>` : ''}${shareTag(h)}</span></span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${when}</span>
               <span class="amount"><b>${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency)}</b>
+                ${autoCrypto && autoCrypto.last_quantity ? html`<span class="muted">${state.discret ? `${MASK} ${autoCrypto.asset}` : qtyFmt(autoCrypto.last_quantity, autoCrypto.asset)}</span>` : ''}
                 ${h.total_ownership_bp < 10000 && h.value_cents !== null ? html`<span class="muted">Votre quote-part : ${pctBp(h.total_ownership_bp)} ${h.property ? 'du bien' : 'de'} ${money(h.value_cents, h.currency)}</span>` : ''}
                 ${h.currency !== v.base_currency && h.value_base !== null ? html`<span class="muted">${money(h.value_base)}</span>` : ''}
                 ${h.missing_rate ? html`<span class="tag bad">${icon('alert')}Taux ${h.currency} manquant</span>` : ''}
@@ -1206,6 +1221,8 @@
     const sc = h.schedule || null;
     const property = h.property || null;
     const acquisition = h.acquisition || null;
+    const cr = h.crypto || null; // suivi crypto existant
+    const cryptoAssets = settings.crypto_assets || [];
     const d = openDialog(html`<form class="dialog-body form" id="holding-form">
       ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter un avoir', existing ? '' : 'Un compte, un placement, un bien ou un crédit. Seule sa valeur compte, pas ses mouvements.')}
       <label class="field"><span>Nom</span><input class="input" name="name" required maxlength="80" value="${h.name || ''}" placeholder="Livret A, PEA, Appartement Lyon…" autofocus></label>
@@ -1252,6 +1269,30 @@
         </div>
         <div class="loan-preview" data-preview aria-live="polite"></div>
       </div>
+      <section class="section crypto-fields" data-crypto hidden>
+        ${h3i('crypto', 'Crypto-actif')}
+        <label class="field"><span>Actif</span><select class="select" name="crypto_asset">
+          <option value="">Non précisé (valeur saisie à la main)</option>
+          <optgroup label="Quantité lue à une adresse blockchain">${cryptoAssets.filter((a) => a.by_address).map((a) => html`<option value="${a.id}" ${cr?.asset === a.id ? 'selected' : ''}>${a.id} · ${a.name}</option>`)}</optgroup>
+          <optgroup label="Quantité saisie">${cryptoAssets.filter((a) => !a.by_address).map((a) => html`<option value="${a.id}" ${cr?.asset === a.id ? 'selected' : ''}>${a.id} · ${a.name}</option>`)}</optgroup>
+        </select></label>
+        <fieldset class="mode" data-crypto-modes hidden>
+          <legend class="sr-only">Suivi de la quantité</legend>
+          <div class="seg seg-radio">
+            <label><input type="radio" name="crypto_mode" value="address"><span>${icon('link')}Adresse blockchain</span></label>
+            <label><input type="radio" name="crypto_mode" value="quantity"><span>${icon('sum')}Quantité</span></label>
+            <label><input type="radio" name="crypto_mode" value="manual"><span>${icon('pencil')}Valeur à la main</span></label>
+          </div>
+        </fieldset>
+        <label class="field" data-crypto-address hidden><span>Adresse publique du portefeuille</span>
+          <input class="input mono" name="crypto_address" maxlength="120" autocomplete="off" autocapitalize="off" spellcheck="false" value="${cr?.address || ''}" aria-describedby="crypto-address-hint">
+          <small id="crypto-address-hint" data-address-hint></small></label>
+        <label class="field" data-crypto-quantity hidden><span>Quantité détenue</span>
+          <input class="input amount" name="crypto_quantity" inputmode="decimal" autocomplete="off" placeholder="Ex. 0,25" value="${cr?.quantity ? cr.quantity.replace('.', ',') : ''}" aria-describedby="crypto-qty-hint">
+          <small id="crypto-qty-hint" data-qty-hint aria-live="polite"></small></label>
+        <p class="small muted" data-crypto-hint></p>
+        ${settings.crypto_lookups === false ? html`<div class="notice bad" data-crypto-off hidden>${icon('alert')}<div>Les services externes des crypto-actifs sont désactivés par l'administrateur : le solde et le cours ne seront pas actualisés.</div></div>` : ''}
+      </section>
       ${existing ? html`<label class="field"><span>Devise</span><select class="select" name="currency">${curList.map((c) => html`<option ${h.currency === c ? 'selected' : ''}>${c}</option>`)}</select></label>`
         : html`<div class="grid-3 value-row">
         <label class="field" data-manual><span>Valeur actuelle du bien entier</span><span class="estate-value-input"><input class="input amount" name="amount" inputmode="decimal" placeholder="0" autocomplete="off"><button class="btn estimate-magic" type="button" data-estimate hidden title="Estimer à partir des ventes immobilières" aria-label="Estimer la valeur actuelle avec la baguette magique">${icon('magic')}<span>Estimer</span></button></span></label>
@@ -1418,7 +1459,8 @@
       for (const r of form.querySelectorAll('[name="mode"]')) r.checked = r.value === mode;
       const auto = loan && mode === 'auto';
       block.hidden = !auto;
-      $$('[data-manual]', form).forEach((el) => { el.hidden = auto; });
+      const computed = auto || cryptoTracked(); // valeur calculée : rien à saisir
+      $$('[data-manual]', form).forEach((el) => { el.hidden = computed; });
       const ch = $('[data-credit-hint]', form);
       if (ch) ch.hidden = auto || !liability;
       for (const n of scNames) form[n].required = auto;
@@ -1431,12 +1473,58 @@
           : 'Vous saisissez la valeur vous-même, quand vous le souhaitez.');
       drawPreview();
     };
+    // Crypto-actif : actif choisi dans la liste, puis quantité lue à une adresse blockchain, quantité saisie ou valeur à la main.
+    const cryptoSection = $('[data-crypto]', form);
+    const assetById = new Map(cryptoAssets.map((a) => [a.id, a]));
+    let cMode = cr?.mode || null;
+    const isCryptoCat = (o) => o.dataset.kind === 'asset' && (o.dataset.icon === 'crypto' || /crypto|bitcoin/i.test(o.textContent));
+    const cryptoTracked = () => !cryptoSection.hidden && Boolean(form.crypto_asset.value) && (cMode === 'address' || cMode === 'quantity');
+    const qtyHint = () => {
+      const out = $('[data-qty-hint]', form);
+      const raw = form.crypto_quantity.value.trim();
+      const q = parseQuantity(raw);
+      if (!raw) out.textContent = 'Nombre de jetons détenus, par exemple 0,25. Modifiez-le après un achat ou une vente.';
+      else if (q === null) out.textContent = 'Nombre positif attendu, par exemple 0,25 ou 1.250,5.';
+      else out.textContent = `Quantité retenue : ${num(Number(q), { max: 8 })} ${form.crypto_asset.value}`
+        + (/^[1-9]\d{0,2}(\.\d{3})+$/.test(raw.replace(/\s/g, '')) ? ' (le point sépare les milliers ; pour une décimale, utilisez la virgule).' : '');
+    };
+    const syncCrypto = () => {
+      cryptoSection.hidden = !isCryptoCat(form.category_id.selectedOptions[0]);
+      const a = assetById.get(form.crypto_asset.value);
+      if (!a) cMode = null;
+      else if (!cMode || (cMode === 'address' && !a.by_address)) cMode = a.by_address ? 'address' : 'quantity';
+      $('[data-crypto-modes]', form).hidden = !a;
+      for (const r of form.querySelectorAll('[name="crypto_mode"]')) {
+        r.checked = r.value === cMode;
+        if (r.value === 'address') { r.disabled = !a?.by_address; r.closest('label').title = a && !a.by_address ? `Lecture par adresse indisponible pour ${a.id} : saisissez la quantité.` : ''; }
+      }
+      const byAddress = !cryptoSection.hidden && cMode === 'address';
+      const byQty = !cryptoSection.hidden && cMode === 'quantity';
+      $('[data-crypto-address]', form).hidden = !byAddress;
+      $('[data-crypto-quantity]', form).hidden = !byQty;
+      form.crypto_address.required = byAddress;
+      form.crypto_quantity.required = byQty;
+      if (a?.address_hint) {
+        form.crypto_address.placeholder = a.address_hint;
+        $('[data-address-hint]', form).textContent = `Adresse publique uniquement, jamais de clé privée ni de phrase de récupération. Format attendu : ${a.address_hint}`;
+      }
+      if (byQty) qtyHint();
+      $('[data-crypto-hint]', form).textContent = !a ? 'Choisissez l’actif pour que Vigie calcule la valeur à partir de la quantité et du cours du jour.'
+        : cMode === 'address' ? `Vigie lit la quantité ${deAsset(a.id)} détenue à cette adresse sur un explorateur public, puis la valorise au cours du jour (CoinGecko) dans la devise de l’avoir : à l’enregistrement, puis toutes les 6 heures. Un portefeuille à plusieurs adresses se suit avec un avoir par adresse, ou en quantité.`
+          : cMode === 'quantity' ? `Vigie valorise cette quantité ${deAsset(a.id)} au cours du jour (CoinGecko) dans la devise de l’avoir : à l’enregistrement, puis toutes les 6 heures.`
+            : 'Vous saisissez la valeur vous-même ; l’actif est seulement indiqué.';
+      const off = $('[data-crypto-off]', form);
+      if (off) off.hidden = !cryptoTracked();
+    };
+    form.crypto_quantity.addEventListener('input', qtyHint);
     form.addEventListener('change', (e) => {
       if (e.target.name === 'mode') { mode = e.target.value; modeTouched = true; syncMode(); }
-      else if (e.target.name === 'category_id') syncMode();
+      else if (e.target.name === 'category_id' || e.target.name === 'crypto_asset') { syncCrypto(); syncMode(); }
+      else if (e.target.name === 'crypto_mode') { cMode = e.target.value; syncCrypto(); syncMode(); }
       else if (e.target.name === 'currency' || e.target.name === 'sc_kind') drawPreview();
     });
     block.addEventListener('input', drawPreview);
+    syncCrypto();
     syncMode();
     const newOwner = $('[data-new-owner]', form);
     form.owner_choice.addEventListener('change', () => {
@@ -1465,11 +1553,18 @@
         'acquisition_amount', 'acquisition_date', 'purchase_amount', 'purchased_at', 'property_type', 'property_address', 'surface_m2', 'property_condition', 'ownership_pct', 'holding_pct']) delete body[k];
       if (holdingPct !== undefined) body.ownership_pct = holdingPct;
       if (auto) { body.schedule = schedule; delete body.amount; delete body.date; } else if (sc) body.schedule = null;
+      const tracked = cryptoTracked();
+      const cryptoBody = cryptoSection.hidden || !body.crypto_asset ? (cr ? null : undefined)
+        : { asset: body.crypto_asset, mode: cMode, address: cMode === 'address' ? body.crypto_address.trim() : null, quantity: cMode === 'quantity' ? body.crypto_quantity.trim() : null };
+      for (const k of ['crypto_asset', 'crypto_mode', 'crypto_address', 'crypto_quantity']) delete body[k];
+      if (cryptoBody !== undefined) body.crypto = cryptoBody;
+      if (tracked) { delete body.amount; delete body.date; }
       await withBusy(e.submitter, async () => {
         try {
           const r = existing ? await api('PATCH', `/api/holdings/${existing.id}`, body) : await api('POST', '/api/holdings', body);
           closeDialog();
-          toast(existing ? 'Avoir enregistré' : 'Avoir ajouté');
+          if (r.warning) toast(`${existing ? 'Avoir enregistré' : 'Avoir ajouté'}, mais la valeur n’a pas pu être calculée : ${r.warning}`, 'error');
+          else toast(existing ? 'Avoir enregistré' : tracked ? 'Avoir ajouté et valorisé' : 'Avoir ajouté');
           if (location.hash.startsWith('#/avoirs')) { await render(); openHolding(r.id); } else location.hash = '#/avoirs';
         } catch (err) { const p = form.querySelector('.error-text'); p.textContent = err.message; p.hidden = false; }
       });
@@ -1580,7 +1675,8 @@
   async function openHolding(id) {
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
-    const { holding: h, valuations, schedule: sc, base_currency: base, property, acquisition, latent_gain: latent, sharing, mail_ready: mailOk } = data;
+    const { holding: h, valuations, schedule: sc, base_currency: base, property, acquisition, latent_gain: latent, sharing, mail_ready: mailOk, crypto } = data;
+    const autoCrypto = Boolean(crypto && crypto.mode !== 'manual'); // valeur calculée à partir de la quantité et du cours
     const partial = h.total_ownership_bp < 10000; // avoir détenu en partie (indivision, compte joint, partage)
     const mayEdit = canEdit() && !h.shared_with_me;
     const cats = holdingsCache ? holdingsCache.categories : (await api('GET', '/api/categories')).categories;
@@ -1591,12 +1687,13 @@
     const valueLine = sc
       ? (sc.done ? `Prêt entièrement remboursé le ${dateLong(sc.end_date)}`
         : sc.paid_count ? `${w.remaining} après l'échéance du ${dateLong(valuations[0].valued_at)}` : `${w.remaining}, première échéance le ${dateLong(sc.next_date)}`)
-      : valuations[0] ? `Valeur au ${dateLong(valuations[0].valued_at)}` : 'Aucune valeur enregistrée';
+      : valuations[0] ? `${autoCrypto ? 'Valeur calculée au' : 'Valeur au'} ${dateLong(valuations[0].valued_at)}` : autoCrypto ? 'Pas encore de valeur calculée' : 'Aucune valeur enregistrée';
     const d = openDialog(html`<div class="dialog-body">
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p>
         ${shareTop(h, sharing, mayEdit, property, mailOk)}</div>
+      ${crypto ? cryptoPanel(h, crypto, mayEdit) : ''}
       ${property ? html`<div class="panel"><dl class="kv">
         <dt>Votre quote-part</dt><dd>${num(h.total_ownership_bp / 100)} %</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
@@ -1609,7 +1706,7 @@
       ${acquisition ? html`<div class="panel"><dl class="kv"><dt>Prix de revient</dt><dd>${money(acquisition.purchase_cents, h.currency, { digits: 2 })}</dd><dt>Date d'acquisition</dt><dd>${dateFr(acquisition.purchased_at)}</dd><dt>Plus ou moins-value latente</dt><dd class="${latent ? (latent.gain_cents >= 0 ? 'pos' : 'neg') : 'muted'}">${latent ? `${money(latent.gain_cents, h.currency, { sign: true })} (${String(latent.gain_pct).replace('.', ',')} %)` : 'Valeur non renseignée'}</dd></dl></div>` : ''}
       ${asc.length > 1 ? html`<div class="chart" id="holding-chart"></div>` : ''}
       ${sc ? loanPanel(h, sc, w) : ''}
-      ${mayEdit && !sc ? html`<form class="panel form" id="valuation-form" style="padding:16px">
+      ${mayEdit && !sc && !autoCrypto ? html`<form class="panel form" id="valuation-form" style="padding:16px">
         ${h3i('plus', 'Nouvelle valeur')}
         <div class="grid-2"><label class="field"><span>${property ? 'Valeur du bien entier' : partial ? "Valeur de l'avoir entier" : 'Valeur'} en ${h.currency}</span><input class="input amount" name="amount" inputmode="decimal" required autocomplete="off" placeholder="${h.value_cents !== null ? exact(h.value_cents, h.currency).replace(/[^\d,\s−-]/g, '').trim() : '0'}"></label>
         <label class="field"><span>Date</span><input class="input" type="date" name="date" value="${todayIso()}" max="${todayIso()}" required></label></div>
@@ -1641,7 +1738,7 @@
         <button class="btn danger" type="button" data-action="delete-holding" data-id="${h.id}" data-name="${h.name}">${icon('trash')}Supprimer</button></div>` : ''}
     </div>`, { drawer: true, onClose: () => { if (location.hash.match(/^#\/avoirs\/\d+/)) history.replaceState(null, '', '#/avoirs'); } });
     d.dataset.holding = h.id;
-    d._holding = { ...h, schedule: sc, property };
+    d._holding = { ...h, schedule: sc, property, crypto };
     if (asc.length > 1) lineChart($('#holding-chart', d), asc.map((v) => ({ date: v.valued_at, value: v.amount_cents })), { cur: h.currency, height: 150, label: `Valeur de ${h.name}` });
     const form = $('#valuation-form', d);
     if (form) form.addEventListener('submit', async (e) => {
@@ -1654,6 +1751,31 @@
         } catch (err) { fail(err); }
       });
     });
+  }
+
+  // Panneau « Crypto-actif » : actif, adresse ou quantité, cours retenu et dernière actualisation.
+  function cryptoPanel(h, c, mayEdit) {
+    const tracked = c.mode !== 'manual';
+    const qty = c.mode === 'quantity' ? c.quantity : c.last_quantity;
+    const shortAddr = (a) => (a.length > 18 ? `${a.slice(0, 8)}…${a.slice(-6)}` : a);
+    const price = c.last_price === null ? null : `${num(c.last_price, { min: 2, max: c.last_price < 1 ? 6 : 2 })} ${symbol(h.currency)}`;
+    const MODE = { address: 'Adresse blockchain', quantity: 'Quantité saisie', manual: 'Valeur saisie à la main' };
+    return html`<section class="panel crypto-panel" aria-label="Crypto-actif">
+      <div class="loan-head">${h3i('crypto', 'Crypto-actif')}<span class="tag brand">${MODE[c.mode]}</span></div>
+      ${tracked && !c.lookups_enabled ? html`<div class="notice bad">${icon('alert')}<div>Les services externes des crypto-actifs sont désactivés par l'administrateur : la valeur n'est plus actualisée.</div></div>`
+        : tracked && c.last_error ? html`<div class="notice bad" role="status">${icon('alert')}<div><b>Dernière actualisation impossible${c.last_checked_at ? ` (${msAt(c.last_checked_at)})` : ''}.</b> ${c.last_error}${c.last_ok_at ? ' La dernière valeur calculée reste affichée.' : ''}</div></div>` : ''}
+      <dl class="kv">
+        <dt>${icon('crypto')}Actif</dt><dd>${c.asset} · ${c.name}</dd>
+        ${c.mode === 'address' ? html`<dt>${icon('link')}Adresse</dt><dd><a class="mono crypto-addr" href="${c.explorer_url}" target="_blank" rel="noopener noreferrer" title="${c.address}" aria-label="Voir l'adresse ${c.address} sur l'explorateur">${shortAddr(c.address)}</a></dd>` : ''}
+        ${tracked ? html`<dt>${icon('sum')}Quantité</dt><dd>${qty ? (state.discret ? `${MASK} ${c.asset}` : qtyFmt(qty, c.asset)) : '—'}${c.mode === 'address' && qty ? html`<br><span class="small muted">lue à l'adresse</span>` : ''}</dd>` : ''}
+        ${tracked && price ? html`<dt>${icon('exchange')}Cours retenu</dt><dd>${price}<br><span class="small muted">pour 1 ${c.asset}, CoinGecko</span></dd>` : ''}
+        ${tracked ? html`<dt>${icon('clock')}Dernière actualisation</dt><dd>${c.last_ok_at ? msAt(c.last_ok_at) : 'Pas encore'}${c.source ? html`<br><span class="small muted">Solde : ${c.source}</span>` : ''}</dd>` : ''}
+      </dl>
+      ${tracked ? html`<p class="small muted">Actualisé automatiquement toutes les 6 heures : une valeur par jour dans l'historique. Seuls l'adresse publique et le nom de l'actif sont envoyés aux services publics.</p>` : ''}
+      ${mayEdit && tracked && !h.closed_at ? html`<div class="form-actions" style="justify-content:flex-start">
+        <button class="btn" type="button" data-action="crypto-refresh" data-id="${h.id}">${icon('update')}Actualiser maintenant</button>
+        <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier le suivi</button></div>` : ''}
+    </section>`;
   }
 
   // Panneau « Échéancier » d'un avoir : progression, chiffres clés, prochaine échéance et tableau d'amortissement.
@@ -1709,7 +1831,8 @@
     state.base = v.base_currency;
     setHeader('Mise à jour rapide', 'Saisissez les nouvelles valeurs, les autres restent inchangées', discretButton());
     const open = v.holdings.filter((h) => !h.closed_at && !h.shared_with_me); // bien reçu en partage : lecture seule
-    const manualOpen = open.filter((h) => !h.schedule);
+    const isAuto = (h) => Boolean(h.schedule || (h.crypto && h.crypto.mode !== 'manual'));
+    const manualOpen = open.filter((h) => !isAuto(h));
     if (!open.length) { el.innerHTML = part(html`<div class="panel empty">${pict('update', 'lg')}<h2>Aucun avoir à mettre à jour</h2><p>Ajoutez d'abord vos avoirs.</p><a class="btn primary" href="#/avoirs">Voir les avoirs</a></div>`); return; }
     const rate = (cur) => (cur === v.base_currency ? 1 : (s.rates.find((r) => r.currency === cur) || {}).rate);
     const kind = new Map(v.categories.map((c) => [c.id, c.kind]));
@@ -1728,6 +1851,11 @@
               <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span></div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : '—'}</span></div>
               <div class="auto-note">${il('calendar', h.schedule.done ? 'Prêt remboursé' : `Calculé par l'échéancier, prochaine échéance le ${dateFr(h.schedule.next_date)}`)}</div>
+            </div>`;
+            if (isAuto(h)) return html`<div class="quick auto" data-line data-stale="false">
+              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span></div></div>
+              <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : '—'}</span></div>
+              <div class="auto-note">${il('crypto', h.crypto.last_error ? `Lecture impossible : ${h.crypto.last_error}` : `Calculé à partir de la quantité ${deAsset(h.crypto.asset)} et du cours du jour`)}</div>
             </div>`;
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             return html`<div class="quick" data-row data-line data-stale="${stale}" data-id="${h.id}">
@@ -1979,6 +2107,8 @@
           <div class="section-head">${h3i('bank', 'Services externes : logos')}</div>
           <label class="check"><input type="checkbox" name="institution_logos" ${s.security.institution_logos ? 'checked' : ''}><span><b>Récupérer les logos des établissements</b><span class="small muted" style="display:block">Autorise les requêtes externes sur les sites des établissements.</span></span></label>
           <label class="check"><input type="checkbox" name="institution_logos_fallback" ${s.security.institution_logos_fallback ? 'checked' : ''}><span><b>Utiliser le service d'icônes de secours</b><span class="small muted" style="display:block">Si nécessaire, le domaine de l'établissement peut être transmis à Google.</span></span></label>
+          <div class="section-head">${h3i('crypto', 'Services externes : crypto-actifs')}</div>
+          <label class="check"><input type="checkbox" name="crypto_lookups" ${s.security.crypto_lookups ? 'checked' : ''}><span><b>Lire les soldes et les cours des crypto-actifs</b><span class="small muted" style="display:block">Envoie l'adresse publique et le nom de l'actif à des explorateurs publics (mempool.space, PublicNode, Solana…) et à CoinGecko, toutes les 6 heures. Aucun montant ni nom de personne n'est transmis.</span></span></label>
           <label class="field"><span>Mot de passe administrateur pour confirmer</span><input class="input" name="current_password" type="password" required autocomplete="current-password" placeholder="Mot de passe actuel"></label>
           <p class="error-text" role="alert" hidden></p>
           <div class="form-actions"><button class="btn primary" type="submit">${icon('shield')}Enregistrer la sécurité</button></div>
@@ -2047,6 +2177,7 @@
         login_lock_minutes: Number(values.login_lock_minutes),
         institution_logos: values.institution_logos,
         institution_logos_fallback: values.institution_logos_fallback,
+        crypto_lookups: values.crypto_lookups,
         current_password: values.current_password,
       };
       if (!securityForm.elements.namedItem('require_2fa').disabled) policy.require_2fa = values.require_2fa;
@@ -2682,6 +2813,14 @@
         const r = await api('POST', `/api/shares/${b.dataset.id}/resend`, {});
         toast(`E-mail renvoyé à ${r.invitation.recipient_name} ; la demande est valable jusqu'au ${msAt(r.invitation.expires_at)}.`);
         reopenHolding(Number(b.dataset.holding));
+      } catch (err) { fail(err); }
+    }),
+    'crypto-refresh': async (b) => withBusy(b, async () => {
+      try {
+        const r = await api('POST', `/api/holdings/${b.dataset.id}/crypto/refresh`, {});
+        if (r.ok) toast(r.crypto.last_quantity !== null ? `Valeur actualisée : ${state.discret ? MASK : qtyFmt(r.crypto.last_quantity, r.crypto.asset)} au cours du jour.` : 'Valeur actualisée.');
+        else toast(`Actualisation impossible : ${r.error}`, 'error');
+        await refreshAfterChange(Number(b.dataset.id));
       } catch (err) { fail(err); }
     }),
     'goto-share': () => { const sec = $('dialog[open] #share-section'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); },

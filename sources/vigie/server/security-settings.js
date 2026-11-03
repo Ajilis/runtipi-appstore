@@ -10,7 +10,7 @@ const RANGES = Object.freeze({
   LOGIN_MAX_ATTEMPTS: [3, 50],
   LOGIN_LOCK_MINUTES: [1, 1440],
 });
-const BOOLEAN = ['REQUIRE_2FA', 'INSTITUTION_LOGOS', 'INSTITUTION_LOGOS_FALLBACK'];
+const BOOLEAN = ['REQUIRE_2FA', 'INSTITUTION_LOGOS', 'INSTITUTION_LOGOS_FALLBACK', 'CRYPTO_LOOKUPS'];
 
 export function createServerSecuritySettings(db, cfg, { ipLimiter, logos } = {}) {
   const forced2fa = cfg.REQUIRE_2FA === true;
@@ -48,6 +48,7 @@ export function createServerSecuritySettings(db, cfg, { ipLimiter, logos } = {})
     require_2fa_forced: forced2fa,
     institution_logos: cfg.INSTITUTION_LOGOS,
     institution_logos_fallback: cfg.INSTITUTION_LOGOS_FALLBACK,
+    crypto_lookups: cfg.CRYPTO_LOOKUPS,
   });
 
   function update(input) {

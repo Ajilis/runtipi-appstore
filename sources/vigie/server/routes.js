@@ -15,6 +15,7 @@ import {
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
 import { formatCents, formatNumber } from './format.js';
+import { CRYPTO_ASSETS, ASSET_BY_ID, ADDRESS_EXAMPLE, checkAddress, parseQuantity, cryptoView, CryptoError } from './crypto.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
 import { TRANSPARENT_PNG, CUSTOM_KEY, sniffImage, imageSize } from './logos.js';
 import { LOAN_KINDS, amortization, loanSummary, loanValuations } from './loans.js';
@@ -121,7 +122,7 @@ function personFields(b, existing = null) {
 const hasPerson = (b) => b.first_name !== undefined || b.last_name !== undefined || b.display_name !== undefined;
 
 export function registerRoutes(router, deps) {
-  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator, securitySettings } = deps;
+  const { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator, securitySettings, crypto } = deps;
 
   const audit = (ctx, action, detail = '') => {
     db.prepare('INSERT INTO audit_log (at, user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?, ?)')
@@ -677,6 +678,7 @@ export function registerRoutes(router, deps) {
         : acquisition && snap.cents !== null ? latentGain(snap.cents, acquisition.purchase_cents, snap.ownership_bp) : null,
       sharing: sharingByHolding(db, state).get(id) || null,
       mail_ready: Boolean(mailReady() && mailConf()),
+      crypto: cryptoView(cryptoRow(id), { enabled: cfg.CRYPTO_LOOKUPS !== false }),
       valuations, schedule, base_currency: state.base };
   });
 
@@ -706,6 +708,8 @@ export function registerRoutes(router, deps) {
       currencies: CURRENCIES,
       ecb_enabled: cfg.ECB_RATES_ENABLED,
       logos_enabled: cfg.INSTITUTION_LOGOS,
+      crypto_lookups: cfg.CRYPTO_LOOKUPS !== false,
+      crypto_assets: CRYPTO_ASSETS.map((a) => ({ id: a.id, name: a.name, by_address: Boolean(a.chain), address_hint: a.chain ? ADDRESS_EXAMPLE[a.chain] : null })),
       owners: ownersList(ctx.user.id).map((o) => o.name),
       institutions: [...new Set(loadState(db, todayIso(), ctx.user.id).holdings.map((r) => r.institution).filter(Boolean))].sort(),
     };
@@ -953,6 +957,43 @@ export function registerRoutes(router, deps) {
       fail(409, 'share_capacity', 'La nouvelle quote-part dépasserait 100 % avec les partages acceptés. Révoquez un partage avant de modifier ce pourcentage.');
     return { purchase, date, type, condition, address, surface, ownership };
   }
+  // --- Crypto-actifs : actif, suivi par adresse blockchain, par quantité, ou valeur saisie à la main ------------
+  const isTracked = (id) => Boolean(db.prepare("SELECT 1 FROM crypto_holdings WHERE holding_id = ? AND mode <> 'manual'").get(id));
+  const cryptoRow = (id) => db.prepare('SELECT * FROM crypto_holdings WHERE holding_id = ?').get(id) || null;
+  function cryptoFields(b, cat) {
+    if (!Object.hasOwn(b, 'crypto')) return undefined; // inchangé
+    if (b.crypto === null) return null; // suivi retiré
+    if (cat.kind !== 'asset') fail(400, 'invalid_field', 'Le suivi d’un crypto-actif concerne un actif, pas un passif.');
+    const c = b.crypto;
+    if (!c || typeof c !== 'object' || Array.isArray(c)) fail(400, 'invalid_field', 'Crypto-actif invalide.');
+    const asset = oneOf(String(c.asset || '').toUpperCase(), [...ASSET_BY_ID.keys()], 'Crypto-actif');
+    const mode = oneOf(c.mode || 'address', ['address', 'quantity', 'manual'], 'Suivi');
+    let address = null, quantity = null;
+    if (mode === 'address') {
+      try { address = checkAddress(asset, c.address); } catch (err) { fail(400, 'invalid_field', err.message); }
+    }
+    if (mode === 'quantity') {
+      quantity = parseQuantity(c.quantity);
+      if (quantity === null) fail(400, 'invalid_field', 'Quantité : nombre positif attendu, par exemple 0,25 ou 1.250,5.');
+    }
+    return { asset, mode, address, quantity };
+  }
+  function saveCrypto(id, c) {
+    const old = cryptoRow(id);
+    const same = old && old.asset === c.asset && old.mode === c.mode && (old.address || null) === c.address && (old.quantity || null) === c.quantity;
+    db.prepare(`INSERT INTO crypto_holdings (holding_id, asset, mode, address, quantity, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(holding_id) DO UPDATE SET asset = excluded.asset, mode = excluded.mode, address = excluded.address,
+      quantity = excluded.quantity, updated_at = excluded.updated_at`).run(id, c.asset, c.mode, c.address, c.quantity, Date.now());
+    // Nouvel actif, nouvelle adresse ou nouvelle quantité : les dernières lectures ne valent plus.
+    if (!same) db.prepare('UPDATE crypto_holdings SET last_quantity = NULL, last_price = NULL, last_error = NULL, last_ok_at = NULL WHERE holding_id = ?').run(id);
+  }
+  // Première lecture juste après l'enregistrement ; une erreur n'empêche pas d'enregistrer l'avoir.
+  async function refreshCrypto(id) {
+    if (!isTracked(id)) return null;
+    try { const r = await crypto.refresh({ holdingId: id }); return r.errors[0]?.message || null; }
+    catch (err) { log.warn('Crypto-actifs : ' + err.message); return 'Lecture du solde ou du cours impossible pour le moment.'; }
+  }
+
   // Quote-part du titulaire d'un avoir non immobilier (compte joint, placement à deux…) ;
   // pour l'immobilier, elle est saisie avec les informations du bien (property.ownership_pct).
   function holdingOwnership(b, prop, holdingId = null) {
@@ -1015,14 +1056,17 @@ export function registerRoutes(router, deps) {
   const upsertValuation = db.prepare(`INSERT INTO valuations (holding_id, valued_at, amount_cents, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(holding_id, valued_at) DO UPDATE SET amount_cents = excluded.amount_cents, note = excluded.note, created_by = excluded.created_by, created_at = excluded.created_at`);
 
-  router.post('/api/holdings', { auth: 'editor' }, (ctx) => {
+  router.post('/api/holdings', { auth: 'editor' }, async (ctx) => {
     const f = holdingFields(ctx.body,{},ctx.user.id);
     const schedule = ctx.body.schedule ? parseSchedule(ctx.body.schedule) : null;
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency);
+    const cryptoConf = cryptoFields(ctx.body, cat);
+    if (cryptoConf && (schedule || prop)) fail(400, 'invalid_field', 'Un crypto-actif ne peut pas avoir d’échéancier ni d’informations immobilières.');
+    const tracked = Boolean(cryptoConf && cryptoConf.mode !== 'manual');
     const ownBp = holdingOwnership(ctx.body, prop);
     const acquisition = parseAcquisition(ctx.body, cat, prop, schedule);
-    const hasInitial = !schedule && ctx.body.amount !== undefined && ctx.body.amount !== null && ctx.body.amount !== '';
+    const hasInitial = !schedule && !tracked && ctx.body.amount !== undefined && ctx.body.amount !== null && ctx.body.amount !== '';
     const cents = hasInitial ? amount(ctx.body.amount, 'Valeur actuelle') : null;
     const date = valuationDate(ctx.body.date);
     const id = transaction(db, () => {
@@ -1036,19 +1080,23 @@ export function registerRoutes(router, deps) {
       if (prop) writeProperty(newId, prop);
       else if (ownBp !== null) setOwnerBp(newId, ownBp);
       if (acquisition) saveAcquisition(newId, acquisition);
+      if (cryptoConf) saveCrypto(newId, cryptoConf);
       return newId;
     });
-    audit(ctx, 'avoir_cree', schedule ? `${f.name}, échéancier ${scheduleText(schedule)}` : f.name);
-    return { id };
+    audit(ctx, 'avoir_cree', schedule ? `${f.name}, échéancier ${scheduleText(schedule)}` : cryptoConf ? `${f.name}, ${cryptoConf.asset}` : f.name);
+    const warning = tracked ? await refreshCrypto(id) : null;
+    return { id, warning };
   });
 
-  router.patch('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
+  router.patch('/api/holdings/:id', { auth: 'editor' }, async (ctx) => {
     const id = intId(ctx.params.id);
     const existing = ownedHolding(id, ctx.user.id);
     const f = holdingFields(ctx.body, existing,ctx.user.id);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency, id);
     const ownBp = holdingOwnership(ctx.body, prop, id);
+    const cryptoConf = cryptoFields(ctx.body, cat);
+    const trackedAfter = cryptoConf === undefined ? isTracked(id) : Boolean(cryptoConf && cryptoConf.mode !== 'manual');
     const amountChange = ctx.body.amount !== undefined && ctx.body.amount !== ''
       ? amount(ctx.body.amount, 'Valeur actuelle') : null;
     const valuationOn = amountChange !== null ? valuationDate(ctx.body.date) : null;
@@ -1068,9 +1116,11 @@ export function registerRoutes(router, deps) {
       if (prop) writeProperty(id, prop);
       else if (!isRealEstateCategory(cat)) db.prepare('DELETE FROM real_estate WHERE holding_id = ?').run(id);
       if (!prop && ownBp !== null) setOwnerBp(id, ownBp);
+      if (cryptoConf === null || (cryptoConf === undefined && cat.kind !== 'asset')) db.prepare('DELETE FROM crypto_holdings WHERE holding_id = ?').run(id);
+      else if (cryptoConf) saveCrypto(id, cryptoConf);
       if (acquisition === null || cat.kind !== 'asset' || isRealEstateCategory(cat) || scheduleChange || (had && scheduleChange !== null)) db.prepare('DELETE FROM holding_acquisitions WHERE holding_id = ?').run(id);
       if (acquisition) saveAcquisition(id, acquisition);
-      if (amountChange !== null) {
+      if (amountChange !== null && !trackedAfter) {
         if (had || scheduleChange) fail(409, 'invalid_field', 'Retirez d’abord l’échéancier avant de saisir une valeur manuelle.');
         // Une modification de la valeur actuelle crée une nouvelle entrée de suivi.
         const current = db.prepare('SELECT amount_cents FROM valuations WHERE holding_id = ? ORDER BY valued_at DESC LIMIT 1').get(id);
@@ -1081,7 +1131,18 @@ export function registerRoutes(router, deps) {
     audit(ctx, 'avoir_modifie', f.name);
     if (scheduleChange) audit(ctx, 'echeancier_defini', `${f.name} : ${scheduleText(scheduleChange)}`);
     else if (scheduleChange === null && had) audit(ctx, 'echeancier_retire', `${f.name} : retour en saisie manuelle, valeurs calculées conservées`);
-    return { id };
+    const warning = cryptoConf && cryptoConf.mode !== 'manual' ? await refreshCrypto(id) : null;
+    return { id, warning };
+  });
+
+  // Actualiser maintenant un crypto-actif suivi (solde et cours).
+  router.post('/api/holdings/:id/crypto/refresh', { auth: 'editor' }, async (ctx) => {
+    const id = intId(ctx.params.id);
+    const h = ownedHolding(id, ctx.user.id);
+    if (h.closed_at) fail(409, 'closed', "Rouvrez l'avoir avant de l'actualiser.");
+    if (!isTracked(id)) fail(409, 'not_tracked', 'Cet avoir n’est pas suivi automatiquement.');
+    const error = await refreshCrypto(id);
+    return { ok: !error, error, crypto: cryptoView(cryptoRow(id), { enabled: cfg.CRYPTO_LOOKUPS !== false }) };
   });
 
   router.delete('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
@@ -1117,6 +1178,7 @@ export function registerRoutes(router, deps) {
     const id = intId(ctx.params.id);
     const existing = ownedHolding(id, ctx.user.id);
     if (getSchedule(id)) fail(409, 'scheduled', "Cet avoir suit un échéancier automatique : modifiez l'échéancier ou repassez en saisie manuelle.");
+    if (isTracked(id)) fail(409, 'tracked', 'La valeur de ce crypto-actif est calculée automatiquement : modifiez son suivi pour la saisir vous-même.');
     const cents = amount(ctx.body.amount, 'Valeur');
     const date = valuationDate(ctx.body.date);
     const note = text(ctx.body.note || '', 'Note', { max: 120 });
@@ -1144,6 +1206,7 @@ export function registerRoutes(router, deps) {
       const hid = intId(it.holding_id, `Ligne ${i + 1}`);
       if (!db.prepare('SELECT 1 FROM holdings WHERE id = ? AND account_user_id = ?').get(hid,ctx.user.id)) fail(400, 'invalid_field', `Ligne ${i + 1} : avoir introuvable dans votre compte.`);
       if (getSchedule(hid)) fail(400, 'scheduled', `Ligne ${i + 1} : cet avoir suit un échéancier automatique.`);
+      if (isTracked(hid)) fail(400, 'tracked', `Ligne ${i + 1} : la valeur de ce crypto-actif est calculée automatiquement.`);
       return { hid, cents: amount(it.amount, `Ligne ${i + 1}`) };
     });
     transaction(db, () => {
@@ -1664,6 +1727,7 @@ export function registerRoutes(router, deps) {
       loan_schedules: db.prepare('SELECT holding_id, kind, principal_cents, annual_rate, months, start_date FROM loan_schedules ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       holding_acquisitions: db.prepare('SELECT holding_id,purchase_cents,purchased_at FROM holding_acquisitions ORDER BY holding_id').all().filter(p => owned.has(p.holding_id)),
+      crypto_holdings: db.prepare('SELECT holding_id, asset, mode, address, quantity FROM crypto_holdings ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       holding_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp,deducted_bp FROM holding_shares
         WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all().filter((p) => owned.has(p.holding_id)),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
@@ -1768,6 +1832,11 @@ export function registerRoutes(router, deps) {
         if (!LOAN_KINDS.includes(sc.kind) || !Number.isInteger(sc.principal_cents) || sc.principal_cents <= 0 || !Number.isInteger(sc.months) || sc.months < 1 || sc.months > 600
           || typeof sc.annual_rate !== 'number' || !(sc.annual_rate >= 0 && sc.annual_rate <= 50) || !isIsoDate(sc.start_date)) fail(400, 'invalid_import', 'Échéancier invalide.');
         saveSchedule(hid(sc.holding_id, 'Échéancier'), sc);
+      }
+      for (const c of Array.isArray(d.crypto_holdings) ? d.crypto_holdings : []) {
+        const id = hid(c.holding_id, 'Crypto-actif');
+        const cat = db.prepare('SELECT c.* FROM categories c JOIN holdings h ON h.category_id = c.id WHERE h.id = ?').get(id);
+        saveCrypto(id, cryptoFields({ crypto: c }, cat));
       }
       // Seuls les partages déjà approuvés sont restaurés, vers des comptes présents sur ce serveur ;
       // les demandes non acceptées ne sont pas réémises. Les exports antérieurs à 0.10.0 disent real_estate_shares.

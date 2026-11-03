@@ -13,7 +13,7 @@ Un patrimoine est éparpillé : comptes courants et livrets dans plusieurs banqu
 Vigie prend le parti inverse :
 
 - **Pas de mouvements à saisir.** On ne gère ni opérations ni budget : pour chaque avoir, on note simplement sa valeur à une date (relevé, estimation). Vigie conserve chaque valeur et en tire l'historique, les tendances et les répartitions. Une mise à jour mensuelle prend quelques minutes.
-- **Privé et auto-hébergé.** Les données restent sur votre serveur, dans votre installation Runtipi. Aucun identifiant bancaire n'est demandé et aucun montant ne quitte votre serveur. Les seuls échanges avec l'extérieur (nom d'un établissement recherché, logos, taux de la BCE, adresse d'un bien quand vous demandez son estimation) sont décrits plus bas. L'application s'ouvre sur le réseau local ou à distance par Cloudflare Tunnel, avec double authentification.
+- **Privé et auto-hébergé.** Les données restent sur votre serveur, dans votre installation Runtipi. Aucun identifiant bancaire n'est demandé et aucun montant ne quitte votre serveur. Les seuls échanges avec l'extérieur (nom d'un établissement recherché, logos, taux de la BCE, adresse d'un bien quand vous demandez son estimation, adresse publique d'un portefeuille crypto et cours des crypto-actifs) sont décrits plus bas. L'application s'ouvre sur le réseau local ou à distance par Cloudflare Tunnel, avec double authentification.
 - **Une vue globale et utile.** Patrimoine net (passifs déduits), évolution dans le temps, répartition par catégorie, établissement, titulaire, devise et liquidité, écart à l'allocation visée : de quoi décider d'un rééquilibrage, d'une épargne de précaution ou d'un remboursement anticipé.
 - **Pensé pour un foyer.** Plusieurs comptes, et **chacun a son propre patrimoine** (avoirs, catégories, objectifs, réglages, journal) ; invitations par e-mail ; partage de n'importe quel avoir détenu à plusieurs (compte joint, bien en indivision, crédit à deux), chacun ne comptant que sa part.
 
@@ -57,6 +57,16 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 ### Plus-values latentes des autres placements
 
 - Pour l'or, la crypto, la bourse et les autres actifs, un **prix de revient** et une **date d'acquisition** facultatifs donnent le **gain ou la perte latente brute**, dans le détail de l'avoir et en synthèse sur la page Avoirs, convertis en devise de référence. Ni frais, ni fiscalité, ni mouvements ne sont modélisés.
+
+### Crypto-actifs
+
+- **Actif choisi dans une liste déroulante** : Bitcoin, Ether, USDC et USDT (réseau Ethereum), Solana, Litecoin, Dogecoin et XRP se suivent **par adresse blockchain** ; BNB, Cardano, Polkadot, Avalanche, TRON, Chainlink, Stellar, Cosmos et Monero **par quantité saisie**.
+- **Par adresse** : Vigie lit la quantité détenue à l'adresse publique du portefeuille sur un explorateur public (mempool.space, litecoinspace.org, PublicNode pour Ethereum, RPC public Solana, BlockCypher, XRPL Cluster), puis la **valorise au cours du jour** (CoinGecko) dans la devise de l'avoir. Le format de l'adresse est vérifié à la saisie.
+- **Actualisation automatique** à l'enregistrement, peu après le démarrage puis **toutes les 6 heures**, et à la demande (**Actualiser maintenant**). Une valeur par jour dans l'historique, avec la quantité et le cours en note (« Auto : 0,6221 BTC × 61.234,56 EUR ») ; la courbe et les totaux se mettent à jour seuls.
+- **Détail de l'avoir** : actif, adresse abrégée avec lien vers l'explorateur, quantité, cours retenu, date et heure de la dernière actualisation. En cas d'échec (explorateur ou CoinGecko indisponible), le message s'affiche et la dernière valeur calculée est conservée.
+- **Valeur à la main** toujours possible : on indique l'actif sans suivi automatique, comme avant.
+- **Limites** : une adresse par avoir. Un portefeuille à plusieurs adresses (portefeuille HD, Ledger, Trezor…) se suit avec un avoir par adresse ou en quantité saisie. Les jetons hors réseau Ethereum (USDC sur Solana, par exemple) et les montants placés sur une plateforme d'échange se suivent en quantité.
+- **Confidentialité** : seuls l'adresse publique et le nom de l'actif sont envoyés, jamais un montant, un nom ou une clé ; ne saisissez jamais de clé privée ni de phrase de récupération. Une adresse publique dévoile son solde à qui la connaît : l'explorateur interrogé voit l'adresse IP de votre serveur. L'administrateur coupe ces échanges dans **Réglages → Sécurité** (« Lire les soldes et les cours des crypto-actifs ») ou par `CRYPTO_LOOKUPS=false`.
 
 ### Établissements et logos
 
@@ -135,6 +145,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 | `server/portfolio.js` | Calculs : valeurs à une date, totaux, répartitions, variations, historique |
 | `server/loans.js` | Échéancier de prêt : tableau d'amortissement (mensualités constantes ou in fine), synthèse, valeurs mensuelles |
 | `server/fx.js` | Taux de change de la BCE |
+| `server/crypto.js` | Crypto-actifs : liste des actifs, contrôle des adresses, soldes lus sur les explorateurs publics (BigInt, sans arrondi), cours CoinGecko, valeur du jour et actualisation toutes les 6 heures |
 | `server/backup.js` | Sauvegardes `VACUUM INTO` et rotation |
 | `server/mail.js` | Envoi d'e-mails : client SMTP sans dépendance (STARTTLS, SSL/TLS, AUTH PLAIN ou LOGIN), message MIME UTF-8, modèles des e-mails |
 | `server/logos.js` | Logos des établissements : images sourcées depuis OpenFinTech ou Wikimedia Commons, ou site officiel, image personnelle prioritaire, cache en base |
@@ -151,6 +162,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - `logo_cache` : icône récupérée par site (`host`), avec ses dimensions et sa provenance ; `ok = 0` mémorise un échec (nouvel essai après 3 jours).
 - `institution_logos` : image déposée par l'administrateur, par identifiant du catalogue ou `perso-nom` pour un établissement hors catalogue ; prioritaire sur `logo_cache`.
 - `institution_directory` : établissements ajoutés depuis les sources ouvertes, avec provenance, aliases, site et URL du logo. Les 73 entrées embarquées restent intactes.
+- `crypto_holdings` (1.3.0) : suivi d'un crypto-actif par avoir : actif, mode (`address`, `quantity` ou `manual`), adresse ou quantité (chaîne décimale exacte), dernière quantité lue, dernier cours, dates de la dernière tentative et du dernier succès, dernière erreur. La valeur calculée est écrite chaque jour dans `valuations` (note « Auto : … »), une seule par date.
 - `fx_rates` : 1 unité de devise = `rate` devise de référence.
 - `users` (adresse e-mail facultative et unique), `sessions`, `audit_log`, `settings` (dont `mail` : réglages SMTP, mot de passe chiffré).
 - `invitations` : invitation par e-mail, jeton stocké haché (SHA-256), valable 7 jours, à usage unique.

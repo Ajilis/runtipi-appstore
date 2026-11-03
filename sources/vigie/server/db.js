@@ -357,6 +357,22 @@ export const MIGRATIONS = [
   ALTER TABLE holding_shares ADD COLUMN send_count INTEGER NOT NULL DEFAULT 0;
   UPDATE holding_shares SET send_count = 1 WHERE sent_at IS NOT NULL;
   `,
+  // 1.3.0 : crypto-actifs suivis par adresse blockchain ou par quantité, valorisés au cours du jour.
+  `
+  CREATE TABLE crypto_holdings (
+    holding_id INTEGER PRIMARY KEY REFERENCES holdings(id) ON DELETE CASCADE,
+    asset TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('address', 'quantity', 'manual')),
+    address TEXT,
+    quantity TEXT,
+    last_quantity TEXT,
+    last_price REAL,
+    last_checked_at INTEGER,
+    last_ok_at INTEGER,
+    last_error TEXT,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

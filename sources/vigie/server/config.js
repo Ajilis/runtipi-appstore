@@ -33,6 +33,8 @@ const SPEC = {
   INSTITUTION_CATALOGUE: { type: 'bool', def: true, doc: 'Synchroniser les établissements depuis OpenFinTech, Wikidata et le registre Sirene français. false : catalogue local uniquement, sans requête annuaire externe.' },
   INSTITUTION_LOGOS: { type: 'bool', def: true, doc: 'Afficher le logo des établissements connus, récupéré par le serveur sur leur site officiel (false : monogrammes uniquement, aucune connexion sortante).' },
   INSTITUTION_LOGOS_FALLBACK: { type: 'bool', def: true, doc: "Si le site officiel d'un établissement bloque la récupération ou n'offre qu'une petite icône, demander son icône au service d'icônes de Google (seul le nom de domaine de l'établissement est transmis). false : sites officiels uniquement." },
+  CRYPTO_LOOKUPS: { type: 'bool', def: true, doc: 'Crypto-actifs : lire le solde des adresses sur des explorateurs publics et le cours sur CoinGecko (seuls l\'adresse et l\'actif sont transmis). false : valeurs saisies à la main.' },
+  COINGECKO_API_KEY: { type: 'string', def: '', doc: 'Facultatif : clé « Demo » gratuite CoinGecko, si les cours sont souvent refusés pour trop de demandes.' },
   LOG_LEVEL: { type: 'enum', def: 'info', values: ['debug', 'info', 'warn', 'error'], doc: 'Niveau de détail des journaux du conteneur.' },
 };
 

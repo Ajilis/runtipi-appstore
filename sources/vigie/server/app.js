@@ -1,4 +1,5 @@
 // Assemblage : base, sessions, routes, fichiers statiques et contrôles communs à chaque requête.
+import { CryptoService } from './crypto.js';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,10 +45,11 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
   const institutions = new InstitutionDirectory(db, { enabled: cfg.INSTITUTION_CATALOGUE !== false, fetcher, log });
   const logos = new LogoService(db, { enabled: cfg.INSTITUTION_LOGOS, fallback: cfg.INSTITUTION_LOGOS_FALLBACK, fetcher, log });
   const securitySettings = createServerSecuritySettings(db, cfg, { ipLimiter, logos });
+  const crypto = new CryptoService(db, { fetcher, log, enabled: () => cfg.CRYPTO_LOOKUPS !== false, apiKey: () => cfg.COINGECKO_API_KEY });
   logos.catalogue = institutions.catalogue;
   logos.directory = institutions;
   institutions.onUpdated = () => logos.prefetchAll();
-  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator, securitySettings });
+  registerRoutes(router, { db, cfg, sessions, ipLimiter, challenges, paths, log, logos, institutions, estimator, securitySettings, crypto });
   const serveStatic = createStatic(WEB_DIR, cfg.VERSION);
 
   async function handleApi(req, res, url) {
@@ -124,10 +126,11 @@ export function createApp({ cfg, paths, log = createLogger(cfg.LOG_LEVEL), withS
     if (t) timers.push(t);
     timers.push(...institutions.startScheduler());
     timers.push(...logos.startScheduler());
+    timers.push(...crypto.startScheduler());
   }
 
   return {
-    server, db, logos, institutions,
+    server, db, logos, institutions, crypto,
     close() {
       timers.forEach(clearInterval);
       logos.close();
