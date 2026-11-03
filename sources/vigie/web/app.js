@@ -23,6 +23,7 @@
     range: store.get('range', '1y'),
     breakdown: store.get('breakdown', 'institution'),
     showClosed: false,
+    onlyShared: false,
     inst: { list: [], map: new Map() },
     logos: false,
     logoVersions: null,
@@ -937,8 +938,9 @@
     setHeader('Avoirs', 'Comptes, placements, biens et crédits', html`${discretButton()}${canEdit() ? html`<button class="btn primary" data-action="new-holding">${icon('plus')}Ajouter un avoir</button>` : ''}`);
     const draw = () => {
       const q = state.filter.trim().toLowerCase();
-      const visible = v.holdings.filter((h) => (state.showClosed || !h.closed_at) && (!q || [h.name, h.institution, h.owner, h.notes].some((s) => (s || '').toLowerCase().includes(q))));
+      const visible = v.holdings.filter((h) => (state.showClosed || !h.closed_at) && (!state.onlyShared || isShared(h)) && (!q || [h.name, h.institution, h.owner, h.notes].some((s) => (s || '').toLowerCase().includes(q))));
       const closedCount = v.holdings.filter((h) => h.closed_at).length;
+      const sharedCount = v.holdings.filter((h) => (state.showClosed || !h.closed_at) && isShared(h)).length;
       const groups = v.categories.map((c) => ({ c, items: visible.filter((h) => h.category_id === c.id) })).filter((g) => g.items.length);
       $('#holdings-list').innerHTML = part(groups.length ? groups.map(({ c, items }) => {
         const sum = items.reduce((s, h) => s + (h.closed_at ? 0 : h.value_base || 0), 0);
@@ -957,7 +959,7 @@
                 : html`<span class="tag brand">${icon('crypto')}Suivi auto</span><br>${h.last_date ? `mis à jour ${ago(h.age_days)}` : 'en attente'}`)
               : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`;
             return html`<button type="button" class="holding ${h.closed_at ? 'closed' : ''}" data-action="open-holding" data-id="${h.id}">
-              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}${autoCrypto && !h.closed_at ? html`<span class="m-only">${il(autoCrypto.last_error ? 'alert' : 'crypto', autoCrypto.last_error ? 'Lecture impossible' : 'Suivi auto')}</span>` : ''}${shareTag(h)}</span></span></span>
+              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}${autoCrypto && !h.closed_at ? html`<span class="m-only">${il(autoCrypto.last_error ? 'alert' : 'crypto', autoCrypto.last_error ? 'Lecture impossible' : 'Suivi auto')}</span>` : ''}${shareTag(h)}</span>${splitLine(h)}</span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${when}</span>
               <span class="amount"><b>${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency)}</b>
@@ -973,6 +975,8 @@
           <p>${v.holdings.length ? 'Modifiez la recherche ou affichez les avoirs clôturés.' : 'Ajoutez vos comptes, placements, biens et crédits avec leur valeur du jour.'}</p>
           ${!v.holdings.length && canEdit() ? html`<button class="btn primary" data-action="new-holding">${icon('plus')}Ajouter un avoir</button>` : ''}</div>`);
       $('#closed-toggle').hidden = closedCount === 0;
+      $('#shared-toggle').hidden = sharedCount === 0 && !state.onlyShared;
+      $('#shared-count').textContent = sharedCount;
       $('#closed-count').textContent = closedCount;
     };
     const gainRows = v.holdings.filter(h => !h.closed_at && h.latent_gain_cents !== null && h.latent_gain_cents !== undefined && h.latent_basis_cents > 0 && h.value_base !== null && (h.owned_cents !== 0 || h.currency === v.base_currency));
@@ -980,10 +984,12 @@
     const basisBase = gainRows.reduce((s,h) => s + Math.round(h.latent_basis_cents * (h.owned_cents === 0 ? 1 : h.value_base / h.owned_cents)), 0);
     el.innerHTML = part(html`${shareBanner(inbox)}<div class="panel"><h2>Plus-values latentes</h2><p class="hero-value ${gainBase >= 0 ? 'pos' : 'neg'}">${money(gainBase, v.base_currency, { sign: true })}</p><p class="muted">${gainRows.length} avoir(s) · ${basisBase ? num(gainBase / basisBase * 100)+' %' : '—'} · montant brut</p><p class="small muted">Hors fiscalité et mouvements. Les avoirs sans prix de revient ou taux de change sont exclus.</p></div><div class="toolbar">
         <input class="input" type="search" id="holding-search" placeholder="Rechercher un avoir, un établissement…" value="${state.filter}" aria-label="Rechercher">
+        <label class="check" id="shared-toggle"><input type="checkbox" id="only-shared" ${state.onlyShared ? 'checked' : ''}><span>Seulement les avoirs partagés (<span id="shared-count"></span>)</span></label>
         <label class="check" id="closed-toggle"><input type="checkbox" id="show-closed" ${state.showClosed ? 'checked' : ''}><span>Afficher les avoirs clôturés (<span id="closed-count"></span>)</span></label>
       </div><div class="stack" id="holdings-list"></div>`);
     $('#holding-search').addEventListener('input', (e) => { state.filter = e.target.value; draw(); });
     $('#show-closed').addEventListener('change', (e) => { state.showClosed = e.target.checked; draw(); });
+    $('#only-shared').addEventListener('change', (e) => { state.onlyShared = e.target.checked; draw(); });
     draw();
     if (route.arg) openHolding(Number(route.arg));
   }
@@ -994,18 +1000,46 @@
   const msDay = (ms) => (ms ? new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
   // Date et heure d'un événement de partage : « 3 nov. 2026 à 10:21 ».
   const msAt = (ms) => (ms ? `${msDay(ms)} à ${new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : '—');
-  const pctBp = (bp) => `${num(bp / 100)} %`;
+  const pctBp = (bp) => `${num(bp / 100)}\u00a0%`; // « 50 % » jamais coupé en fin de ligne
   const activeShare = (x) => x.status === 'accepted' || x.status === 'pending';
+  // Répartition d'un avoir partagé (1.4.0) : vous, chaque personne, et le reste détenu hors Vigie.
+  function splitSegments(ownerBp, people) {
+    const seg = [{ label: 'Vous', bp: ownerBp, tone: 'me' }, ...people.map((x) => ({ label: x.recipient_name, bp: x.ownership_bp, tone: x.status === 'pending' ? 'wait' : 'ok', note: x.note || (x.status === 'pending' ? '(en attente)' : '') }))];
+    const total = seg.reduce((t, x) => t + x.bp, 0);
+    if (total < 10000) seg.push({ label: 'Hors Vigie', bp: 10000 - total, tone: 'out', note: '(personne sans compte ici)' });
+    return { seg, total };
+  }
+  function splitBar({ seg, total }) {
+    const scale = Math.max(total, 10000);
+    return html`<div class="split">
+      <div class="split-bar" role="img" aria-label="Répartition : ${seg.map((x) => `${x.label} ${pctBp(x.bp)}`).join(', ')}">${seg.map((x) => html`<span class="sb ${x.tone}" style="width:${(x.bp / scale) * 100}%"></span>`)}</div>
+      <ul class="split-legend">${seg.map((x) => html`<li><i class="sb ${x.tone}" aria-hidden="true"></i><span>${x.label}${x.note ? html` <span class="muted small">${x.note}</span>` : ''}</span><b>${pctBp(x.bp)}</b></li>`)}
+        <li class="split-total ${total > 10000 ? 'neg' : ''}"><span>Total</span><b>${pctBp(Math.max(total, 10000))}</b></li></ul>
+      ${total > 10000 ? html`<p class="error-text">${icon('alert')}Le total dépasse 100 % : baissez une des parts.</p>` : ''}</div>`;
+  }
+  // Ligne de la liste des avoirs : « Vous 50 % · Léa 30 % · hors Vigie 20 % ».
+  function splitLine(h) {
+    const s = h.sharing;
+    if (!s || s.role !== 'owner') return '';
+    const people = s.shares.filter(activeShare);
+    if (!people.length) return '';
+    const { seg } = splitSegments(s.owner_bp, people);
+    return html`<span class="split-line">${seg.map((x, i) => html`${i ? ' · ' : ''}${x.tone === 'out' ? 'hors Vigie' : x.label} ${pctBp(x.bp)}${x.tone === 'wait' ? ' (en attente)' : ''}`)}</span>`;
+  }
+  const splitText = (ownerBp, items, key) => [`vous ${pctBp(ownerBp)}`, ...items.map((i) => `${i.recipient_name} ${pctBp(i[key])}`)].join(', ');
   // Après un changement de partage : la liste des avoirs (étiquettes) et le panneau de l'avoir sont redessinés.
   function reopenHolding(holdingId) {
     if (location.hash.startsWith('#/avoirs')) { history.replaceState(null, '', `#/avoirs/${holdingId}`); render(); }
     else openHolding(holdingId);
   }
 
+  // Avoir partagé : partage en cours (accepté ou en attente), reçu en partage, ou correction en attente.
+  const isShared = (h) => Boolean(h.sharing && (h.sharing.role === 'recipient' || h.sharing.correction_pending || h.sharing.shares.some(activeShare)));
   // Étiquette de la liste des avoirs : partagé ou non, approuvé ou non.
   function shareTag(h) {
     const s = h.sharing;
     if (!s) return '';
+    if (s.correction_pending) return html`<span class="tag share wait">${icon('clock')}${s.role === 'recipient' ? 'Correction de votre part à valider' : 'Correction en attente d’accord'}</span>`;
     if (s.role === 'recipient') return html`<span class="tag share ok" title="Partage approuvé le ${msAt(s.share.accepted_at)}">${icon('users')}Partagé par ${s.owner_name || 'un autre compte'}</span>`;
     const accepted = s.shares.filter((x) => x.status === 'accepted');
     const pending = s.shares.filter((x) => x.status === 'pending');
@@ -1054,8 +1088,35 @@
   }
 
   // En tête du détail d'un avoir : l'état du partage et, pour le titulaire, le bouton Partager, sans avoir à faire défiler.
-  function shareTop(h, sharing, mayEdit, property, mailOk = false) {
+  // Correction de la répartition : en attente, refusée ou annulée (titulaire) ; à valider (destinataire).
+  function correctionCard(h, c, mayEdit) {
+    if (!c) return '';
+    const row = (k, v) => html`<span class="sc-row"><span class="sc-k">${k}</span><span>${v}</span></span>`;
+    if (c.mine) return html`<div class="share-card wait correction-card">
+      <span class="sc-title">${icon('clock')}<span><b>${c.sender_name || 'Le titulaire'}</b> propose de corriger votre part : <b>${pctBp(c.mine.bp_before)} → ${pctBp(c.mine.bp_after)}</b></span></span>
+      ${row('Proposée', `le ${msAt(c.created_at)}`)}${row('D’ici là', `votre part reste de ${pctBp(c.mine.bp_before)}`)}
+      <span class="sc-actions"><button class="btn primary small" type="button" data-action="correction-decision" data-id="${c.id}" data-decision="accept" data-holding="${h.id}">${icon('check')}Accepter</button>
+        <button class="btn small" type="button" data-action="correction-decision" data-id="${c.id}" data-decision="decline" data-holding="${h.id}">${icon('close')}Refuser</button></span></div>`;
+    if (c.status === 'cancelled' && c.cancel_reason === 'Annulée par le titulaire.') return '';
+    const before = splitText(c.owner_bp_before, c.items, 'bp_before'), after = splitText(c.owner_bp_after, c.items, 'bp_after');
+    if (c.status === 'pending') {
+      const waiting = c.items.filter((i) => i.needs_consent && !i.accepted_at).map((i) => i.recipient_name).join(', ');
+      return html`<div class="share-card wait correction-card">
+        <span class="sc-title">${icon('clock')}<span>Correction en attente de l'accord de <b>${waiting}</b></span></span>
+        ${row('Actuelle', before)}${row('Proposée', after)}${row('Envoyée', `le ${msAt(c.created_at)}`)}
+        ${mayEdit ? html`<span class="sc-actions"><button class="btn small" type="button" data-action="correction-cancel" data-id="${c.id}" data-holding="${h.id}">${icon('close')}Annuler la correction</button></span>` : ''}</div>`;
+    }
+    if (c.status === 'declined') return html`<div class="share-card bad correction-card">
+      <span class="sc-title">${icon('close')}<span>Correction refusée par <b>${c.declined_by_name || 'la personne concernée'}</b> le ${msAt(c.declined_at)}</span></span>
+      ${row('Proposée', after)}${row('En place', before)}</div>`;
+    return html`<div class="share-card correction-card">
+      <span class="sc-title">${icon('info')}<span>Correction annulée le ${msAt(c.cancelled_at)}</span></span>
+      ${row('Raison', c.cancel_reason || '—')}${row('Proposée', after)}</div>`;
+  }
+  const canSplit = (h, sharing, mayEdit) => Boolean(mayEdit && !h.closed_at && sharing && sharing.role === 'owner' && sharing.shares.some(activeShare));
+  function shareTop(h, sharing, mayEdit, property, mailOk = false, correction = null) {
     const status = shareHeadline(sharing);
+    const fix = correctionCard(h, correction, mayEdit);
     const relaunch = sharing && sharing.role === 'owner' ? sharing.shares.filter((x) => canResend(x, mayEdit, mailOk) && (x.status === 'pending' || x === sharing.shares[0])) : [];
     const resend = relaunch.length === 1
       ? html`<button class="btn small" type="button" data-action="share-resend" data-id="${relaunch[0].id}" data-holding="${h.id}" data-name="${relaunch[0].recipient_name}">${icon('mail')}Renvoyer l'e-mail à ${relaunch[0].recipient_name}</button>` : '';
@@ -1063,7 +1124,8 @@
     const button = !why && mayEdit
       ? html`<button class="btn small" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${property ? 'Partager ce bien' : 'Partager cet avoir'}</button>`
       : why ? html`<span class="small muted share-why">${icon('info')}${why}</span>` : '';
-    return status || button ? html`<div class="share-top">${status}${resend}${button}</div>` : '';
+    const split = canSplit(h, sharing, mayEdit) ? html`<button class="btn small" type="button" data-action="split-holding" data-id="${h.id}">${icon('percent')}Corriger la répartition</button>` : '';
+    return status || fix || button ? html`<div class="share-top">${status}${fix}${resend}${split}${button}</div>` : '';
   }
   // Pourquoi le titulaire ne peut pas partager cet avoir (rien pour un avoir reçu en partage).
   function shareBlocked(h, mayEdit) {
@@ -1119,21 +1181,32 @@
         <dt>Partagé</dt><dd>${sharedText(active)}</dd>
         ${h.total_ownership_bp < 10000 || shares.length ? html`<dt>Votre quote-part</dt><dd>${pctBp(h.total_ownership_bp)}</dd>` : ''}
       </dl>
+      ${active.length ? splitBar(splitSegments(h.total_ownership_bp, active)) : ''}
       ${current.length ? html`<ul class="share-list">${current.map(line)}</ul>` : ''}
       ${history.length ? html`<details class="share-history"><summary>Partages précédents (${history.length})</summary><ul class="share-list">${history.map(line)}</ul></details>` : ''}
       ${shareBlocked(h, mayEdit) ? html`<p class="small muted">${shareBlocked(h, mayEdit)}</p>` : ''}
-      ${mayEdit && !h.closed_at ? html`<div class="form-actions" style="justify-content:flex-start"><button class="btn" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${active.length ? 'Partager avec une autre personne' : property ? 'Partager ce bien' : 'Partager cet avoir'}</button></div>` : ''}
+      ${mayEdit && !h.closed_at ? html`<div class="form-actions" style="justify-content:flex-start">${canSplit(h, sharing, mayEdit) ? html`<button class="btn" type="button" data-action="split-holding" data-id="${h.id}">${icon('percent')}Corriger la répartition</button>` : ''}<button class="btn" type="button" data-action="share-holding" data-id="${h.id}">${icon('users')}${active.length ? 'Partager avec une autre personne' : property ? 'Partager ce bien' : 'Partager cet avoir'}</button></div>` : ''}
       ${!shares.length ? html`<p class="small muted">Un avoir partagé apparaît dans les Avoirs de l'autre compte après son accord, à hauteur de sa quote-part ; il n'accède à rien d'autre.</p>` : ''}
     </div></section>`;
   }
 
   // Demandes reçues : bandeau en haut des Avoirs et du tableau de bord, avec Accepter et Refuser.
   async function shareInbox() {
-    try { return (await api('GET', '/api/shares/inbox')).invitations; } catch { return []; }
+    try { return await api('GET', '/api/shares/inbox'); } catch { return { invitations: [], corrections: [] }; }
   }
-  function shareBanner(invitations) {
-    if (!invitations || !invitations.length) return '';
-    return html`<section class="share-inbox" aria-label="Demandes de partage">${invitations.map((p) => html`<div class="notice info share-request" data-share-request="${p.id}">
+  function shareBanner(inbox) {
+    const invitations = inbox?.invitations || [], corrections = inbox?.corrections || [];
+    if (!invitations.length && !corrections.length) return '';
+    return html`<section class="share-inbox" aria-label="Demandes de partage">${corrections.map((c) => html`<div class="notice info share-request" data-correction-request="${c.id}">
+      ${icon('percent')}<div class="grow">
+        <b>${c.sender_name || 'Le titulaire'} propose de corriger votre quote-part de « ${c.holding_name} »</b>
+        <p>Votre part : <b>${pctBp(c.bp_before)} → ${pctBp(c.bp_after)}</b>${c.before_cents !== null && c.before_cents !== undefined ? html`, soit ${money(c.before_cents, c.currency)} → ${money(c.after_cents, c.currency)} aujourd'hui${c.category_kind === 'liability' ? ' de dette' : ''}` : ''}.</p>
+        <p class="small muted">Proposition du ${msAt(c.created_at)}. Tant que vous n'avez pas accepté, votre part reste de ${pctBp(c.bp_before)}. La correction vaut pour tout l'historique de l'avoir.</p>
+      </div>
+      <div class="share-actions">
+        <button class="btn primary small" type="button" data-action="correction-decision" data-id="${c.id}" data-decision="accept">${icon('check')}Accepter</button>
+        <button class="btn small" type="button" data-action="correction-decision" data-id="${c.id}" data-decision="decline">${icon('close')}Refuser</button>
+      </div></div>`)}${invitations.map((p) => html`<div class="notice info share-request" data-share-request="${p.id}">
       ${icon('users')}<div class="grow">
         <b>${p.sender_name || p.owner_name || 'Un autre compte'} vous propose de partager « ${p.holding_name} »</b>
         <p>${p.category_name ? `${p.category_name} · ` : ''}votre quote-part : <b>${pctBp(p.ownership_bp)}</b>${p.part_cents !== null && p.part_cents !== undefined ? html`, soit ${money(p.part_cents, p.currency)} aujourd'hui${p.category_kind === 'liability' ? ' de dette' : ''}` : ''}.</p>
@@ -1143,6 +1216,67 @@
         <button class="btn primary small" type="button" data-action="share-decision" data-id="${p.id}" data-decision="accept">${icon('check')}Accepter</button>
         <button class="btn small" type="button" data-action="share-decision" data-id="${p.id}" data-decision="decline">${icon('close')}Refuser</button>
       </div></div>`)}</section>`;
+  }
+
+  // « Corriger la répartition » : votre part, celle de chaque personne et le reste hors Vigie.
+  // Les parts déjà acceptées ne changent qu'avec l'accord de la personne concernée.
+  async function splitHoldingForm(holdingId) {
+    const data = await api('GET', `/api/holdings/${holdingId}/shares`);
+    const people = data.shares.filter(activeShare).sort((a, b) => a.created_at - b.created_at);
+    const open = data.correction && data.correction.status === 'pending' ? data.correction : null;
+    const input = (name, value, label) => html`<input class="input amount" name="${name}" type="number" min="0.01" max="100" step="0.01" required inputmode="decimal" value="${value / 100}" aria-label="${label}">`;
+    const dialog = openDialog(html`<form class="dialog-body form" id="split-form">
+      ${dialogHead(`Corriger la répartition`, `${data.name} : votre part, celle de chaque personne et ce qui appartient à des personnes sans compte Vigie.`)}
+      ${open ? html`<p class="notice">${icon('info')}<span>Une correction attend déjà l'accord de ${open.items.filter((i) => i.needs_consent && !i.accepted_at).map((i) => i.recipient_name).join(', ')}. En envoyer une nouvelle la remplace.</span></p>` : ''}
+      <div class="split-rows">
+        <label class="split-row"><span class="who">${avatar(state.user?.display_name || 'Vous', 'sm')}<span><b>Vous</b><span class="small muted">titulaire</span></span></span><span class="suffix">${input('owner_pct', data.ownership_bp, 'Votre part en pourcentage')}<i aria-hidden="true">%</i></span></label>
+        ${people.map((x) => html`<label class="split-row" data-share="${x.id}" data-before="${x.ownership_bp}" data-status="${x.status}" data-name="${x.recipient_name}"><span class="who">${avatar(x.recipient_name, 'sm')}<span><b>${x.recipient_name}</b><span class="small muted">${x.status === 'accepted' ? `part acceptée le ${msDay(x.accepted_at)}` : 'demande en attente'}</span></span></span><span class="suffix">${input('s' + x.id, x.ownership_bp, `Part de ${x.recipient_name} en pourcentage`)}<i aria-hidden="true">%</i></span></label>`)}
+      </div>
+      <div data-split aria-live="polite"></div>
+      <div class="notice info" data-effects hidden>${icon('info')}<div data-effects-text></div></div>
+      <p class="small muted">Une correction répare une erreur de saisie : elle vaut pour tout l'historique de l'avoir, dans chaque patrimoine concerné.</p>
+      <p class="error-text" hidden></p>
+      <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit" data-submit>${icon('check')}Enregistrer</button></div>
+    </form>`);
+    const form = $('#split-form', dialog);
+    const bpOf = (el) => { const v = Math.round(Number(String(el.value).replace(',', '.')) * 100); return Number.isFinite(v) ? v : NaN; };
+    const sync = () => {
+      const owner = bpOf(form.owner_pct);
+      const rows = $$('[data-share]', form).map((row) => ({ id: Number(row.dataset.share), recipient_name: row.dataset.name, status: row.dataset.status,
+        before: Number(row.dataset.before), ownership_bp: bpOf(row.querySelector('input')) }));
+      const valid = owner >= 1 && rows.every((r) => r.ownership_bp >= 1);
+      const { seg, total } = splitSegments(valid ? owner : 0, rows.map((r) => ({ ...r, ownership_bp: valid ? r.ownership_bp : 0 })));
+      $('[data-split]', form).innerHTML = valid ? part(splitBar({ seg, total })) : '';
+      const consent = rows.filter((r) => r.status === 'accepted' && r.ownership_bp !== r.before);
+      const pendingChanged = rows.filter((r) => r.status === 'pending' && r.ownership_bp !== r.before);
+      const changed = owner !== data.ownership_bp || consent.length || pendingChanged.length;
+      const lines = [];
+      if (consent.length) lines.push(`${consent.map((r) => `${r.recipient_name} (${pctBp(r.before)} → ${pctBp(r.ownership_bp)})`).join(', ')} ${consent.length > 1 ? 'devront' : 'devra'} accepter. D'ici là, la répartition actuelle reste en place, votre part comprise.`);
+      if (pendingChanged.length) lines.push(`${pendingChanged.map((r) => `La demande à ${r.recipient_name} affichera ${pctBp(r.ownership_bp)}`).join(' ; ')}.`);
+      if (changed && !consent.length) lines.push('Aucun accord nécessaire : la correction s’applique tout de suite.');
+      $('[data-effects]', form).hidden = !lines.length;
+      $('[data-effects-text]', form).innerHTML = part(html`${lines.map((l) => html`<p>${l}</p>`)}`);
+      const btn = $('[data-submit]', form);
+      btn.disabled = !valid || !changed || total > 10000;
+      btn.innerHTML = part(html`${icon(consent.length ? 'send' : 'check')}${consent.length ? `Envoyer pour accord à ${consent.map((r) => r.recipient_name).join(', ')}` : 'Enregistrer la répartition'}`);
+    };
+    form.addEventListener('input', sync);
+    sync();
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = { owner_pct: form.owner_pct.value, shares: $$('[data-share]', form).map((row) => ({ id: Number(row.dataset.share), ownership_pct: row.querySelector('input').value })) };
+      await withBusy(e.submitter, async () => {
+        try {
+          const r = await api('POST', `/api/holdings/${holdingId}/split`, body);
+          if (r.applied) toast('Répartition corrigée.');
+          else {
+            const names = r.correction.items.filter((i) => i.needs_consent).map((i) => i.recipient_name);
+            toast(`Correction envoyée pour accord à ${names.join(', ')}${r.mailed.length ? ', prévenu par e-mail' : ''}. Elle s'appliquera après son accord.`);
+          }
+          reopenHolding(holdingId);
+        } catch (err) { const p = $('.error-text', form); p.textContent = err.message; p.hidden = false; }
+      });
+    });
   }
 
   async function shareHoldingForm(holdingId) {
@@ -1162,6 +1296,8 @@
         </select></label>
         <label class="field"><span>Quote-part proposée (%)</span><input class="input" type="number" name="ownership_pct" min="0.01" max="${data.available_bp / 100}" step="0.01" required value="${data.default_bp / 100}">
           <small data-share-effect aria-live="polite"></small></label>
+        <div data-split aria-live="polite"></div>
+        <p class="small muted">Le reste appartient à une personne sans compte Vigie ? Baissez la part proposée : la différence reste « hors Vigie ». Pour changer votre propre part, utilisez ensuite « Corriger la répartition ».</p>
         <p class="small muted" data-share-notify></p>
         <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon('users')}Envoyer la demande de partage</button></div>
         <p class="error-text" hidden></p>
@@ -1173,7 +1309,11 @@
       const o = form.recipient_id.selectedOptions[0];
       const who = o ? o.dataset.name : 'la personne';
       const bp = Math.round(Number(String(form.ownership_pct.value).replace(',', '.')) * 100);
-      const need = Number.isFinite(bp) && bp > 0 ? Math.max(0, data.ownership_bp + data.accepted_bp + bp - 10000) : 0;
+      const others = data.shares.filter(activeShare);
+      const othersBp = others.reduce((t, x) => t + x.ownership_bp, 0);
+      const need = Number.isFinite(bp) && bp > 0 ? Math.max(0, data.ownership_bp + othersBp + bp - 10000) : 0;
+      $('[data-split]', form).innerHTML = Number.isFinite(bp) && bp > 0 ? part(splitBar(splitSegments(data.ownership_bp - need,
+        [...others, { recipient_name: who, ownership_bp: bp, status: 'pending', note: '(proposée)' }]))) : '';
       $('[data-share-effect]', form).textContent = !(bp > 0) ? '' : need
         ? `Votre quote-part passera de ${pctBp(data.ownership_bp)} à ${pctBp(data.ownership_bp - need)} quand ${who} aura accepté.`
         : `Votre quote-part reste ${pctBp(data.ownership_bp)} : la part proposée correspond à la part qui ne vous est pas attribuée.`;
@@ -1675,7 +1815,7 @@
   async function openHolding(id) {
     let data;
     try { data = await api('GET', `/api/holdings/${id}`); } catch (err) { fail(err); return; }
-    const { holding: h, valuations, schedule: sc, base_currency: base, property, acquisition, latent_gain: latent, sharing, mail_ready: mailOk, crypto } = data;
+    const { holding: h, valuations, schedule: sc, base_currency: base, property, acquisition, latent_gain: latent, sharing, mail_ready: mailOk, crypto, correction } = data;
     const autoCrypto = Boolean(crypto && crypto.mode !== 'manual'); // valeur calculée à partir de la quantité et du cours
     const partial = h.total_ownership_bp < 10000; // avoir détenu en partie (indivision, compte joint, partage)
     const mayEdit = canEdit() && !h.shared_with_me;
@@ -1692,7 +1832,7 @@
       ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p>
-        ${shareTop(h, sharing, mayEdit, property, mailOk)}</div>
+        ${shareTop(h, sharing, mayEdit, property, mailOk, correction)}</div>
       ${crypto ? cryptoPanel(h, crypto, mayEdit) : ''}
       ${property ? html`<div class="panel"><dl class="kv">
         <dt>Votre quote-part</dt><dd>${num(h.total_ownership_bp / 100)} %</dd>
@@ -2749,6 +2889,9 @@
     email_modifie: 'Adresse e-mail modifiée', invitation_envoyee: 'Invitation envoyée', invitation_creee: "Lien d'invitation créé", invitation_renvoyee: 'Invitation renvoyée',
     invitation_lien: "Nouveau lien d'invitation", invitation_annulee: 'Invitation annulée', invitation_acceptee: 'Invitation acceptée', mot_de_passe_oublie: 'Mot de passe oublié',
     partage_envoye: 'Partage proposé', partage_relance: 'E-mail de partage renvoyé', partage_accepte: 'Partage accepté', partage_refuse: 'Partage refusé', partage_revoque: 'Partage retiré',
+    partage_correction_proposee: 'Correction de répartition proposée', partage_correction_acceptee: 'Correction de répartition acceptée',
+    partage_correction_refusee: 'Correction de répartition refusée', partage_correction_annulee: 'Correction de répartition annulée',
+    partage_repartition_corrigee: 'Répartition corrigée',
     partage_immobilier_envoye: 'Partage proposé', partage_immobilier_accepte: 'Partage accepté', partage_immobilier_refuse: 'Partage refusé', partage_immobilier_revoque: 'Partage retiré',
     lien_mot_de_passe: 'Lien de réinitialisation envoyé', logo_personnalise: 'Logo personnalisé', logo_retire: 'Logo personnalisé retiré', logo_recherche: 'Logo recherché', logos_recherche: 'Logos recherchés', logos_reessai: 'Logos réessayés', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
   };
@@ -2824,6 +2967,25 @@
       } catch (err) { fail(err); }
     }),
     'goto-share': () => { const sec = $('dialog[open] #share-section'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    'split-holding': (b) => splitHoldingForm(Number(b.dataset.id)).catch(fail),
+    'correction-decision': async (b) => withBusy(b, async () => {
+      const accept = b.dataset.decision === 'accept';
+      if (!accept && !(await confirmDialog({ title: 'Refuser la correction ?', message: 'Votre quote-part reste celle que vous aviez acceptée. Le titulaire verra votre refus et pourra proposer une autre répartition.', confirm: 'Refuser', danger: true }))) {
+        if (b.dataset.holding) openHolding(Number(b.dataset.holding));
+        return;
+      }
+      try {
+        const r = await api('POST', `/api/share-corrections/${b.dataset.id}/decision`, { decision: b.dataset.decision });
+        toast(r.status === 'applied' ? 'Correction acceptée : votre nouvelle quote-part est appliquée.'
+          : r.status === 'waiting' ? `Correction acceptée. Elle s'appliquera quand ${r.waiting.join(', ')} aura aussi accepté.` : 'Correction refusée : votre quote-part ne change pas.');
+      } catch (err) { fail(err); }
+      if (b.dataset.holding) reopenHolding(Number(b.dataset.holding)); else render();
+    }),
+    'correction-cancel': async (b) => {
+      if (!(await confirmDialog({ title: 'Annuler la correction ?', message: 'La répartition actuelle reste en place et la proposition disparaît chez les personnes concernées.', confirm: 'Annuler la correction', danger: true }))) { openHolding(Number(b.dataset.holding)); return; }
+      try { await api('DELETE', `/api/share-corrections/${b.dataset.id}`); toast('Correction annulée.'); } catch (err) { fail(err); }
+      reopenHolding(Number(b.dataset.holding));
+    },
     'share-decision': async (b) => withBusy(b, async () => {
       try {
         const r = await api('POST', `/api/shares/${b.dataset.id}/decision`, { decision: b.dataset.decision });

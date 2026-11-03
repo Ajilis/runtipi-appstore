@@ -333,15 +333,24 @@ export function sharingByHolding(db, state) {
   const out = new Map();
   const visible = new Map(state.holdings.map((h) => [h.id, h]));
   const now = Date.now();
+  // Corrections de répartition en attente (1.4.0) : par avoir, et personnes dont l'accord manque encore.
+  const pendingFix = new Map();
+  for (const r of db.prepare(`SELECT c.holding_id, s.recipient_id, i.accepted_at FROM share_corrections c
+      JOIN share_correction_items i ON i.correction_id = c.id JOIN holding_shares s ON s.id = i.share_id
+      WHERE c.applied_at IS NULL AND c.declined_at IS NULL AND c.cancelled_at IS NULL AND i.needs_consent = 1`).all()) {
+    if (!pendingFix.has(r.holding_id)) pendingFix.set(r.holding_id, new Set());
+    if (!r.accepted_at) pendingFix.get(r.holding_id).add(r.recipient_id);
+  }
   for (const row of db.prepare(SHARE_ROW_SQL + ' ORDER BY s.created_at DESC, s.id DESC').all()) {
     const h = visible.get(row.holding_id);
     if (!h) continue;
     const mine = state.userId === null || h.account_user_id === state.userId;
     if (mine) {
-      if (!out.has(h.id)) out.set(h.id, { role: 'owner', owner_bp: h.ownership_bp ?? 10000, shares: [] });
+      if (!out.has(h.id)) out.set(h.id, { role: 'owner', owner_bp: h.ownership_bp ?? 10000, shares: [], correction_pending: pendingFix.has(h.id) });
       out.get(h.id).shares.push(shareView(row, now));
     } else if (row.recipient_id === state.userId && shareStatus(row, now) === 'accepted') {
-      out.set(h.id, { role: 'recipient', owner_name: row.owner_name, share: shareView(row, now) });
+      out.set(h.id, { role: 'recipient', owner_name: row.owner_name, share: shareView(row, now),
+        correction_pending: Boolean(pendingFix.get(h.id)?.has(state.userId)) });
     }
   }
   return out;

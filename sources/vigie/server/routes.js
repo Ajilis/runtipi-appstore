@@ -499,7 +499,24 @@ export function registerRoutes(router, deps) {
       return { ...shareView(row, now), category_name: cat?.name || null, category_kind: cat?.kind || 'asset',
         currency: h?.currency || null, part_cents: snap && snap.cents !== null ? ownedCents(snap.cents, row.ownership_bp) : null };
     };
-    return { invitations: pending.map(preview), accepted: accepted.map((r) => shareView(r, now)) };
+    // Corrections de quote-part qui attendent la réponse de ce compte.
+    const corrections = db.prepare(`SELECT c.*, i.share_id, i.bp_before, i.bp_after FROM share_corrections c
+      JOIN share_correction_items i ON i.correction_id = c.id JOIN holding_shares s ON s.id = i.share_id
+      WHERE s.recipient_id = ? AND i.needs_consent = 1 AND i.accepted_at IS NULL
+      AND c.applied_at IS NULL AND c.declined_at IS NULL AND c.cancelled_at IS NULL ORDER BY c.created_at DESC`).all(ctx.user.id);
+    const cstate = corrections.length ? (state || loadState(db, todayIso())) : null;
+    const correctionPreview = (c) => {
+      const h = cstate.holdings.find((x) => x.id === c.holding_id);
+      const snap = h ? holdingSnapshot(cstate, h) : null;
+      const sender = c.sender_id ? getUser(c.sender_id) : null;
+      const owner = h ? getUser(h.account_user_id) : null;
+      return { id: c.id, holding_id: c.holding_id, holding_name: h?.name || '', sender_name: sender?.display_name || owner?.display_name || null,
+        bp_before: c.bp_before, bp_after: c.bp_after, created_at: c.created_at, currency: h?.currency || null,
+        category_kind: h ? cstate.catById.get(h.category_id)?.kind || 'asset' : 'asset',
+        before_cents: snap && snap.cents !== null ? ownedCents(snap.cents, c.bp_before) : null,
+        after_cents: snap && snap.cents !== null ? ownedCents(snap.cents, c.bp_after) : null };
+    };
+    return { invitations: pending.map(preview), accepted: accepted.map((r) => shareView(r, now)), corrections: corrections.map(correctionPreview) };
   });
   router.get('/api/holdings/:id/shares', { auth: 'viewer' }, (ctx) => {
     const id = intId(ctx.params.id);
@@ -509,7 +526,7 @@ export function registerRoutes(router, deps) {
     return { holding_id: id, name: h.name, ownership_bp: h.ownership_bp, closed: Boolean(h.closed_at),
       complement_bp: Math.max(0, 10000 - h.ownership_bp - sumReserved.get(id, now).bp),
       available_bp: shareCapacity(id, now), default_bp: defaultShareBp(h, now),
-      accepted_bp: sumAccepted.get(id).bp, shares: list.map((r) => shareView(r, now)) };
+      accepted_bp: sumAccepted.get(id).bp, shares: list.map((r) => shareView(r, now)), correction: correctionFor(id, ctx.user.id) };
   });
 
   router.post('/api/holdings/:id/shares', { auth: 'editor' }, async (ctx) => {
@@ -532,6 +549,7 @@ export function registerRoutes(router, deps) {
         WHERE holding_id = ? AND accepted_at IS NULL AND declined_at IS NULL
         AND revoked_at IS NULL AND expires_at <= ?`).run(now, id, now);
       if (pct > shareCapacity(id, now)) fail(409, 'share_capacity', 'La quote-part disponible a changé. Rechargez la fiche.');
+      cancelOpenCorrection(id, 'Une nouvelle demande de partage a été envoyée.');
       if (db.prepare(`SELECT 1 FROM holding_shares WHERE holding_id = ? AND recipient_id = ?
           AND declined_at IS NULL AND revoked_at IS NULL`).get(id, targetId))
         fail(409, 'already_shared', 'Ce compte a déjà un partage en attente ou accepté sur cet avoir.');
@@ -604,6 +622,7 @@ export function registerRoutes(router, deps) {
       if (!row || row.recipient_id !== ctx.user.id) fail(404, 'not_found', 'Proposition de partage introuvable.');
       if (shareStatus(row) !== 'pending') fail(409, 'share_inactive', 'Cette proposition est déjà traitée ou a expiré.');
       const now = Date.now();
+      cancelOpenCorrection(row.holding_id, `${row.recipient_name} a répondu à sa demande de partage.`);
       if (decision === 'accept') {
         const h = sharedHolding(row.holding_id);
         const accepted = sumAccepted.get(row.holding_id).bp;
@@ -631,6 +650,7 @@ export function registerRoutes(router, deps) {
       const status = shareStatus(row);
       if (status !== 'accepted' && status !== 'pending') fail(409, 'share_inactive', 'Ce partage n’est plus actif.');
       db.prepare('UPDATE holding_shares SET revoked_at = ? WHERE id = ?').run(Date.now(), id);
+      cancelOpenCorrection(row.holding_id, row.recipient_id === ctx.user.id ? `${row.recipient_name} a renoncé à sa part.` : `Le partage avec ${row.recipient_name} a été retiré.`);
       if (status === 'accepted' && row.deducted_bp > 0) {
         const h = sharedHolding(row.holding_id);
         setOwnerBp(h.id, Math.min(10000 - sumAccepted.get(h.id).bp, h.ownership_bp + row.deducted_bp));
@@ -639,6 +659,190 @@ export function registerRoutes(router, deps) {
     });
     audit(ctx, 'partage_revoque', `${data.holding_name} : ${pctText(data.ownership_bp)} (${data.recipient_name})`);
     return { ok: true };
+  });
+
+  // --- Correction de la répartition d'un avoir partagé (1.4.0) ---------------------------------------------
+  // Le titulaire corrige sa part, celle de chaque destinataire et laisse le reste à des personnes hors Vigie.
+  // Sa part et les demandes non encore acceptées changent tout de suite ; une part déjà acceptée ne change
+  // qu'avec l'accord de la personne : toute la nouvelle répartition attend alors les réponses. Une correction
+  // vaut pour tout l'historique (erreur de saisie, pas une cession datée).
+  const openCorrection = (holdingId) => db.prepare(`SELECT * FROM share_corrections WHERE holding_id = ?
+    AND applied_at IS NULL AND declined_at IS NULL AND cancelled_at IS NULL`).get(holdingId) || null;
+  const correctionItems = (cid) => db.prepare(`SELECT i.*, s.recipient_id, s.ownership_bp AS current_bp, s.accepted_at AS share_accepted_at,
+      s.declined_at AS share_declined_at, s.revoked_at AS share_revoked_at, s.expires_at AS share_expires_at, r.display_name AS recipient_name
+    FROM share_correction_items i JOIN holding_shares s ON s.id = i.share_id JOIN users r ON r.id = s.recipient_id
+    WHERE i.correction_id = ? ORDER BY s.created_at, s.id`).all(cid);
+  // Toute autre modification de la répartition (nouvelle demande, réponse, retrait, quote-part du titulaire)
+  // rend la correction en attente caduque : elle est annulée avec sa raison, visible du titulaire.
+  function cancelOpenCorrection(holdingId, reason) {
+    const c = openCorrection(holdingId);
+    if (c) db.prepare('UPDATE share_corrections SET cancelled_at = ?, cancel_reason = ? WHERE id = ?').run(Date.now(), reason, c.id);
+    return c;
+  }
+  function correctionView(c) {
+    if (!c) return null;
+    const status = c.applied_at ? 'applied' : c.declined_at ? 'declined' : c.cancelled_at ? 'cancelled' : 'pending';
+    const declinedBy = c.declined_by ? getUser(c.declined_by) : null;
+    const sender = c.sender_id ? getUser(c.sender_id) : null;
+    return { id: c.id, holding_id: c.holding_id, status, sender_name: sender?.display_name || null,
+      owner_bp_before: c.owner_bp_before, owner_bp_after: c.owner_bp_after, created_at: c.created_at,
+      applied_at: c.applied_at, declined_at: c.declined_at, declined_by_name: declinedBy?.display_name || null,
+      cancelled_at: c.cancelled_at, cancel_reason: c.cancel_reason,
+      items: correctionItems(c.id).map((i) => ({ share_id: i.share_id, recipient_id: i.recipient_id, recipient_name: i.recipient_name,
+        bp_before: i.bp_before, bp_after: i.bp_after, needs_consent: Boolean(i.needs_consent), accepted_at: i.accepted_at })) };
+  }
+  // Pour le titulaire : la correction en attente, ou la dernière refusée ou annulée (30 jours) pour l'informer.
+  // Pour un destinataire : la correction en attente qui attend sa réponse.
+  function correctionFor(holdingId, userId) {
+    const h = db.prepare('SELECT account_user_id FROM holdings WHERE id = ?').get(holdingId);
+    if (!h) return null;
+    if (h.account_user_id === userId) {
+      const last = db.prepare('SELECT * FROM share_corrections WHERE holding_id = ? ORDER BY id DESC LIMIT 1').get(holdingId);
+      if (!last || last.applied_at) return null;
+      if (!last.declined_at && !last.cancelled_at) return correctionView(last);
+      return Date.now() - (last.declined_at || last.cancelled_at) < 30 * 86400_000 ? correctionView(last) : null;
+    }
+    const c = openCorrection(holdingId);
+    if (!c) return null;
+    const view = correctionView(c);
+    const mine = view.items.find((i) => i.recipient_id === userId && i.needs_consent);
+    return mine ? { ...view, mine } : null;
+  }
+  const auditFor = (userId, action, detail, ip = null) => {
+    const u = userId ? getUser(userId) : null;
+    if (u) db.prepare('INSERT INTO audit_log (at, user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(Date.now(), u.id, u.username, action, String(detail).slice(0, 500), ip);
+  };
+  const splitText = (ownerBp, items, key) => [`vous ${pctText(ownerBp)}`, ...items.map((i) => `${i.recipient_name} ${pctText(i[key])}`)].join(', ');
+  function applyCorrection(c) {
+    const items = correctionItems(c.id);
+    const now = Date.now();
+    const h = db.prepare('SELECT * FROM holdings WHERE id = ?').get(c.holding_id);
+    const active = db.prepare(`SELECT * FROM holding_shares WHERE holding_id = ? AND declined_at IS NULL AND revoked_at IS NULL
+      AND (accepted_at IS NOT NULL OR expires_at > ?)`).all(c.holding_id, now);
+    const itemIds = new Set(items.map((i) => i.share_id));
+    const stale = !h || h.ownership_bp !== c.owner_bp_before
+      || active.some((s) => !itemIds.has(s.id))
+      || items.some((i) => (i.share_accepted_at && (i.share_revoked_at || i.current_bp !== i.bp_before)) || (i.needs_consent && !i.share_accepted_at))
+      || c.owner_bp_after + items.filter((i) => !i.share_revoked_at && !i.share_declined_at).reduce((t, i) => t + i.bp_after, 0) > 10000;
+    if (stale) {
+      db.prepare('UPDATE share_corrections SET cancelled_at = ?, cancel_reason = ? WHERE id = ?').run(now, 'La répartition a changé entre-temps.', c.id);
+      return false;
+    }
+    setOwnerBp(c.holding_id, c.owner_bp_after);
+    // La part rendue au titulaire si le partage prend fin ne dépasse jamais la part corrigée du destinataire.
+    for (const i of items) db.prepare('UPDATE holding_shares SET ownership_bp = ?, deducted_bp = MIN(deducted_bp, ?) WHERE id = ?').run(i.bp_after, i.bp_after, i.share_id);
+    db.prepare('UPDATE share_corrections SET applied_at = ? WHERE id = ?').run(now, c.id);
+    return true;
+  }
+  const activeShares = (holdingId, now = Date.now()) => db.prepare(SHARE_ROW_SQL + ` WHERE s.holding_id = ? AND s.declined_at IS NULL
+    AND s.revoked_at IS NULL AND (s.accepted_at IS NOT NULL OR s.expires_at > ?) ORDER BY s.created_at, s.id`).all(holdingId, now);
+
+  router.post('/api/holdings/:id/split', { auth: 'editor' }, async (ctx) => {
+    const id = intId(ctx.params.id);
+    const h = sharedHolding(id, ctx.user.id);
+    if (h.closed_at) fail(409, 'holding_closed', 'Rouvrez cet avoir avant de corriger sa répartition.');
+    const now = Date.now();
+    const shares = activeShares(id, now);
+    if (!shares.length) fail(409, 'not_shared', "Cet avoir n'est partagé avec personne.");
+    const wanted = Array.isArray(ctx.body.shares) ? ctx.body.shares : [];
+    const byId = new Map(wanted.map((x) => [Number(x?.id), x]));
+    if (byId.size !== shares.length || shares.some((s) => !byId.has(s.id)))
+      fail(409, 'split_changed', 'La répartition a changé entre-temps : rechargez la fiche.');
+    const ownerBp = ownershipBasisPoints(ctx.body.owner_pct);
+    if (ownerBp === null || ownerBp < 1) fail(400, 'invalid_field', 'Votre part : pourcentage de 0,01 à 100, avec 2 décimales maximum.');
+    const items = shares.map((s) => {
+      const bp = ownershipBasisPoints(byId.get(s.id).ownership_pct);
+      if (bp === null || bp < 1) fail(400, 'invalid_field', `Part de ${s.recipient_name} : pourcentage de 0,01 à 100, avec 2 décimales maximum.`);
+      const accepted = shareStatus(s, now) === 'accepted';
+      return { share: s, bp_before: s.ownership_bp, bp_after: bp, accepted, needs_consent: accepted && bp !== s.ownership_bp, recipient_name: s.recipient_name };
+    });
+    const total = ownerBp + items.reduce((t, i) => t + i.bp_after, 0);
+    if (total > 10000) fail(400, 'split_over', `Le total fait ${pctText(total)} : il ne peut pas dépasser 100 %.`);
+    if (ownerBp === h.ownership_bp && items.every((i) => i.bp_after === i.bp_before)) fail(400, 'no_change', 'Aucune modification de la répartition.');
+    const consent = items.filter((i) => i.needs_consent);
+    const result = transaction(db, () => {
+      const replaced = cancelOpenCorrection(id, 'Remplacée par une nouvelle correction.');
+      if (!consent.length) {
+        // Rien qui touche une part acceptée : tout s'applique tout de suite.
+        setOwnerBp(id, ownerBp);
+        for (const i of items) if (i.bp_after !== i.bp_before) db.prepare('UPDATE holding_shares SET ownership_bp = ? WHERE id = ?').run(i.bp_after, i.share.id);
+        return { applied: true, replaced: Boolean(replaced) };
+      }
+      const r = db.prepare(`INSERT INTO share_corrections (holding_id, sender_id, owner_bp_before, owner_bp_after, created_at)
+        VALUES (?, ?, ?, ?, ?)`).run(id, ctx.user.id, h.ownership_bp, ownerBp, now);
+      const cid = Number(r.lastInsertRowid);
+      for (const i of items) db.prepare(`INSERT INTO share_correction_items (correction_id, share_id, bp_before, bp_after, needs_consent)
+        VALUES (?, ?, ?, ?, ?)`).run(cid, i.share.id, i.bp_before, i.bp_after, i.needs_consent ? 1 : 0);
+      return { applied: false, correction_id: cid, replaced: Boolean(replaced) };
+    });
+    const before = splitText(h.ownership_bp, items, 'bp_before'), after = splitText(ownerBp, items, 'bp_after');
+    if (result.applied) {
+      audit(ctx, 'partage_repartition_corrigee', `${h.name} : ${before} → ${after}`);
+      for (const i of items) if (i.bp_after !== i.bp_before) auditFor(i.share.recipient_id, 'partage_repartition_corrigee',
+        `${h.name} : demande reçue de ${ctx.user.display_name} corrigée, ${pctText(i.bp_before)} → ${pctText(i.bp_after)}`);
+      return { applied: true, correction: null };
+    }
+    audit(ctx, 'partage_correction_proposee', `${h.name} : ${before} → ${after}, en attente de ${consent.map((i) => i.recipient_name).join(', ')}`);
+    // Chaque personne concernée est prévenue ; la proposition l'attend de toute façon en haut de ses Avoirs.
+    const mails = [];
+    if (mailReady() && mailConf()) {
+      for (const i of consent) {
+        const u = getUser(i.share.recipient_id);
+        if (!u?.email) continue;
+        try {
+          await deliver(u.email, 'shareCorrection', { firstName: u.first_name, inviter: ctx.user.display_name, holdingName: h.name,
+            beforePct: i.bp_before / 100, afterPct: i.bp_after / 100, url: String(mailSettings().public_url).replace(/\/$/, '') + '/#/avoirs' });
+          mails.push(i.recipient_name);
+        } catch (err) { if (!(err instanceof SmtpError) && !err.status) throw err; }
+      }
+    }
+    return { applied: false, correction: correctionView(openCorrection(id)), mailed: mails };
+  });
+
+  // Le titulaire retire sa proposition de correction.
+  router.delete('/api/share-corrections/:id', { auth: 'editor' }, (ctx) => {
+    const c = db.prepare('SELECT * FROM share_corrections WHERE id = ?').get(intId(ctx.params.id));
+    if (!c) fail(404, 'not_found', 'Correction introuvable.');
+    const h = sharedHolding(c.holding_id, ctx.user.id);
+    if (c.applied_at || c.declined_at || c.cancelled_at) fail(409, 'correction_closed', 'Cette correction n’est plus en attente.');
+    db.prepare('UPDATE share_corrections SET cancelled_at = ?, cancel_reason = ? WHERE id = ?').run(Date.now(), 'Annulée par le titulaire.', c.id);
+    audit(ctx, 'partage_correction_annulee', h.name);
+    return { ok: true };
+  });
+
+  // Réponse d'une personne dont la part acceptée serait modifiée.
+  router.post('/api/share-corrections/:id/decision', { auth: 'viewer' }, (ctx) => {
+    const cid = intId(ctx.params.id);
+    const decision = oneOf(ctx.body.decision, ['accept', 'decline'], 'Décision');
+    const out = transaction(db, () => {
+      const c = db.prepare('SELECT * FROM share_corrections WHERE id = ?').get(cid);
+      const items = c ? correctionItems(c.id) : [];
+      const mine = items.find((i) => i.recipient_id === ctx.user.id && i.needs_consent);
+      if (!c || !mine) fail(404, 'not_found', 'Proposition de correction introuvable.');
+      if (c.applied_at || c.declined_at || c.cancelled_at) fail(409, 'correction_closed', c.cancelled_at
+        ? `Cette proposition a été annulée${c.cancel_reason ? ' : ' + c.cancel_reason.charAt(0).toLowerCase() + c.cancel_reason.slice(1) : '.'}` : 'Cette proposition est déjà traitée.');
+      if (mine.accepted_at) fail(409, 'correction_closed', 'Vous avez déjà accepté cette correction ; elle attend les autres personnes concernées.');
+      const h = db.prepare('SELECT * FROM holdings WHERE id = ?').get(c.holding_id);
+      const now = Date.now();
+      if (decision === 'decline') {
+        db.prepare('UPDATE share_corrections SET declined_at = ?, declined_by = ? WHERE id = ?').run(now, ctx.user.id, c.id);
+        return { status: 'declined', h, c, mine };
+      }
+      db.prepare('UPDATE share_correction_items SET accepted_at = ? WHERE correction_id = ? AND share_id = ?').run(now, c.id, mine.share_id);
+      const waiting = items.filter((i) => i.needs_consent && i.share_id !== mine.share_id && !i.accepted_at);
+      if (waiting.length) return { status: 'waiting', h, c, mine, waiting };
+      if (!applyCorrection(c)) return { status: 'stale', h, c, mine };
+      return { status: 'applied', h, c, mine, items };
+    });
+    const { h, c, mine } = out;
+    const change = `${pctText(mine.bp_before)} → ${pctText(mine.bp_after)}`;
+    if (out.status === 'stale') fail(409, 'split_changed', 'La répartition de cet avoir a changé entre-temps : la correction est annulée. Le titulaire peut en proposer une nouvelle.');
+    audit(ctx, out.status === 'declined' ? 'partage_correction_refusee' : 'partage_correction_acceptee', `${h.name} : votre quote-part ${change}`);
+    if (out.status === 'declined') auditFor(c.sender_id || h.account_user_id, 'partage_correction_refusee', `${h.name} : ${ctx.user.display_name} a refusé ${change}`);
+    if (out.status === 'applied') auditFor(h.account_user_id, 'partage_repartition_corrigee',
+      `${h.name} : ${splitText(c.owner_bp_before, out.items, 'bp_before')} → ${splitText(c.owner_bp_after, out.items, 'bp_after')}, acceptée par ${ctx.user.display_name}`);
+    return { status: out.status, waiting: (out.waiting || []).map((i) => i.recipient_name) };
   });
 
   // --- Lecture du patrimoine -----------------------------------------------------------------------------
@@ -677,6 +881,7 @@ export function registerRoutes(router, deps) {
       latent_gain: property ? latentGain(snap.cents, property.purchase_cents, snap.ownership_bp)
         : acquisition && snap.cents !== null ? latentGain(snap.cents, acquisition.purchase_cents, snap.ownership_bp) : null,
       sharing: sharingByHolding(db, state).get(id) || null,
+      correction: correctionFor(id, ctx.user.id),
       mail_ready: Boolean(mailReady() && mailConf()),
       crypto: cryptoView(cryptoRow(id), { enabled: cfg.CRYPTO_LOOKUPS !== false }),
       valuations, schedule, base_currency: state.base };
@@ -1113,6 +1318,7 @@ export function registerRoutes(router, deps) {
         if (had && scheduleChange.start_date > had.start_date) materializeSchedule(id, ctx.user.id, addDays(scheduleChange.start_date, -1));
         saveSchedule(id, scheduleChange);
       }
+      if ((prop ? prop.ownership : ownBp ?? existing.ownership_bp) !== existing.ownership_bp) cancelOpenCorrection(id, 'Votre quote-part a été modifiée dans la fiche de l’avoir.');
       if (prop) writeProperty(id, prop);
       else if (!isRealEstateCategory(cat)) db.prepare('DELETE FROM real_estate WHERE holding_id = ?').run(id);
       if (!prop && ownBp !== null) setOwnerBp(id, ownBp);
@@ -1400,6 +1606,8 @@ export function registerRoutes(router, deps) {
     transaction(db, () => {
       // Ses avoirs (et ce qui en dépend) puis ses catégories disparaissent avec le compte.
       if (owned) db.prepare('DELETE FROM holdings WHERE account_user_id = ?').run(id);
+      for (const s of db.prepare('SELECT DISTINCT holding_id FROM holding_shares WHERE recipient_id = ?').all(id))
+        cancelOpenCorrection(s.holding_id, 'Un compte concerné par la correction a été supprimé.');
       // Ses parts acceptées prennent fin : la part retirée à chaque titulaire lui est rendue.
       for (const s of db.prepare(`SELECT * FROM holding_shares WHERE recipient_id = ? AND accepted_at IS NOT NULL
           AND revoked_at IS NULL AND declined_at IS NULL AND deducted_bp > 0`).all(id)) {

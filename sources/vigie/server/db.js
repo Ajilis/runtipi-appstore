@@ -373,6 +373,34 @@ export const MIGRATIONS = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // 1.4.0 : correction de la répartition d'un avoir partagé. Une part déjà acceptée ne change
+  // qu'avec l'accord de la personne concernée : la nouvelle répartition attend toutes les réponses.
+  `
+  CREATE TABLE share_corrections (
+    id INTEGER PRIMARY KEY,
+    holding_id INTEGER NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+    sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    owner_bp_before INTEGER NOT NULL,
+    owner_bp_after INTEGER NOT NULL CHECK (owner_bp_after BETWEEN 1 AND 10000),
+    created_at INTEGER NOT NULL,
+    applied_at INTEGER,
+    declined_at INTEGER,
+    declined_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    cancelled_at INTEGER,
+    cancel_reason TEXT
+  );
+  CREATE UNIQUE INDEX share_corrections_open ON share_corrections(holding_id)
+    WHERE applied_at IS NULL AND declined_at IS NULL AND cancelled_at IS NULL;
+  CREATE TABLE share_correction_items (
+    correction_id INTEGER NOT NULL REFERENCES share_corrections(id) ON DELETE CASCADE,
+    share_id INTEGER NOT NULL REFERENCES holding_shares(id) ON DELETE CASCADE,
+    bp_before INTEGER NOT NULL,
+    bp_after INTEGER NOT NULL CHECK (bp_after BETWEEN 1 AND 10000),
+    needs_consent INTEGER NOT NULL DEFAULT 0,
+    accepted_at INTEGER,
+    PRIMARY KEY (correction_id, share_id)
+  );
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

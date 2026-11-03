@@ -273,7 +273,7 @@ test('partage : plus de menu dédié, état affiché sur les avoirs, demandes en
   assert.equal((ui.match(/\$\{shareBanner\(inbox\)\}/g) || []).length,3,'bandeau dans les Avoirs et le tableau de bord (vide ou non)');
   assert.match(ui,/\$\{shareTag\(h\)\}/,'étiquette dans la liste des avoirs');
   assert.match(ui,/\$\{sharePanel\(h, sharing, mayEdit, property, mailOk\)\}/,'section Partage dans chaque avoir');
-  assert.match(ui,/\$\{shareTop\(h, sharing, mayEdit, property, mailOk\)\}/,'bouton Partager en tête du détail');
+  assert.match(ui,/\$\{shareTop\(h, sharing, mayEdit, property, mailOk, correction\)\}/,'bouton Partager en tête du détail');
   assert.match(ui,/'Partager ce bien'/);
   // Le détail d'un avoir s'ouvre en haut (nom, valeur, partage), sans défiler jusqu'au champ « Nouvelle valeur ».
   assert.match(ui,/first\.focus\(drawer \? \{ preventScroll: true \} : undefined\)/);

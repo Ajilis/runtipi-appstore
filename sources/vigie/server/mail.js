@@ -319,6 +319,24 @@ export const templates = {
     };
   },
 
+  // Correction d'une quote-part déjà acceptée : rien ne change sans l'accord du destinataire.
+  shareCorrection({ firstName, inviter, holdingName, beforePct, afterPct, url }) {
+    const hello = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
+    const before = formatNumber(beforePct), after = formatNumber(afterPct);
+    return {
+      subject: `${inviter} propose de corriger votre quote-part sur Vigie Patrimoine`,
+      text: `${hello}\n\n${inviter} propose de corriger votre quote-part de l'avoir « ${holdingName} » dans Vigie : ${before} % → ${after} %.\n\nConnectez-vous avec votre compte habituel : la proposition s'affiche en haut de vos Avoirs, avec les boutons Accepter et Refuser. Tant que vous n'avez pas accepté, votre quote-part reste de ${before} %.\n${url}\n\nCette correction concerne le suivi patrimonial dans Vigie et ne constitue pas un acte de transfert de propriété.\n`,
+      html: layout({
+        title: 'Correction de votre quote-part',
+        paragraphs: [escHtml(hello),
+          `${escHtml(inviter)} propose de corriger votre quote-part de l'avoir « ${escHtml(holdingName)} » : <b>${escHtml(before)} % → ${escHtml(after)} %</b>.`,
+          `Connectez-vous à votre compte sur le même serveur : la proposition s'affiche en haut de vos Avoirs. Tant que vous n'avez pas accepté, votre quote-part reste de ${escHtml(before)} %.`],
+        button: { label: 'Voir la proposition', url },
+        footer: 'Une correction dans Vigie ne constitue pas un acte juridique de transfert de propriété.',
+      }),
+    };
+  },
+
   invitation({ firstName, inviter, role, url, expiresAt }) {
     const hello = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
     return {

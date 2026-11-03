@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 30** · **Version de Vigie : 1.3.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 31** · **Version de Vigie : 1.4.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -86,6 +86,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Rôles** : **Utilisateur** (rôle par défaut : gère son propre patrimoine), **Administrateur** (son patrimoine, plus les comptes, les e-mails, la sécurité, les taux saisis à la main, les sauvegardes et les logos) et **Lecture seule** (ne crée rien, consulte les avoirs que d'autres comptes lui partagent). Supprimer un compte qui a des avoirs les supprime avec lui, après une seconde confirmation.
 - **Invitations par e-mail** : la personne reçoit un lien valable 7 jours et à usage unique, choisit son identifiant et son mot de passe, puis arrive connectée. Sans e-mail, un lien peut être transmis à la main ; l'ajout direct avec un mot de passe provisoire reste possible.
 - **Partage d'un avoir** avec un autre compte du serveur (compte joint, livret, assurance-vie, bien immobilier, crédit…) : bouton **Partager cet avoir** dans le détail de l'avoir, quote-part proposée (la moitié par défaut, ou la part non attribuée d'un bien en indivision). Le destinataire voit la demande **en haut de ses Avoirs et de son tableau de bord**, avec **Accepter** et **Refuser** (et un e-mail si l'envoi est configuré, que le titulaire peut **renvoyer** tant que la demande attend). Chaque avoir indique s'il est **partagé ou non**, avec qui, **depuis quand** et si le destinataire **a approuvé**, est **en attente** ou **a refusé** ; une étiquette le résume dans la liste. Après accord, chacun ne compte que sa part ; le destinataire voit l'avoir en lecture seule. Le partage se retire à tout moment.
+- **Répartition visible et corrigeable** (1.4.0) : la demande de partage montre la répartition complète (vous, chaque personne, la part **hors Vigie** d'une personne sans compte ici) avant l'envoi. **Corriger la répartition**, dans le détail de l'avoir, modifie votre part et celle de chaque personne : votre part et les demandes non encore acceptées changent tout de suite ; une part **déjà acceptée ne change qu'avec l'accord de la personne** (proposition en haut de ses Avoirs avec Accepter et Refuser, et e-mail si l'envoi est configuré), la répartition actuelle restant en place d'ici là. La correction vaut pour tout l'historique et s'inscrit au journal de chacun. Filtre **Seulement les avoirs partagés** dans les Avoirs, avec la répartition sur chaque ligne.
 - **Quote-part** : pour un compte joint ou un placement à deux, indiquez votre part (100 % par défaut) ; seule celle-ci entre dans votre patrimoine.
 - **Mon compte** : prénom, nom, adresse e-mail, mot de passe, double authentification, sessions ouvertes (les connexions mémorisées y sont signalées), mon journal.
 - **Rester connecté** : case sur l'écran de connexion, cochée par défaut dans l'application installée. La connexion est mémorisée sur l'appareil jusqu'à 30 jours sans utilisation (réglable, ou retirée, dans Réglages → Sécurité) et se prolonge à chaque usage ; sans la case, elle se ferme avec le navigateur ou après le délai d'inactivité.
@@ -125,6 +126,15 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.4.0 : corriger la répartition d'un avoir partagé
+
+- **Corriger la répartition** (détail de l'avoir, en tête et dans la section Partage) : votre part, la part de chaque personne et le reste **hors Vigie** (personne sans compte ici), avec une barre de répartition et un total qui ne peut pas dépasser 100 %.
+- Votre propre part et les demandes pas encore acceptées changent **tout de suite**. Une part **déjà acceptée** ne change qu'**avec l'accord de la personne** : elle voit la proposition en haut de ses Avoirs et dans la fiche (« 50 % → 30 % », avec la valeur de sa part avant et après), reçoit un e-mail si l'envoi est configuré, et choisit **Accepter** ou **Refuser**. D'ici là, toute la répartition actuelle reste en place ; avec plusieurs personnes concernées, elle s'applique au dernier accord.
+- Le titulaire suit la correction dans la fiche : en attente, refusée (par qui, quand) ou annulée (avec la raison : nouvelle demande de partage, partage retiré, quote-part modifiée…). Il peut l'annuler ou en envoyer une nouvelle, qui remplace la précédente.
+- Une correction répare une erreur de saisie : elle vaut pour **tout l'historique** de l'avoir, dans chaque patrimoine concerné, et s'inscrit au journal de chacun.
+- La demande de partage montre la **répartition complète** avant l'envoi, au lieu d'un simple complément à 100 % : si le reste appartient à quelqu'un sans compte Vigie, il suffit de baisser la part proposée.
+- Avoirs : filtre **Seulement les avoirs partagés** et répartition sur chaque ligne (« Vous 70 % · Léa 30 % ») ; sur téléphone, la colonne des montants ne réduit plus le nom de l'avoir.
 
 ### Version 1.3.0 : crypto-actifs suivis par adresse blockchain
 

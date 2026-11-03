@@ -729,3 +729,48 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
 .remember-field .check span { font-weight: 500; }
 .share-why { display: inline-flex; align-items: center; gap: 6px; }
 .share-why svg { width: 14px; height: 14px; flex: none; }
+
+/* --- Répartition d'un avoir partagé et correction (1.4.0) ------------------------------------------------------- */
+.split { display: grid; gap: 8px; }
+.split-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--grid); }
+.split-bar .sb { display: block; height: 100%; min-width: 0; }
+.split-bar .sb + .sb { border-left: 2px solid var(--panel); }
+.sb.me { background: var(--liq-3); }
+.sb.ok { background: var(--liq-1); }
+.split-bar .sb.ok:nth-child(odd) { background: var(--liq-2); }
+.sb.wait { background: repeating-linear-gradient(135deg, var(--warn-line) 0 4px, var(--warn-bg) 4px 8px); }
+.sb.out { background: var(--line-strong); }
+.split-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.875rem; }
+.split-legend li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.split-legend li > i { width: 12px; height: 12px; border-radius: 3px; }
+.split-legend li > span { min-width: 0; overflow-wrap: anywhere; }
+.split-legend b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.split-legend .split-total { grid-template-columns: minmax(0, 1fr) auto; border-top: 1px solid var(--line); padding-top: 4px; margin-top: 2px; }
+.split-legend .split-total.neg b { color: var(--bad); }
+.split .error-text { display: flex; align-items: center; gap: 6px; margin: 0; }
+.split .error-text svg { width: 15px; height: 15px; flex: none; }
+.share-panel .split { margin-top: 12px; }
+.split-rows { display: grid; gap: 0; border: 1px solid var(--line); border-radius: var(--radius-m); }
+.split-row { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 12px; align-items: center; padding: 10px 12px; }
+.split-row + .split-row { border-top: 1px solid var(--line); }
+.split-row .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.split-row .who > span:last-child { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.split-row .suffix { position: relative; display: block; }
+.split-row .suffix .input { padding-right: 34px; text-align: right; }
+.split-row .suffix i { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); pointer-events: none; }
+[data-effects] p { margin: 0; }
+[data-effects] p + p { margin-top: 4px; }
+.correction-card .sc-row { grid-template-columns: 74px minmax(0, 1fr); }
+.correction-card .sc-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 24px; margin-top: 6px; }
+.split-line { display: block; color: var(--muted); font-size: 0.8125rem; margin-top: 2px; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .split-row { grid-template-columns: minmax(0, 1fr) 108px; gap: 8px; padding: 10px; }
+  .correction-card .sc-actions { padding-left: 0; }
+  .correction-card .sc-actions .btn { flex: 1 1 auto; }
+}
+/* Ligne d'avoir sur téléphone : la colonne des montants ne mange plus le nom (quote-part, répartition). */
+@media (max-width: 860px) {
+  .holding .amount { max-width: 42vw; }
+  .holding .amount span { overflow-wrap: anywhere; }
+  .holding .meta .tag { white-space: normal; }
+}
