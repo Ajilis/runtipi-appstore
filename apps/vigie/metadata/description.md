@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 32** · **Version de Vigie : 1.5.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 33** · **Version de Vigie : 1.5.1** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -38,7 +38,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Répartitions** par catégorie (avec l'**allocation cible** et l'écart en euros), par établissement, par titulaire et par devise.
 - **Liquidité des actifs** : disponible, sous quelques semaines, bloqué ou illiquide.
 - **Avoirs à actualiser** et **mode discret** qui masque tous les montants d'un clic.
-- **Bilan patrimonial à imprimer** (1.5.0) : bouton **Bilan à imprimer** du tableau de bord. Une synthèse datée, à la date du jour ou à une date passée (au 1er janvier, au 31 décembre…) : patrimoine net, actifs et passifs, variations, évolution sur 12 mois, actifs par catégorie avec l'allocation cible, liquidité, passifs, plus-values latentes, répartition par établissement, titulaire et devise, et détail de chaque avoir (valeur connue à la date, quote-part). **Imprimer ou enregistrer en PDF** depuis la fenêtre d'impression, au format A4, toujours en clair même en thème sombre.
+- **Bilan patrimonial à imprimer** (1.5.0) : bouton **Bilan à imprimer** du tableau de bord. Une synthèse datée, à la date du jour ou à une date passée (au 1er janvier, au 31 décembre…), qui met en avant le **patrimoine net**, les **disponibilités liquides** et les **plus-values latentes**, puis actifs et passifs, variations, évolution sur 12 mois, actifs par catégorie avec l'allocation cible, liquidité, passifs, plus-values latentes, répartition par établissement, titulaire et devise, et détail de chaque avoir (valeur connue à la date, quote-part). **Imprimer ou enregistrer en PDF** depuis la fenêtre d'impression, au format A4, toujours en clair même en thème sombre.
 
 ### Prêts et crédits
 
@@ -127,6 +127,11 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.5.1 : le bilan met en avant l'essentiel
+
+- En tête du bilan, trois chiffres clés : **patrimoine net** (avec le total des actifs et des passifs), **disponibilités liquides** (part des actifs, et ce qui est mobilisable sous quelques semaines) et **plus-values latentes** (gain brut, pourcentage sur le prix de revient, nombre d'avoirs concernés).
+- Nouveau tableau **Plus-values latentes par avoir** : prix de revient de votre part, valeur actuelle et plus-value, avec le total en devise de référence.
 
 ### Version 1.5.0 : bilan patrimonial à imprimer ou en PDF
 

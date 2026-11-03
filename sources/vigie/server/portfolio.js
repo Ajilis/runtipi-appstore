@@ -375,14 +375,24 @@ export function report(db, { userId = null, date = todayIso() } = {}) {
     const basis = property || acquisition;
     const gain = basis && cat.kind === 'asset' && (property ? property.purchased_at : acquisition.purchased_at) <= date
       ? latentGain(snap.cents, basis.purchase_cents, snap.ownership_bp) : null;
+    const basisOwned = gain ? ownedCents(basis.purchase_cents, snap.ownership_bp) : null;
     holdings.push({ id: h.id, name: h.name, category_id: cat.id, kind: cat.kind, institution: h.institution || null, owner: h.owner || null,
       currency: h.currency, liquidity: h.liquidity, value_cents: snap.cents, owned_cents: snap.owned, base: snap.base,
       ownership_bp: snap.ownership_bp, valued_at: snap.valuation.valued_at, missing_rate: snap.missingRate,
       shared_with_me: snap.shared_with_me, shared_by: snap.shared_with_me ? names.get(h.account_user_id) || null : null,
-      latent_gain_cents: gain ? gain.gain_cents : null });
+      latent_gain_cents: gain ? gain.gain_cents : null, latent_basis_cents: basisOwned, latent_pct: gain ? gain.gain_pct : null });
+  }
+  // Plus-values latentes en devise de référence : avoirs avec prix de revient (bien immobilier ou placement).
+  const latent = { gain: 0, basis: 0, count: 0 };
+  for (const h of holdings) {
+    if (h.latent_gain_cents === null || h.base === null || !h.owned_cents) continue;
+    const ratio = h.base / h.owned_cents;
+    latent.gain += Math.round(h.latent_gain_cents * ratio);
+    latent.basis += Math.round(h.latent_basis_cents * ratio);
+    latent.count += 1;
   }
   const used = [...new Set(holdings.map((h) => h.currency))].filter((c) => c !== state.base).sort();
-  return { ...d, date, holdings, user_name: userId !== null ? names.get(userId) || null : null,
+  return { ...d, date, holdings, latent, user_name: userId !== null ? names.get(userId) || null : null,
     rates: used.map((c) => ({ currency: c, rate: state.rates[c] ?? null })),
     history: history(db, '1y', { userId, today: date }).points };
 }

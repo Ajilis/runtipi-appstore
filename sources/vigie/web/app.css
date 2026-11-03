@@ -795,7 +795,13 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
 .rp-meta { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin: 0; font-size: 0.8125rem; }
 .rp-meta dt { color: var(--muted); }
 .rp-meta dd { margin: 0; text-align: right; font-weight: 500; }
-.rp-kpis { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
+.rp-kpis { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 12px; }
+.rp-kpis small { color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
+.rp-kpis .rp-cash, .rp-kpis .rp-gain { background: var(--panel-2); }
+.rp-kpis .rp-cash b, .rp-kpis .rp-gain b { font-size: 1.5rem; }
+.rp-kpis .rp-gain b.pos { color: var(--good); }
+.rp-kpis .rp-gain b.neg { color: var(--bad); }
+.rp-note { margin: 6px 0 0; color: var(--muted); font-size: 0.75rem; }
 .rp-kpis > div { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel-2); }
 .rp-kpis span, .rp-vars span { color: var(--muted); font-size: 0.8125rem; }
 .rp-kpis b { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }

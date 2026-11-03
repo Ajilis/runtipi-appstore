@@ -979,6 +979,7 @@
     const variation = (v, label) => v ? html`<div><span>${label}</span><b class="${v.delta > 0 ? 'pos' : v.delta < 0 ? 'neg' : ''}">${money(v.delta, base, { sign: true })}</b><small>${v.pct !== null ? pct(v.pct, { sign: true }) : ''}</small></div>`
       : html`<div><span>${label}</span><b class="muted">—</b><small>historique insuffisant</small></div>`;
     const L = r.liquidity, la = T.assets || 1;
+    const G = r.latent || { gain: 0, basis: 0, count: 0 };
     const share = (v, total) => (total > 0 ? pct(v / total, { digits: 1 }) : '—');
     const groupTable = (title, rows, max = 8) => {
       const top = rows.slice(0, max), rest = rows.slice(max);
@@ -999,8 +1000,7 @@
     const detailTable = (kind) => detailRows(kind).map(({ c, items }) => html`<tbody class="rp-group">
       <tr class="rp-cat"><th scope="rowgroup">${c.name}</th><th class="num">${money(kind === 'liability' ? -c.value : c.value, base)}</th></tr>
       ${items.map(holdingRow)}</tbody>`);
-    const gains = r.holdings.filter((h) => h.latent_gain_cents !== null && h.owned_cents);
-    const gainBase = gains.reduce((t, h) => t + (h.base === null ? 0 : Math.round(h.latent_gain_cents * h.base / h.owned_cents)), 0);
+    const gains = r.holdings.filter((h) => h.latent_gain_cents !== null && h.owned_cents).sort((a, b) => b.latent_gain_cents - a.latent_gain_cents);
     const stale = r.stale.length;
     return html`
       <header class="rp-head">
@@ -1008,9 +1008,13 @@
         <dl class="rp-meta"><dt>Date du bilan</dt><dd>${dateLong(r.date)}</dd><dt>Édité le</dt><dd>${msAt(r.generated_at)}</dd><dt>Devise</dt><dd>${base}</dd></dl>
       </header>
       <section class="rp-kpis" aria-label="Chiffres clés">
-        <div class="rp-net"><span>Patrimoine net</span><b>${money(T.net, base)}</b></div>
-        <div><span>Total des actifs</span><b>${money(T.assets, base)}</b></div>
-        <div><span>Total des passifs</span><b>${money(T.liabilities ? -T.liabilities : 0, base)}</b></div>
+        <div class="rp-net"><span>Patrimoine net</span><b>${money(T.net, base)}</b>
+          <small>Actifs ${money(T.assets, base)} · passifs ${money(T.liabilities ? -T.liabilities : 0, base)}</small></div>
+        <div class="rp-cash"><span>Disponibilités liquides</span><b>${money(L.immediate, base)}</b>
+          <small>${pct(L.immediate / la)} des actifs${L.short ? ` · ${money(L.short, base)} de plus sous quelques semaines` : ''}</small></div>
+        <div class="rp-gain"><span>Plus-values latentes</span>${G.count
+          ? html`<b class="${G.gain >= 0 ? 'pos' : 'neg'}">${money(G.gain, base, { sign: true })}</b><small>${G.basis ? `${pct(G.gain / G.basis, { sign: true })} sur ${money(G.basis, base)} investis` : ''} · ${G.count} avoir${G.count > 1 ? 's' : ''} avec prix de revient</small>`
+          : html`<b class="muted">—</b><small>Renseignez un prix de revient ou une valeur d'achat dans vos avoirs.</small>`}</div>
       </section>
       <section class="rp-vars" aria-label="Variations du patrimoine net">${variation(r.variations.month, 'Sur 1 mois')}${variation(r.variations.year, 'Sur 1 an')}${variation(r.variations.ytd, 'Depuis le 1er janvier')}</section>
       ${opts.chart && r.history.length > 1 ? html`<section class="rp-section"><h3>Évolution du patrimoine net sur 12 mois</h3><div class="chart" id="report-chart"></div></section>` : ''}
@@ -1026,9 +1030,16 @@
           <h3>Passifs</h3>
           ${liabCats.length ? html`<table class="rp-table"><tbody>${liabCats.map((c) => html`<tr><td>${c.name}</td><td class="num">${money(-c.value, base)}</td></tr>`)}
             <tr class="rp-total"><td>Total</td><td class="num">${money(-T.liabilities, base)}</td></tr></tbody></table>` : html`<p class="muted">Aucun passif.</p>`}
-          ${gains.length ? html`<h3>Plus-values latentes</h3><p><b class="${gainBase >= 0 ? 'pos' : 'neg'}">${money(gainBase, base, { sign: true })}</b> <span class="muted">sur ${gains.length} avoir${gains.length > 1 ? 's' : ''} avec prix de revient, montant brut</span></p>` : ''}
         </div>
       </section>
+      ${gains.length ? html`<section class="rp-section"><h3>Plus-values latentes par avoir</h3>
+        <table class="rp-table rp-gains"><thead><tr><th>Avoir</th><th class="num">Prix de revient</th><th class="num">Valeur</th><th class="num">Plus-value</th></tr></thead><tbody>
+          ${gains.map((h) => html`<tr><td>${h.name}${h.ownership_bp < 10000 ? html`<span class="rp-sub">votre quote-part ${pctBp(h.ownership_bp)}</span>` : ''}</td>
+            <td class="num">${money(h.latent_basis_cents, h.currency)}</td><td class="num">${money(h.owned_cents, h.currency)}</td>
+            <td class="num ${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}">${money(h.latent_gain_cents, h.currency, { sign: true })}<span class="rp-sub">${h.latent_pct === null ? '' : pct(h.latent_pct / 100, { sign: true })}</span></td></tr>`)}
+          <tr class="rp-total"><td>Total${gains.some((h) => h.currency !== base) ? ` en ${base}` : ''}</td><td class="num">${money(G.basis, base)}</td><td class="num">${money(G.basis + G.gain, base)}</td><td class="num ${G.gain >= 0 ? 'pos' : 'neg'}">${money(G.gain, base, { sign: true })}</td></tr>
+        </tbody></table>
+        <p class="rp-note">Gain brut théorique : valeur de votre part moins son prix de revient, hors frais, fiscalité et mouvements.</p></section>` : ''}
       ${opts.groups ? html`<section class="rp-section"><h3>Actifs par établissement, titulaire et devise</h3><div class="rp-three">
         ${groupTable('Établissement', r.groups.institution)}${groupTable('Titulaire', r.groups.owner)}${groupTable('Devise', r.groups.currency)}</div></section>` : ''}
       ${opts.detail ? html`<section class="rp-section rp-detail"><h3>Détail des avoirs</h3>
