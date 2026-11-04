@@ -238,6 +238,21 @@
   async function loadLogoVersions() {
     try { const r = await api('GET', '/api/institutions/logos'); state.logoVersions = r.versions || {}; state.logoFull = r.full || {}; state.logos = Boolean(r.enabled); }
     catch { state.logoVersions = {}; state.logoFull = {}; }
+    try { const c = await api('GET', '/api/crypto/logos'); state.coinLogos = c.versions || {}; state.coinLogosOn = Boolean(c.enabled); }
+    catch { state.coinLogos = {}; state.coinLogosOn = false; }
+  }
+  // Logo d'un crypto-actif (pastille ronde), servi par Vigie ; le symbole (BTC, ETH…) s'affiche en attendant.
+  function coinLogo(asset, cls = '') {
+    const id = String(asset || '').toUpperCase();
+    const v = state.coinLogos ? state.coinLogos[id] : null;
+    const img = v || state.coinLogosOn;
+    return html`<span class="inst coin ${cls} ${id.length > 2 ? 'm3' : ''}" style="--h:${monoHue(id)}" aria-hidden="true"><span class="mono">${id.slice(0, 4)}</span>${img ? html`<img class="inst-img" src="/api/crypto/logo/${id}${v ? `?v=${v}` : ''}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
+  }
+  // Pastille d'un avoir dans les listes : logo du crypto-actif (avec l'établissement en médaillon), sinon
+  // logo de l'établissement, sinon pictogramme de la catégorie.
+  function holdingLead(h, c, cls = '') {
+    if (h.crypto && h.crypto.asset) return html`<span class="lead-stack">${coinLogo(h.crypto.asset, cls)}${h.institution ? instLogo(h.institution, 's20 badge') : ''}</span>`;
+    return h.institution ? instLogo(h.institution, cls) : pict(catIconKey(c), 'neutral md');
   }
   // Logo complet (souvent horizontal) d'un établissement, sur fond blanc : seulement là où la place le permet.
   function instFullLogo(name) {
@@ -1088,7 +1103,7 @@
                 : html`<span class="tag brand">${icon('crypto')}Suivi auto</span><br>${h.last_date ? `mis à jour ${ago(h.age_days)}` : 'en attente'}`)
               : stale ? html`<span class="tag stale">${icon('clock')}À actualiser</span><br>${h.last_date ? ago(h.age_days) : 'sans valeur'}` : html`Mis à jour ${ago(h.age_days)}`;
             return html`<button type="button" class="holding ${h.closed_at ? 'closed' : ''}" data-action="open-holding" data-id="${h.id}">
-              <span class="name">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}${autoCrypto && !h.closed_at ? html`<span class="m-only">${il(autoCrypto.last_error ? 'alert' : 'crypto', autoCrypto.last_error ? 'Lecture impossible' : 'Suivi auto')}</span>` : ''}${shareTag(h)}</span>${splitLine(h)}</span></span>
+              <span class="name">${holdingLead(h, c)}<span class="nt"><b>${h.name}</b><span class="meta">${h.institution ? html`<span>${h.institution}</span>` : ''}${h.owner ? il('user', h.owner) : ''}${!h.institution && !h.owner ? il(LIQ_ICON[h.liquidity], LIQ[h.liquidity]) : ''}${h.schedule && !h.closed_at ? html`<span class="m-only">${il('calendar', h.schedule.done ? 'Remboursé' : 'Échéancier')}</span>` : ''}${autoCrypto && !h.closed_at ? html`<span class="m-only">${il(autoCrypto.last_error ? 'alert' : 'crypto', autoCrypto.last_error ? 'Lecture impossible' : 'Suivi auto')}</span>` : ''}${shareTag(h)}</span>${splitLine(h)}</span></span>
               ${spark(h.spark) || html`<span class="spark"></span>`}
               <span class="when">${when}</span>
               <span class="amount"><b>${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency)}</b>
@@ -1540,11 +1555,11 @@
       </div>
       <section class="section crypto-fields" data-crypto hidden>
         ${h3i('crypto', 'Crypto-actif')}
-        <label class="field"><span>Actif</span><select class="select" name="crypto_asset">
+        <label class="field"><span>Actif</span><span class="with-pict"><span data-coin-preview>${cr?.asset ? coinLogo(cr.asset, 's36') : pict('crypto', 'neutral')}</span><select class="select" name="crypto_asset">
           <option value="">Non précisé (valeur saisie à la main)</option>
           <optgroup label="Quantité lue à une adresse blockchain">${cryptoAssets.filter((a) => a.by_address).map((a) => html`<option value="${a.id}" ${cr?.asset === a.id ? 'selected' : ''}>${a.id} · ${a.name}</option>`)}</optgroup>
           <optgroup label="Quantité saisie">${cryptoAssets.filter((a) => !a.by_address).map((a) => html`<option value="${a.id}" ${cr?.asset === a.id ? 'selected' : ''}>${a.id} · ${a.name}</option>`)}</optgroup>
-        </select></label>
+        </select></span></label>
         <fieldset class="mode" data-crypto-modes hidden>
           <legend class="sr-only">Suivi de la quantité</legend>
           <div class="seg seg-radio">
@@ -1760,6 +1775,7 @@
     const syncCrypto = () => {
       cryptoSection.hidden = !isCryptoCat(form.category_id.selectedOptions[0]);
       const a = assetById.get(form.crypto_asset.value);
+      $('[data-coin-preview]', form).innerHTML = part(a ? coinLogo(a.id, 's36') : pict('crypto', 'neutral'));
       if (!a) cMode = null;
       else if (!cMode || (cMode === 'address' && !a.by_address)) cMode = a.by_address ? 'address' : 'quantity';
       $('[data-crypto-modes]', form).hidden = !a;
@@ -1958,7 +1974,7 @@
         : sc.paid_count ? `${w.remaining} après l'échéance du ${dateLong(valuations[0].valued_at)}` : `${w.remaining}, première échéance le ${dateLong(sc.next_date)}`)
       : valuations[0] ? `${autoCrypto ? 'Valeur calculée au' : 'Valeur au'} ${dateLong(valuations[0].valued_at)}` : autoCrypto ? 'Pas encore de valeur calculée' : 'Aucune valeur enregistrée';
     const d = openDialog(html`<div class="dialog-body">
-      ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
+      ${dialogHead(h.name, `${cat.name || ''}${h.closed_at ? `, clôturé le ${dateFr(h.closed_at)}` : ''}`, html`<span class="lead-stack">${crypto && crypto.asset ? coinLogo(crypto.asset, 's48') : catPict(cat, 'lg')}${h.institution ? instLogo(h.institution, 's24 badge') : ''}</span>`)}
       <div><p class="hero-value" style="font-size:2.4rem;margin:0">${h.owned_cents === null ? '—' : money(h.owned_cents, h.currency, { digits: 2 })}</p>
         <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p>
         ${shareTop(h, sharing, mayEdit, property, mailOk, correction)}</div>
@@ -2034,7 +2050,7 @@
       ${tracked && !c.lookups_enabled ? html`<div class="notice bad">${icon('alert')}<div>Les services externes des crypto-actifs sont désactivés par l'administrateur : la valeur n'est plus actualisée.</div></div>`
         : tracked && c.last_error ? html`<div class="notice bad" role="status">${icon('alert')}<div><b>Dernière actualisation impossible${c.last_checked_at ? ` (${msAt(c.last_checked_at)})` : ''}.</b> ${c.last_error}${c.last_ok_at ? ' La dernière valeur calculée reste affichée.' : ''}</div></div>` : ''}
       <dl class="kv">
-        <dt>${icon('crypto')}Actif</dt><dd>${c.asset} · ${c.name}</dd>
+        <dt>${icon('crypto')}Actif</dt><dd><span class="cell-lead coin-cell">${coinLogo(c.asset, 's24')}<span>${c.asset} · ${c.name}</span></span></dd>
         ${c.mode === 'address' ? html`<dt>${icon('link')}Adresse</dt><dd><a class="mono crypto-addr" href="${c.explorer_url}" target="_blank" rel="noopener noreferrer" title="${c.address}" aria-label="Voir l'adresse ${c.address} sur l'explorateur">${shortAddr(c.address)}</a></dd>` : ''}
         ${tracked ? html`<dt>${icon('sum')}Quantité</dt><dd>${qty ? (state.discret ? `${MASK} ${c.asset}` : qtyFmt(qty, c.asset)) : '—'}${c.mode === 'address' && qty ? html`<br><span class="small muted">lue à l'adresse</span>` : ''}</dd>` : ''}
         ${tracked && price ? html`<dt>${icon('exchange')}Cours retenu</dt><dd>${price}<br><span class="small muted">pour 1 ${c.asset}, CoinGecko</span></dd>` : ''}
@@ -2117,18 +2133,18 @@
           <div class="group-head"><div class="gh">${catPict(c, 'sm')}<h3>${c.name}</h3></div><span class="sub">${c.kind === 'liability' ? 'Capital restant dû' : ''}</span></div>
           ${items.map((h) => {
             if (h.schedule) return html`<div class="quick auto" data-line data-stale="false">
-              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span></div></div>
+              <div class="cell-lead">${holdingLead(h, c)}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span></div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : '—'}</span></div>
               <div class="auto-note">${il('calendar', h.schedule.done ? 'Prêt remboursé' : `Calculé par l'échéancier, prochaine échéance le ${dateFr(h.schedule.next_date)}`)}</div>
             </div>`;
             if (isAuto(h)) return html`<div class="quick auto" data-line data-stale="false">
-              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span></div></div>
+              <div class="cell-lead">${holdingLead(h, c)}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}</span></div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : '—'}</span></div>
               <div class="auto-note">${il('crypto', h.crypto.last_error ? `Lecture impossible : ${h.crypto.last_error}` : `Calculé à partir de la quantité ${deAsset(h.crypto.asset)} et du cours du jour`)}</div>
             </div>`;
             const stale = v.stale_days > 0 && (h.age_days === null || h.age_days > v.stale_days);
             return html`<div class="quick" data-row data-line data-stale="${stale}" data-id="${h.id}">
-              <div class="cell-lead">${h.institution ? instLogo(h.institution) : pict(catIconKey(c), 'neutral md')}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}${h.total_ownership_bp < 10000 ? ` · Quote-part ${pctBp(h.total_ownership_bp)} (saisir la valeur ${h.property ? 'du bien' : "de l'avoir"} entier)` : ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
+              <div class="cell-lead">${holdingLead(h, c)}<div><b>${h.name}</b><br><span class="small muted">${h.institution || ''}${h.total_ownership_bp < 10000 ? ` · Quote-part ${pctBp(h.total_ownership_bp)} (saisir la valeur ${h.property ? 'du bien' : "de l'avoir"} entier)` : ''}</span>${stale ? html` <span class="tag stale">${icon('clock')}À actualiser</span>` : ''}</div></div>
               <div class="prev"><b>${h.value_cents === null ? '—' : exact(h.value_cents, h.currency)}</b><span>${h.last_date ? dateFr(h.last_date) : 'aucune valeur'}</span></div>
               <input class="input amount" name="h${h.id}" inputmode="decimal" autocomplete="off" aria-label="Nouvelle valeur de ${h.name} en ${h.currency}${h.property ? ' (valeur du bien entier)' : ''}" placeholder="${h.currency}">
               <button class="btn small keep" type="button" data-action="keep-value" data-id="${h.id}" ${h.value_cents === null ? 'disabled' : ''} title="Reprendre la dernière valeur à la date choisie">${icon('equal')}Inchangée</button>

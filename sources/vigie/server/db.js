@@ -401,6 +401,18 @@ export const MIGRATIONS = [
     PRIMARY KEY (correction_id, share_id)
   );
   `,
+  // 1.6.0 : logo de chaque crypto-actif, récupéré auprès de CoinGecko puis servi par Vigie (rien n'est livré
+  // dans l'image : les logos appartiennent à leurs projets respectifs).
+  `
+  CREATE TABLE crypto_logos (
+    asset TEXT PRIMARY KEY,
+    content_type TEXT,
+    data BLOB,
+    ok INTEGER NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    source TEXT
+  );
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

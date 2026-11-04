@@ -280,3 +280,68 @@ test('migration 1.3.0 : table des crypto-actifs ajoutée sans toucher aux avoirs
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('logos des crypto-actifs : récupérés une fois auprès de CoinGecko, servis par Vigie, hôtes d’images contrôlés', async () => {
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(120, 7)]);
+  const calls = [];
+  let imageHost = 'coin-images.coingecko.com';
+  const reply = (body, { status = 200, type = 'application/json', url } = {}) => ({ ok: status < 400, status, url,
+    headers: { get: (h) => (h.toLowerCase() === 'content-type' ? type : null) },
+    json: async () => body, arrayBuffer: async () => { const b = Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length); } });
+  const fetcher = async (url) => {
+    const u = new URL(url);
+    calls.push(u.hostname + u.pathname);
+    if (u.pathname === '/api/v3/coins/markets') {
+      const ids = u.searchParams.get('ids').split(',');
+      return reply(ids.map((id) => ({ id, symbol: id.slice(0, 3), image: `https://${imageHost}/coins/images/1/large/${id}.png?1700000000` })));
+    }
+    if (u.pathname === '/api/v3/simple/price') return reply({ bitcoin: { eur: 60000 }, ethereum: { eur: 3000 } });
+    if (u.hostname === 'mempool.space') return reply({ chain_stats: { funded_txo_sum: 100_000_000, spent_txo_sum: 0 } });
+    if (u.hostname === 'ethereum-rpc.publicnode.com') return reply({ result: '0x0de0b6b3a7640000' });
+    if (u.hostname === imageHost) return reply(PNG, { type: 'image/png', url: String(url) });
+    throw new Error('hôte inattendu ' + u.hostname);
+  };
+  const srv = await startServer({}, { fetcher });
+  try {
+    const alice = client(srv.base);
+    await alice.post('/api/auth/setup', { username: 'alice', first_name: 'Alice', last_name: 'A', password: PASSWORD, base_currency: 'EUR' });
+    const cat = (await alice.get('/api/categories')).data.categories.find((c) => c.icon === 'crypto').id;
+    await alice.post('/api/holdings', { name: 'BTC', category_id: cat, currency: 'EUR', liquidity: 'short', crypto: { asset: 'BTC', mode: 'address', address: BTC_ADDR } });
+    await alice.post('/api/holdings', { name: 'ETH', category_id: cat, currency: 'EUR', liquidity: 'short', crypto: { asset: 'ETH', mode: 'address', address: ETH_ADDR } });
+    assert.deepEqual((await alice.get('/api/crypto/logos')).data, { enabled: true, versions: {} });
+    calls.length = 0;
+
+    // Première demande : une seule requête à CoinGecko pour les deux actifs suivis, puis les deux images.
+    const logo = await alice.get('/api/crypto/logo/BTC');
+    assert.equal(logo.status, 200);
+    assert.equal(logo.headers.get('content-type'), 'image/png');
+    assert.deepEqual(logo.data, PNG);
+    assert.deepEqual(calls.filter((c) => c.endsWith('/coins/markets')).length, 1);
+    assert.equal(calls.filter((c) => c.startsWith('coin-images.coingecko.com')).length, 2);
+    const versions = (await alice.get('/api/crypto/logos')).data.versions;
+    assert.deepEqual(Object.keys(versions).sort(), ['BTC', 'ETH']);
+    // Ensuite, servi depuis la base sans nouvelle requête.
+    calls.length = 0;
+    assert.equal((await alice.get('/api/crypto/logo/ETH')).status, 200);
+    assert.deepEqual(calls, []);
+    // Actif inconnu ; image hébergée ailleurs que chez CoinGecko : refusée, pastille transparente.
+    assert.equal((await alice.get('/api/crypto/logo/NOPE')).status, 404);
+    imageHost = 'images.exemple.com';
+    const sol = await alice.get('/api/crypto/logo/SOL');
+    assert.equal(sol.status, 200);
+    assert.ok(sol.data.length < 100, 'image transparente');
+    assert.ok(!calls.some((c) => c.startsWith('images.exemple.com')), 'aucun téléchargement hors CoinGecko');
+    assert.equal(srv.app.db.prepare("SELECT ok FROM crypto_logos WHERE asset = 'SOL'").get().ok, 0);
+    // Services externes coupés : aucune requête.
+    await alice.put('/api/admin/security', { crypto_lookups: false, current_password: PASSWORD });
+    calls.length = 0;
+    assert.equal((await alice.get('/api/crypto/logo/ADA')).status, 200);
+    assert.deepEqual(calls, []);
+    assert.equal((await alice.get('/api/crypto/logos')).data.enabled, false);
+    // Interface : pastille ronde du crypto-actif dans la liste, la mise à jour rapide et le détail.
+    const ui = fs.readFileSync(new URL('../web/app.js', import.meta.url), 'utf8');
+    assert.match(ui, /<span class="name">\$\{holdingLead\(h, c\)\}/);
+    assert.equal((ui.match(/<div class="cell-lead">\$\{holdingLead\(h, c\)\}/g) || []).length, 3);
+    assert.match(ui, /crypto && crypto\.asset \? coinLogo\(crypto\.asset, 's48'\)/);
+  } finally { await srv.stop(); }
+});

@@ -868,3 +868,10 @@ dialog.drawer .dialog-body { padding-top: calc(22px + env(safe-area-inset-top, 0
   .rp-table { font-size: 0.8125rem; }
   .rp-table th, .rp-table td { padding: 5px 4px; }
 }
+
+/* --- Logos des crypto-actifs (1.6.0) : pastille ronde, image fournie par CoinGecko et servie par Vigie --- */
+.inst.coin { border-radius: 50%; }
+.inst.coin img { padding: 0; }
+.inst.coin.has-logo { background: transparent; box-shadow: none; }
+.inst.s48 { --s: 48px; }
+.coin-cell { justify-content: flex-end; }

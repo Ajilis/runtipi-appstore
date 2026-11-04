@@ -943,6 +943,15 @@ export function registerRoutes(router, deps) {
   });
 
   // --- Logos des établissements ----------------------------------------------------------------------------------
+  // Logos des crypto-actifs : récupérés auprès de CoinGecko à la première demande, puis servis par Vigie.
+  router.get('/api/crypto/logos', { auth: 'viewer' }, () => ({ enabled: cfg.CRYPTO_LOOKUPS !== false, versions: crypto.logoVersions() }));
+  router.get('/api/crypto/logo/:asset', { auth: 'viewer' }, async (ctx) => {
+    if (!/^[A-Za-z0-9]{2,10}$/.test(ctx.params.asset)) fail(404, 'not_found', 'Actif inconnu.');
+    const logo = await crypto.logo(ctx.params.asset);
+    if (logo === undefined) fail(404, 'not_found', 'Actif inconnu.');
+    if (logo) ctx.sendBody(200, Buffer.from(logo.data), logo.type, { 'Cache-Control': 'private, max-age=604800' });
+    else ctx.sendBody(200, TRANSPARENT_PNG, 'image/png', { 'Cache-Control': 'private, max-age=600' });
+  });
   router.get('/api/institutions/logos', { auth: 'viewer' }, () => ({ enabled: cfg.INSTITUTION_LOGOS, versions: logos.versions(), full: logos.fullVersions() }));
 
   // Logo complet (horizontal) affiché dans le détail d'un avoir ; 404 s'il n'existe pas.

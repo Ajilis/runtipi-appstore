@@ -2,6 +2,7 @@
 // valorisée au cours du jour (CoinGecko). Une valeur est enregistrée chaque jour dans l'historique de l'avoir.
 // Seuls l'adresse et le nom de l'actif sont transmis aux services publics ; jamais un montant ni un nom de personne.
 import { formatNumber } from './format.js';
+import { sniffImage } from './logos.js';
 import { todayIso } from './portfolio.js';
 
 // chain : réseau interrogé pour lire le solde d'une adresse ; sans chain, la quantité se saisit à la main.
@@ -224,15 +225,84 @@ export class CryptoService {
   }
 
   // Actualisation peu après le démarrage puis toutes les 6 heures.
+  // --- Logos des crypto-actifs (1.6.0) ---------------------------------------------------------------------
+  // Image de chaque actif fournie par CoinGecko (champ « image » de /coins/markets), téléchargée une fois puis
+  // servie par Vigie : le navigateur ne contacte aucun service extérieur. Nouvel essai après 30 jours, ou 3 jours
+  // en cas d'échec. Seuls les noms d'actifs sont transmis.
+  logoRow(assetId) { return this.db.prepare('SELECT * FROM crypto_logos WHERE asset = ?').get(assetId) || null; }
+  logoVersions() {
+    return Object.fromEntries(this.db.prepare('SELECT asset, fetched_at FROM crypto_logos WHERE ok = 1').all().map((r) => [r.asset, r.fetched_at]));
+  }
+  logoStale(row, now = Date.now()) { return !row || now - row.fetched_at > (row.ok ? LOGO_OK_TTL_MS : LOGO_FAIL_TTL_MS); }
+  async downloadImage(url) {
+    let u;
+    try { u = new URL(url); } catch { return null; }
+    if (u.protocol !== 'https:' || !LOGO_HOSTS.includes(u.hostname)) return null;
+    const res = await this.fetcher(u.href, { redirect: 'follow', signal: AbortSignal.timeout(this.timeoutMs), headers: { accept: 'image/png,image/*;q=0.8', 'user-agent': 'Vigie-Patrimoine' } });
+    if (!res.ok || (res.url && !LOGO_HOSTS.includes(new URL(res.url).hostname))) return null;
+    if (Number(res.headers?.get?.('content-length') || 0) > LOGO_MAX_BYTES) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const type = buf.length >= 64 && buf.length <= LOGO_MAX_BYTES ? sniffImage(buf) : null;
+    return type && type !== 'image/svg+xml' ? { type, data: buf, source: u.hostname } : null;
+  }
+  // Récupère d'un coup les logos manquants ou périmés des actifs demandés (une seule demande à CoinGecko).
+  fetchLogos(assetIds) {
+    if (this.logoPending) return this.logoPending.then(() => this.fetchLogos(assetIds));
+    const want = [...new Set(assetIds)].map((id) => ASSET_BY_ID.get(id)).filter((a) => a && this.logoStale(this.logoRow(a.id)));
+    if (!want.length || !this.enabled()) return Promise.resolve(0);
+    this.logoPending = (async () => {
+      const now = Date.now();
+      const save = (asset, img) => this.db.prepare(`INSERT INTO crypto_logos (asset, content_type, data, ok, fetched_at, source) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(asset) DO UPDATE SET content_type = COALESCE(excluded.content_type, content_type), data = COALESCE(excluded.data, data),
+        ok = MAX(excluded.ok, ok), fetched_at = excluded.fetched_at, source = COALESCE(excluded.source, source)`)
+        .run(asset, img?.type || null, img?.data || null, img ? 1 : 0, now, img?.source || null);
+      let list = [];
+      try {
+        const key = String(this.apiKey() || '').trim();
+        list = await this.json(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(want.map((a) => a.coingecko).join(','))}&per_page=250&page=1`,
+          key ? { headers: { 'x-cg-demo-api-key': key } } : {}, 'CoinGecko');
+      } catch (err) {
+        this.log?.debug?.('Logos crypto : ' + err.message);
+        for (const a of want) save(a.id, null);
+        return 0;
+      }
+      const imageOf = new Map((Array.isArray(list) ? list : []).map((c) => [c?.id, c?.image]));
+      let found = 0;
+      for (const a of want) {
+        const img = await this.downloadImage(imageOf.get(a.coingecko)).catch(() => null);
+        save(a.id, img);
+        if (img) found += 1;
+      }
+      return found;
+    })().finally(() => { this.logoPending = null; });
+    return this.logoPending;
+  }
+  // Logo d'un actif pour l'interface : récupéré à la première demande. undefined : actif inconnu.
+  async logo(assetId) {
+    const a = ASSET_BY_ID.get(String(assetId || '').toUpperCase());
+    if (!a) return undefined;
+    // Les autres actifs suivis profitent de la même demande à CoinGecko.
+    const inUse = this.db.prepare('SELECT DISTINCT asset FROM crypto_holdings').all().map((r) => r.asset);
+    if (this.logoStale(this.logoRow(a.id))) await this.fetchLogos([a.id, ...inUse]).catch(() => 0);
+    const row = this.logoRow(a.id);
+    return row && row.data ? { type: row.content_type, data: row.data, fetched_at: row.fetched_at } : null;
+  }
+
   startScheduler() {
     const run = () => this.refresh().then((r) => { if (r.errors.length && this.log) this.log.warn(`Crypto-actifs : ${r.errors.length} erreur(s)`); })
       .catch((err) => this.log && this.log.warn('Crypto-actifs : ' + err.message));
-    const first = setTimeout(run, 30_000);
-    const every = setInterval(run, 6 * 3600_000);
+    const logos = () => this.fetchLogos(this.db.prepare('SELECT DISTINCT asset FROM crypto_holdings').all().map((r) => r.asset)).catch(() => 0);
+    const first = setTimeout(() => { run(); setTimeout(logos, 15_000).unref?.(); }, 30_000);
+    const every = setInterval(() => { run(); logos(); }, 6 * 3600_000);
     first.unref?.(); every.unref?.();
     return [first, every];
   }
 }
+
+const LOGO_HOSTS = ['coin-images.coingecko.com', 'assets.coingecko.com'];
+const LOGO_MAX_BYTES = 256 * 1024;
+const LOGO_OK_TTL_MS = 30 * 86400_000;
+const LOGO_FAIL_TTL_MS = 3 * 86400_000;
 
 // Vue publique d'un suivi crypto pour l'interface.
 export function cryptoView(row, { enabled = true } = {}) {

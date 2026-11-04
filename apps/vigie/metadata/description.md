@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 33** · **Version de Vigie : 1.5.1** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 34** · **Version de Vigie : 1.6.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -64,6 +64,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Actualisation automatique** à l'enregistrement, peu après le démarrage puis **toutes les 6 heures**, et à la demande (**Actualiser maintenant**). Une valeur par jour dans l'historique, avec la quantité et le cours en note (« Auto : 0,6221 BTC × 61.234,56 EUR ») ; la courbe et les totaux se mettent à jour seuls.
 - **Détail de l'avoir** : actif, adresse abrégée avec lien vers l'explorateur, quantité, cours retenu, date et heure de la dernière actualisation. En cas d'échec (explorateur ou CoinGecko indisponible), le message s'affiche et la dernière valeur calculée est conservée.
 - **Valeur à la main** toujours possible : on indique l'actif sans suivi automatique, comme avant.
+- **Logo de l'actif** (1.6.0) sur la ligne de l'avoir, dans son détail et dans le formulaire, l'établissement restant en médaillon. Logo demandé une fois à CoinGecko puis servi par Vigie ; le symbole (BTC, ETH…) s'affiche en attendant.
 - **Limites** : une adresse par avoir. Un portefeuille à plusieurs adresses (portefeuille HD, Ledger, Trezor…) se suit avec un avoir par adresse ou en quantité saisie. Les jetons hors réseau Ethereum (USDC sur Solana, par exemple) et les montants placés sur une plateforme d'échange se suivent en quantité.
 - **Confidentialité** : seuls l'adresse publique et le nom de l'actif sont envoyés, jamais un montant, un nom ou une clé ; ne saisissez jamais de clé privée ni de phrase de récupération. Une adresse publique dévoile son solde à qui la connaît : l'explorateur interrogé voit l'adresse IP de votre serveur. L'administrateur coupe ces échanges dans **Réglages → Sécurité** (« Lire les soldes et les cours des crypto-actifs ») ou par `CRYPTO_LOOKUPS=false`.
 
@@ -127,6 +128,11 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.6.0 : logo des crypto-actifs
+
+- Chaque avoir crypto dont l'actif est choisi affiche le **logo du crypto-actif** (pastille ronde) : dans la liste des avoirs, la mise à jour rapide, l'en-tête du détail et le panneau Crypto-actif, ainsi qu'en aperçu dans le formulaire dès que l'actif est choisi. L'établissement (Ledger, Binance…) reste visible en médaillon.
+- Les logos sont demandés une fois à CoinGecko (seuls les noms des actifs sont transmis), enregistrés dans la base puis servis par Vigie : le navigateur ne contacte aucun service extérieur. Nouvel essai après 30 jours. Aucun logo n'est livré avec l'application : ils appartiennent à leurs projets respectifs. En attendant, ou si les services externes des crypto-actifs sont coupés, le symbole (BTC, ETH…) s'affiche.
 
 ### Version 1.5.1 : le bilan met en avant l'essentiel
 
