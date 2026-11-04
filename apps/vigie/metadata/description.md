@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 34** · **Version de Vigie : 1.6.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 35** · **Version de Vigie : 1.7.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -38,7 +38,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Répartitions** par catégorie (avec l'**allocation cible** et l'écart en euros), par établissement, par titulaire et par devise.
 - **Liquidité des actifs** : disponible, sous quelques semaines, bloqué ou illiquide.
 - **Avoirs à actualiser** et **mode discret** qui masque tous les montants d'un clic.
-- **Bilan patrimonial à imprimer** (1.5.0) : bouton **Bilan à imprimer** du tableau de bord. Une synthèse datée, à la date du jour ou à une date passée (au 1er janvier, au 31 décembre…), qui met en avant le **patrimoine net**, les **disponibilités liquides** et les **plus-values latentes**, puis actifs et passifs, variations, évolution sur 12 mois, actifs par catégorie avec l'allocation cible, liquidité, passifs, plus-values latentes, répartition par établissement, titulaire et devise, et détail de chaque avoir (valeur connue à la date, quote-part). **Imprimer ou enregistrer en PDF** depuis la fenêtre d'impression, au format A4, toujours en clair même en thème sombre.
+- **Bilan patrimonial à imprimer** (1.5.0) : bouton **Bilan à imprimer** du tableau de bord. Une synthèse datée, à la date du jour ou à une date passée (au 1er janvier, au 31 décembre…), qui met en avant le **patrimoine net**, les **disponibilités liquides** et les **plus-values latentes**, puis actifs et passifs, variations, évolution sur 12 mois, actifs par catégorie avec l'allocation cible, liquidité, passifs, plus-values latentes, répartition par établissement, titulaire et devise, et détail de chaque avoir (valeur connue à la date, quote-part). **Imprimer ou enregistrer en PDF** depuis la fenêtre d'impression, en A4 paysage, en couleur avec les logos des établissements et des crypto-actifs, toujours en clair même en thème sombre.
 
 ### Prêts et crédits
 
@@ -128,6 +128,13 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.7.0 : bilan en paysage, en couleur et avec les logos
+
+- Le bilan s'imprime et s'enregistre en PDF au **format paysage** (A4) : page 1 avec le bandeau, les chiffres clés, la courbe sur 12 mois et la répartition des actifs ; page 2 avec la liquidité, les passifs, les plus-values latentes et les répartitions par établissement, titulaire et devise ; puis le détail des avoirs.
+- **Couleurs** : bandeau aux couleurs de Vigie, cartes colorées pour le patrimoine net, les disponibilités liquides, les plus-values latentes et la variation du patrimoine ; barre de répartition et pastilles par catégorie (palette lisible par les daltoniens, toujours accompagnée du nom et du montant) ; liseré de couleur pour chaque catégorie du détail.
+- **Logos** : logo de Vigie dans le bandeau, logos des établissements et des crypto-actifs dans les répartitions, les plus-values et le détail des avoirs, pictogrammes des catégories. L'impression attend le chargement des logos pour qu'ils figurent dans le PDF.
+- Détail des avoirs en colonnes (établissement, titulaire, date de la valeur, quote-part, votre part) ; sur téléphone, ces informations passent sous le nom de l'avoir.
 
 ### Version 1.6.0 : logo des crypto-actifs
 

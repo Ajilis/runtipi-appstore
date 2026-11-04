@@ -363,6 +363,7 @@ export function report(db, { userId = null, date = todayIso() } = {}) {
   const d = dashboard(db, { userId, today: date });
   const state = loadState(db, date, userId);
   const names = new Map(db.prepare('SELECT id, display_name FROM users').all().map((u) => [u.id, u.display_name]));
+  const coinOf = new Map(db.prepare('SELECT holding_id, asset FROM crypto_holdings').all().map((c) => [c.holding_id, c.asset]));
   const holdings = [];
   for (const h of state.holdings) {
     const cat = state.catById.get(h.category_id);
@@ -377,6 +378,7 @@ export function report(db, { userId = null, date = todayIso() } = {}) {
       ? latentGain(snap.cents, basis.purchase_cents, snap.ownership_bp) : null;
     const basisOwned = gain ? ownedCents(basis.purchase_cents, snap.ownership_bp) : null;
     holdings.push({ id: h.id, name: h.name, category_id: cat.id, kind: cat.kind, institution: h.institution || null, owner: h.owner || null,
+      crypto_asset: coinOf.get(h.id) || null,
       currency: h.currency, liquidity: h.liquidity, value_cents: snap.cents, owned_cents: snap.owned, base: snap.base,
       ownership_bp: snap.ownership_bp, valued_at: snap.valuation.valued_at, missing_rate: snap.missingRate,
       shared_with_me: snap.shared_with_me, shared_by: snap.shared_with_me ? names.get(h.account_user_id) || null : null,

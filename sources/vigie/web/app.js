@@ -970,8 +970,9 @@
     const sheet = $('#report-sheet', el);
     const draw = () => {
       sheet.innerHTML = part(reportSheet(r, opts));
+      $$('img', sheet).forEach((img) => { img.loading = 'eager'; }); // logos chargés avant l'impression
       const chart = $('#report-chart', sheet);
-      if (chart) lineChart(chart, r.history.map((p) => ({ date: p.date, value: p.net })), { label: 'Évolution du patrimoine net sur 12 mois', height: 170 });
+      if (chart) lineChart(chart, r.history.map((p) => ({ date: p.date, value: p.net })), { label: 'Évolution du patrimoine net sur 12 mois', height: 290 });
     };
     draw();
     $('#report-date', el).addEventListener('change', (e) => {
@@ -985,88 +986,103 @@
     }));
   }
 
+  // Bilan au format paysage : bandeau, chiffres clés en couleur, courbe et répartition, puis tableaux détaillés
+  // avec les logos des établissements et des crypto-actifs. Couleurs des catégories : palette catégorielle
+  // validée (8 teintes dans l'ordre des catégories ; au-delà, gris « Autres »), toujours avec nom et montant.
   function reportSheet(r, opts) {
     const base = r.base_currency;
     const T = r.totals;
+    const L = r.liquidity, la = T.assets || 1;
+    const G = r.latent || { gain: 0, basis: 0, count: 0 };
     const assetsCats = r.categories.filter((c) => c.kind === 'asset' && c.value);
     const liabCats = r.categories.filter((c) => c.kind === 'liability' && c.value);
     const targets = assetsCats.some((c) => c.target_pct !== null);
-    const variation = (v, label) => v ? html`<div><span>${label}</span><b class="${v.delta > 0 ? 'pos' : v.delta < 0 ? 'neg' : ''}">${money(v.delta, base, { sign: true })}</b><small>${v.pct !== null ? pct(v.pct, { sign: true }) : ''}</small></div>`
-      : html`<div><span>${label}</span><b class="muted">—</b><small>historique insuffisant</small></div>`;
-    const L = r.liquidity, la = T.assets || 1;
-    const G = r.latent || { gain: 0, basis: 0, count: 0 };
+    const slot = new Map(assetsCats.map((c, i) => [c.id, i < 8 ? `var(--rp-c${i + 1})` : 'var(--rp-other)']));
     const share = (v, total) => (total > 0 ? pct(v / total, { digits: 1 }) : '—');
-    const groupTable = (title, rows, max = 8) => {
+    const lead = (h) => (h.crypto_asset ? coinLogo(h.crypto_asset, 's24') : h.institution ? instLogo(h.institution, 's24') : catPict({ icon: r.categories.find((c) => c.id === h.category_id)?.icon, kind: h.kind }, 'sm'));
+    const variation = (v, label) => html`<li><span>${label}</span>${v
+      ? html`<b class="${v.delta > 0 ? 'pos' : v.delta < 0 ? 'neg' : ''}">${v.delta ? icon(v.delta > 0 ? 'up' : 'down') : ''}${money(v.delta, base, { sign: true })}</b><small>${v.pct !== null ? pct(v.pct, { sign: true }) : ''}</small>`
+      : html`<b class="muted">—</b><small>historique insuffisant</small>`}</li>`;
+    const groupTable = (kind, title, ic, rows, max = 7) => {
       const top = rows.slice(0, max), rest = rows.slice(max);
       const other = rest.reduce((t, g) => t + g.value, 0);
-      return html`<div><h4>${title}</h4><table class="rp-table"><tbody>
-        ${top.map((g) => html`<tr><td>${g.label}</td><td class="num">${money(g.value, base)}</td><td class="num muted">${share(g.value, T.assets)}</td></tr>`)}
-        ${rest.length ? html`<tr><td class="muted">${rest.length} autre${rest.length > 1 ? 's' : ''}</td><td class="num">${money(other, base)}</td><td class="num muted">${share(other, T.assets)}</td></tr>` : ''}
+      return html`<div class="rp-card"><h3>${icon(ic)}${title}</h3><table class="rp-table rp-groups"><tbody>
+        ${top.map((g) => html`<tr><td><span class="rp-name">${groupLead(kind, g)}<span>${g.label}</span></span></td><td class="num">${money(g.value, base)}</td><td class="num muted">${share(g.value, T.assets)}</td></tr>`)}
+        ${rest.length ? html`<tr><td><span class="rp-name">${pict('cube', 'neutral')}<span class="muted">${rest.length} autre${rest.length > 1 ? 's' : ''}</span></span></td><td class="num">${money(other, base)}</td><td class="num muted">${share(other, T.assets)}</td></tr>` : ''}
       </tbody></table></div>`;
     };
     const detailRows = (kind) => r.categories.filter((c) => c.kind === kind).map((c) => ({ c, items: r.holdings.filter((h) => h.category_id === c.id) })).filter((g) => g.items.length);
+    const signed = (h, v) => (h.kind === 'liability' ? -v : v);
     const holdingRow = (h) => {
-      const sub = [h.institution, h.owner, `valeur du ${dateFr(h.valued_at)}`,
-        h.ownership_bp < 10000 ? `quote-part ${pctBp(h.ownership_bp)} de ${money(h.value_cents, h.currency)}` : null,
-        h.shared_by ? `partagé par ${h.shared_by}` : null].filter(Boolean).join(' · ');
-      return html`<tr><td><b>${h.name}</b><span class="rp-sub">${sub}</span></td>
-        <td class="num">${money(h.kind === 'liability' ? -h.owned_cents : h.owned_cents, h.currency)}${h.currency !== base ? html`<span class="rp-sub">${h.missing_rate ? 'taux manquant' : money(h.kind === 'liability' ? -h.base : h.base, base)}</span>` : ''}</td></tr>`;
+      const narrow = [h.institution, h.owner, `valeur du ${dateFr(h.valued_at)}`, h.ownership_bp < 10000 ? `quote-part ${pctBp(h.ownership_bp)}` : null].filter(Boolean).join(' · ');
+      return html`<tr><td><span class="rp-name">${lead(h)}<span><b>${h.name}</b>${h.shared_by ? html`<span class="rp-sub">partagé par ${h.shared_by}</span>` : ''}<span class="rp-sub rp-narrow">${narrow}</span></span></span></td>
+        <td class="rp-wide">${h.institution || '—'}</td><td class="rp-wide">${h.owner || '—'}</td><td class="rp-wide nowrap">${dateFr(h.valued_at)}</td>
+        <td class="num rp-wide">${h.ownership_bp < 10000 ? html`${pctBp(h.ownership_bp)}<span class="rp-sub">de ${money(signed(h, h.value_cents), h.currency)}</span>` : '100 %'}</td>
+        <td class="num"><b>${h.missing_rate ? '—' : money(signed(h, h.base), base)}</b>${h.currency !== base ? html`<span class="rp-sub">${money(signed(h, h.owned_cents), h.currency)}</span>` : ''}</td></tr>`;
     };
-    const detailTable = (kind) => detailRows(kind).map(({ c, items }) => html`<tbody class="rp-group">
-      <tr class="rp-cat"><th scope="rowgroup">${c.name}</th><th class="num">${money(kind === 'liability' ? -c.value : c.value, base)}</th></tr>
-      ${items.map(holdingRow)}</tbody>`);
+    const detailTable = (kind, title) => html`<table class="rp-table rp-holdings">
+      <thead><tr><th>${title}</th><th class="rp-wide">Établissement</th><th class="rp-wide">Titulaire</th><th class="rp-wide">Valeur du</th><th class="num rp-wide">Quote-part</th><th class="num">Votre part</th></tr></thead>
+      ${detailRows(kind).map(({ c, items }) => html`<tbody class="rp-group" style="--cc:${kind === 'asset' ? slot.get(c.id) || 'var(--rp-other)' : 'var(--bad)'}">
+        <tr class="rp-cat"><th colspan="5"><span class="rp-name">${catPict(c, 'sm')}<span>${c.name}</span><span class="muted rp-count">${items.length} avoir${items.length > 1 ? 's' : ''}</span></span></th><th class="num">${money(kind === 'liability' ? -c.value : c.value, base)}</th></tr>
+        ${items.map(holdingRow)}</tbody>`)}</table>`;
     const gains = r.holdings.filter((h) => h.latent_gain_cents !== null && h.owned_cents).sort((a, b) => b.latent_gain_cents - a.latent_gain_cents);
+    const gainRow = (h) => html`<tr><td><span class="rp-name">${lead(h)}<span>${h.name}${h.ownership_bp < 10000 ? html`<span class="rp-sub">votre quote-part ${pctBp(h.ownership_bp)}</span>` : ''}</span></span></td>
+      <td class="num">${money(h.latent_basis_cents, h.currency)}</td><td class="num">${money(h.owned_cents, h.currency)}</td>
+      <td class="num ${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}"><b>${money(h.latent_gain_cents, h.currency, { sign: true })}</b><span class="rp-sub">${h.latent_pct === null ? '' : pct(h.latent_pct / 100, { sign: true })}</span></td></tr>`;
     const stale = r.stale.length;
+    const stackLabel = assetsCats.map((c) => `${c.name} ${pct(c.pct)}`).join(', ');
     return html`
-      <header class="rp-head">
-        <div class="rp-brand">${MARK}<div><h2>Bilan patrimonial</h2><p>${r.user_name || ''}</p></div></div>
-        <dl class="rp-meta"><dt>Date du bilan</dt><dd>${dateLong(r.date)}</dd><dt>Édité le</dt><dd>${msAt(r.generated_at)}</dd><dt>Devise</dt><dd>${base}</dd></dl>
+      <header class="rp-band">
+        <div class="rp-brand"><span class="rp-mark">${MARK}</span><div><h2>Bilan patrimonial</h2><p>${r.user_name || ''}</p></div></div>
+        <dl class="rp-meta"><div><dt>Date du bilan</dt><dd>${dateLong(r.date)}</dd></div><div><dt>Édité le</dt><dd>${msAt(r.generated_at)}</dd></div><div><dt>Devise</dt><dd>${base}</dd></div></dl>
       </header>
       <section class="rp-kpis" aria-label="Chiffres clés">
-        <div class="rp-net"><span>Patrimoine net</span><b>${money(T.net, base)}</b>
+        <div class="kpi k-net"><span class="k-label">${icon('stack')}Patrimoine net</span><b>${money(T.net, base)}</b>
           <small>Actifs ${money(T.assets, base)} · passifs ${money(T.liabilities ? -T.liabilities : 0, base)}</small></div>
-        <div class="rp-cash"><span>Disponibilités liquides</span><b>${money(L.immediate, base)}</b>
+        <div class="kpi k-cash"><span class="k-label">${icon('drop')}Disponibilités liquides</span><b>${money(L.immediate, base)}</b>
           <small>${pct(L.immediate / la)} des actifs${L.short ? ` · ${money(L.short, base)} de plus sous quelques semaines` : ''}</small></div>
-        <div class="rp-gain"><span>Plus-values latentes</span>${G.count
-          ? html`<b class="${G.gain >= 0 ? 'pos' : 'neg'}">${money(G.gain, base, { sign: true })}</b><small>${G.basis ? `${pct(G.gain / G.basis, { sign: true })} sur ${money(G.basis, base)} investis` : ''} · ${G.count} avoir${G.count > 1 ? 's' : ''} avec prix de revient</small>`
+        <div class="kpi k-gain ${G.gain < 0 ? 'loss' : ''}"><span class="k-label">${icon('up')}Plus-values latentes</span>${G.count
+          ? html`<b>${money(G.gain, base, { sign: true })}</b><small>${G.basis ? `${pct(G.gain / G.basis, { sign: true })} sur ${money(G.basis, base)} investis · ` : ''}${G.count} avoir${G.count > 1 ? 's' : ''} avec prix de revient</small>`
           : html`<b class="muted">—</b><small>Renseignez un prix de revient ou une valeur d'achat dans vos avoirs.</small>`}</div>
+        <div class="kpi k-vars"><span class="k-label">${icon('chart')}Variation du patrimoine net</span>
+          <ul>${variation(r.variations.month, 'Sur 1 mois')}${variation(r.variations.year, 'Sur 1 an')}${variation(r.variations.ytd, 'Depuis le 1er janvier')}</ul></div>
       </section>
-      <section class="rp-vars" aria-label="Variations du patrimoine net">${variation(r.variations.month, 'Sur 1 mois')}${variation(r.variations.year, 'Sur 1 an')}${variation(r.variations.ytd, 'Depuis le 1er janvier')}</section>
-      ${opts.chart && r.history.length > 1 ? html`<section class="rp-section"><h3>Évolution du patrimoine net sur 12 mois</h3><div class="chart" id="report-chart"></div></section>` : ''}
-      <section class="rp-section rp-two">
-        <div><h3>Actifs par catégorie</h3>
-          <table class="rp-table"><thead><tr><th>Catégorie</th><th class="num">Montant</th><th class="num">Part</th>${targets ? html`<th class="num">Cible</th>` : ''}</tr></thead><tbody>
-            ${assetsCats.map((c) => html`<tr><td>${c.name}</td><td class="num">${money(c.value, base)}</td><td class="num">${pct(c.pct)}</td>${targets ? html`<td class="num muted">${c.target_pct === null ? '—' : pct(c.target_pct, { digits: 0 })}</td>` : ''}</tr>`)}
-            <tr class="rp-total"><td>Total</td><td class="num">${money(T.assets, base)}</td><td class="num">${T.assets ? '100 %' : '—'}</td>${targets ? html`<td></td>` : ''}</tr>
+      <section class="rp-main ${opts.chart && r.history.length > 1 ? '' : 'solo'}">
+        ${opts.chart && r.history.length > 1 ? html`<div class="rp-card"><h3>${icon('chart')}Évolution du patrimoine net sur 12 mois</h3><div class="chart" id="report-chart"></div></div>` : ''}
+        <div class="rp-card"><h3>${icon('categories')}Répartition des actifs</h3>
+          ${assetsCats.length ? html`<div class="rp-stack" role="img" aria-label="Répartition des actifs : ${stackLabel}">${assetsCats.map((c) => html`<span style="flex:${c.value};background:${slot.get(c.id)}"></span>`)}</div>` : ''}
+          <table class="rp-table rp-cats"><thead><tr><th>Catégorie</th><th class="num">Montant</th><th class="num">Part</th>${targets ? html`<th class="num">Cible</th>` : ''}</tr></thead><tbody>
+            ${assetsCats.map((c) => html`<tr><td><span class="rp-name"><i class="rp-sw" style="background:${slot.get(c.id)}"></i>${catPict(c, 'sm')}<span>${c.name}</span></span></td><td class="num">${money(c.value, base)}</td><td class="num">${pct(c.pct)}</td>${targets ? html`<td class="num muted">${c.target_pct === null ? '—' : pct(c.target_pct, { digits: 0 })}</td>` : ''}</tr>`)}
+            <tr class="rp-total"><td>Total des actifs</td><td class="num">${money(T.assets, base)}</td><td class="num">${T.assets ? '100 %' : '—'}</td>${targets ? html`<td></td>` : ''}</tr>
           </tbody></table></div>
-        <div>
-          <h3>Liquidité des actifs</h3>
-          <table class="rp-table"><tbody>${['immediate', 'short', 'locked'].map((k) => html`<tr><td>${LIQ[k]}</td><td class="num">${money(L[k], base)}</td><td class="num">${pct(L[k] / la)}</td></tr>`)}</tbody></table>
-          <h3>Passifs</h3>
-          ${liabCats.length ? html`<table class="rp-table"><tbody>${liabCats.map((c) => html`<tr><td>${c.name}</td><td class="num">${money(-c.value, base)}</td></tr>`)}
-            <tr class="rp-total"><td>Total</td><td class="num">${money(-T.liabilities, base)}</td></tr></tbody></table>` : html`<p class="muted">Aucun passif.</p>`}
-        </div>
       </section>
-      ${gains.length ? html`<section class="rp-section"><h3>Plus-values latentes par avoir</h3>
-        <table class="rp-table rp-gains"><thead><tr><th>Avoir</th><th class="num">Prix de revient</th><th class="num">Valeur</th><th class="num">Plus-value</th></tr></thead><tbody>
-          ${gains.map((h) => html`<tr><td>${h.name}${h.ownership_bp < 10000 ? html`<span class="rp-sub">votre quote-part ${pctBp(h.ownership_bp)}</span>` : ''}</td>
-            <td class="num">${money(h.latent_basis_cents, h.currency)}</td><td class="num">${money(h.owned_cents, h.currency)}</td>
-            <td class="num ${h.latent_gain_cents >= 0 ? 'pos' : 'neg'}">${money(h.latent_gain_cents, h.currency, { sign: true })}<span class="rp-sub">${h.latent_pct === null ? '' : pct(h.latent_pct / 100, { sign: true })}</span></td></tr>`)}
-          <tr class="rp-total"><td>Total${gains.some((h) => h.currency !== base) ? ` en ${base}` : ''}</td><td class="num">${money(G.basis, base)}</td><td class="num">${money(G.basis + G.gain, base)}</td><td class="num ${G.gain >= 0 ? 'pos' : 'neg'}">${money(G.gain, base, { sign: true })}</td></tr>
-        </tbody></table>
-        <p class="rp-note">Gain brut théorique : valeur de votre part moins son prix de revient, hors frais, fiscalité et mouvements.</p></section>` : ''}
-      ${opts.groups ? html`<section class="rp-section"><h3>Actifs par établissement, titulaire et devise</h3><div class="rp-three">
-        ${groupTable('Établissement', r.groups.institution)}${groupTable('Titulaire', r.groups.owner)}${groupTable('Devise', r.groups.currency)}</div></section>` : ''}
-      ${opts.detail ? html`<section class="rp-section rp-detail"><h3>Détail des avoirs</h3>
-        <table class="rp-table rp-holdings"><thead><tr><th>Actifs</th><th class="num">Votre part</th></tr></thead>${detailTable('asset')}</table>
-        ${detailRows('liability').length ? html`<table class="rp-table rp-holdings"><thead><tr><th>Passifs</th><th class="num">Votre part</th></tr></thead>${detailTable('liability')}</table>` : ''}
+      <section class="rp-row3">
+        <div class="rp-card"><h3>${icon('drop')}Liquidité des actifs</h3>
+          <div class="rp-stack liq" role="img" aria-label="Disponible ${pct(L.immediate / la)}, sous quelques semaines ${pct(L.short / la)}, bloqué ${pct(L.locked / la)}">${['immediate', 'short', 'locked'].map((k, i) => (L[k] > 0 ? html`<span style="flex:${L[k]};background:var(--liq-${i + 1})"></span>` : ''))}</div>
+          <table class="rp-table"><tbody>${['immediate', 'short', 'locked'].map((k, i) => html`<tr><td><span class="rp-name"><i class="rp-sw" style="background:var(--liq-${i + 1})"></i><span>${LIQ[k]}</span></span></td><td class="num">${money(L[k], base)}</td><td class="num muted">${pct(L[k] / la)}</td></tr>`)}</tbody></table></div>
+        <div class="rp-card"><h3>${icon('debt')}Passifs</h3>
+          ${liabCats.length ? html`<table class="rp-table"><tbody>${liabCats.map((c) => html`<tr><td><span class="rp-name">${catPict(c, 'sm')}<span>${c.name}</span></span></td><td class="num neg">${money(-c.value, base)}</td></tr>`)}
+            <tr class="rp-total"><td>Total des passifs</td><td class="num">${money(-T.liabilities, base)}</td></tr></tbody></table>
+            <p class="rp-note">Endettement : ${pct(T.liabilities / la)} des actifs.</p>` : html`<p class="muted">Aucun passif.</p>`}</div>
+        <div class="rp-card"><h3>${icon('up')}Plus-values latentes</h3>
+          ${gains.length ? html`<table class="rp-table rp-gains"><thead><tr><th>Avoir</th><th class="num">Prix de revient</th><th class="num">Valeur</th><th class="num">Plus-value</th></tr></thead><tbody>
+            ${gains.map(gainRow)}
+            <tr class="rp-total"><td>Total${gains.some((h) => h.currency !== base) ? ` en ${base}` : ''}</td><td class="num">${money(G.basis, base)}</td><td class="num">${money(G.basis + G.gain, base)}</td><td class="num ${G.gain >= 0 ? 'pos' : 'neg'}">${money(G.gain, base, { sign: true })}</td></tr>
+          </tbody></table><p class="rp-note">Gain brut théorique : valeur de votre part moins son prix de revient, hors frais, fiscalité et mouvements.</p>`
+            : html`<p class="muted">Aucun avoir avec prix de revient : renseignez-le dans « Modifier » (valeur d'achat d'un bien, prix de revient d'un placement).</p>`}</div>
+      </section>
+      ${opts.groups ? html`<section class="rp-three">
+        ${groupTable('institution', 'Par établissement', 'bank', r.groups.institution)}${groupTable('owner', 'Par titulaire', 'users', r.groups.owner)}${groupTable('currency', 'Par devise', 'exchange', r.groups.currency)}</section>` : ''}
+      ${opts.detail ? html`<section class="rp-detail"><h3 class="rp-h">${icon('holdings')}Détail des avoirs</h3>
+        ${detailTable('asset', 'Actifs')}
+        ${detailRows('liability').length ? detailTable('liability', 'Passifs') : ''}
       </section>` : ''}
       <footer class="rp-foot">
         <p>Valeurs connues au ${dateLong(r.date)} : pour chaque avoir, la dernière valeur saisie ou calculée à cette date. Seule votre quote-part est comptée ; les avoirs clôturés avant cette date sont exclus.
           ${r.rates.length ? `Conversion en ${base} aux taux actuels : ${r.rates.map((x) => x.rate === null ? `${x.currency} sans taux` : `1 ${x.currency} = ${num(x.rate, { max: 4 })} ${base}`).join(', ')}.` : ''}
           ${r.missing_rates.length ? ` Avoirs en ${r.missing_rates.join(', ')} non comptés faute de taux.` : ''}
           ${stale && r.date === todayIso() ? ` ${stale} avoir${stale > 1 ? 's ont' : ' a'} une valeur de plus de ${r.stale_days} jours.` : ''}</p>
-        <p>Document indicatif établi par Vigie Patrimoine. Il ne constitue ni un conseil, ni une évaluation officielle, ni une déclaration fiscale.</p>
+        <p>Document indicatif établi par Vigie Patrimoine. Il ne constitue ni un conseil, ni une évaluation officielle, ni une déclaration fiscale. Les logos appartiennent à leurs propriétaires respectifs.</p>
       </footer>`;
   }
 
@@ -3091,7 +3107,14 @@
       pwa.refresh();
       if (choice && choice.outcome === 'accepted') toast('Installation de Vigie en cours');
     },
-    'print-report': () => window.print(),
+    // Impression : attendre les logos (4 s au plus) pour qu'ils figurent dans le PDF.
+    'print-report': async (b) => withBusy(b, async () => {
+      const imgs = $$('#report-sheet img');
+      imgs.forEach((img) => { img.loading = 'eager'; });
+      const loaded = imgs.map((img) => (img.complete ? null : new Promise((ok) => { img.addEventListener('load', ok, { once: true }); img.addEventListener('error', ok, { once: true }); })));
+      await Promise.race([Promise.all(loaded), new Promise((ok) => setTimeout(ok, 4000))]);
+      window.print();
+    }),
     'toggle-discret': () => { state.discret = !state.discret; store.set('discret', state.discret); render(); },
     range: (b) => { state.range = b.dataset.range; store.set('range', state.range); render(); },
     breakdown: (b) => { state.breakdown = b.dataset.key; store.set('breakdown', state.breakdown); render(); },

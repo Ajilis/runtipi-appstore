@@ -48,6 +48,7 @@ test('bilan : chiffres du tableau de bord, date passée, détail des avoirs, quo
     assert.deepEqual([byName['Livret A'].owned_cents, byName['Livret A'].valued_at, byName['Livret A'].institution], [1_200_000, today, 'La Banque Postale']);
     assert.deepEqual([byName['Compte joint'].value_cents, byName['Compte joint'].owned_cents, byName['Compte joint'].ownership_bp], [400_000, 200_000, 5000]);
     assert.equal(byName['Prêt auto'].kind, 'liability');
+    assert.equal(byName['Livret A'].crypto_asset, null);
     // Plus-values latentes mises en avant : prix de revient de votre part, gain et pourcentage.
     assert.deepEqual(r.latent, { gain: 200_000 + 5_000_000, basis: 800_000 + 10_000_000, count: 2 });
     assert.deepEqual([byName.Maison.latent_basis_cents, byName.Maison.latent_gain_cents, byName.Maison.latent_pct], [10_000_000, 5_000_000, 50]);
@@ -82,10 +83,13 @@ test('bilan : page dédiée, bouton sur le tableau de bord, impression en clair'
   const css = readFileSync(new URL('../web/app.css', import.meta.url), 'utf8');
   assert.match(ui, /bilan: \{ title: 'Bilan patrimonial', icon: 'journal', render: pageReport, parent: '' \}/);
   assert.match(ui, /<a class="btn" href="#\/bilan">\$\{icon\('journal'\)\}Bilan à imprimer<\/a>/);
-  assert.match(ui, /'print-report': \(\) => window\.print\(\)/);
+  assert.match(ui, /'print-report': async \(b\) => withBusy\(b, async \(\) => \{/);
+  assert.match(ui, /await Promise\.race\(\[Promise\.all\(loaded\), new Promise\(\(ok\) => setTimeout\(ok, 4000\)\)\]\);\n      window\.print\(\);/, 'logos chargés avant l’impression');
+  assert.match(ui, /h\.crypto_asset \? coinLogo\(h\.crypto_asset, 's24'\) : h\.institution \? instLogo\(h\.institution, 's24'\)/, 'logos dans le détail');
   assert.match(ui, /Document indicatif établi par Vigie Patrimoine/);
-  assert.match(ui, /<span>Disponibilités liquides<\/span>/);
-  assert.match(ui, /<span>Plus-values latentes<\/span>/);
-  assert.match(css, /@page \{ size: A4; margin: 12mm; \}/);
+  assert.match(ui, /\$\{icon\('drop'\)\}Disponibilités liquides<\/span>/);
+  assert.match(ui, /\$\{icon\('up'\)\}Plus-values latentes<\/span>/);
+  assert.match(css, /@page \{ size: A4 landscape; margin: 9mm; \}/);
+  assert.match(css, /--rp-c1: #2a78d6; --rp-c2: #eb6834; --rp-c3: #1baf7a; --rp-c4: #eda100; --rp-c5: #e87ba4; --rp-c6: #008300; --rp-c7: #6250d6; --rp-c8: #e34948;/, 'palette catégorielle validée');
   assert.match(css, /\.report-sheet \{ display: block; max-width: none;/, 'pas de grille à l’impression');
 });

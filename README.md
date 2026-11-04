@@ -19,6 +19,8 @@ Accès direct LAN : `http://IP_DU_SERVEUR:8291` ; Cloudflare Tunnel vers ce port
 Fichiers : [Docker Compose](apps/cloakbrowser/docker-compose.yml) · [Configuration Runtipi](apps/cloakbrowser/config.json) · [Documentation de CloakBrowser](apps/cloakbrowser/metadata/description.md).
 
 ---
+**Vigie Patrimoine V35 (1.7.0)** : **bilan patrimonial en A4 paysage**, en couleur, avec les logos de Vigie, des établissements et des crypto-actifs. [Documentation](apps/vigie/metadata/description.md#version-170--bilan-en-paysage-en-couleur-et-avec-les-logos).
+
 **Vigie Patrimoine V34 (1.6.0)** : **logo du crypto-actif** sur la ligne de l'avoir, dans son détail et le formulaire, l'établissement restant en médaillon ; logo demandé une fois à CoinGecko puis servi par Vigie. [Documentation](apps/vigie/metadata/description.md#version-160--logo-des-crypto-actifs).
 
 **Vigie Patrimoine V33 (1.5.1)** : le bilan met en avant le **patrimoine net**, les **disponibilités liquides** et les **plus-values latentes**, avec un tableau des plus-values par avoir. [Documentation](apps/vigie/metadata/description.md#version-151--le-bilan-met-en-avant-lessentiel).
@@ -188,7 +190,7 @@ Documentation : [`apps/rendevo/metadata/description.md`](apps/rendevo/metadata/d
 
 ## Installer Vigie Patrimoine (suivi de patrimoine, Cloudflare Tunnel, sans Traefik)
 
-**Version du catalogue Runtipi : 34** · **Version du logiciel : Vigie 1.6.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 35** · **Version du logiciel : Vigie 1.7.0** · **Runtipi minimum : 4.9.1**
 
 Vigie donne une vue globale de votre patrimoine sans gérer les mouvements : une valeur par avoir et par date. Patrimoine net (passifs déduits), prêts accordés et crédits avec échéancier automatique, immobilier avec quote-part, estimation et plus-value latente, un patrimoine par compte avec partage d'un bien, annuaire d'établissements en ligne, historique et variations, répartition par catégorie, établissement, titulaire, devise et liquidité, allocation cible, mise à jour rapide, rappels, multi-devises (taux BCE), mode discret, exports et sauvegardes. Un seul conteneur (Node.js + SQLite, image `ghcr.io/ajilis/vigie`).
 
