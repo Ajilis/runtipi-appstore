@@ -413,6 +413,23 @@ export const MIGRATIONS = [
     source TEXT
   );
   `,
+  // 1.8.0 : achats et ventes datés d'un crypto-actif, pour le prix de revient unitaire moyen pondéré (PRU),
+  // la plus-value latente et la plus-value réalisée. Montants dans la devise de l'avoir.
+  `
+  CREATE TABLE crypto_movements (
+    id INTEGER PRIMARY KEY,
+    holding_id INTEGER NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('buy', 'sell')),
+    moved_at TEXT NOT NULL,
+    quantity TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+    fee_cents INTEGER NOT NULL DEFAULT 0 CHECK (fee_cents >= 0),
+    note TEXT,
+    created_at INTEGER NOT NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+  CREATE INDEX crypto_movements_holding ON crypto_movements(holding_id, moved_at, id);
+  `,
 ];
 
 // Pictogrammes de catégorie autorisés (voir web/icons.js).

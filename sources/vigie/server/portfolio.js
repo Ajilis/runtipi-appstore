@@ -1,4 +1,5 @@
 // Calculs du patrimoine : valeurs actuelles, conversions de devises, répartitions et historique.
+import { cryptoCost } from './crypto-cost.js';
 import { getSetting } from './db.js';
 import { loanSummary, loanValuations } from './loans.js';
 import { ownedCents, latentGain } from './real-estate.js';
@@ -136,6 +137,20 @@ export function loadState(db, today = todayIso(), userId = null) {
   }
   const schedules = getSchedules(db);
   const acquisitions = new Map(db.prepare('SELECT * FROM holding_acquisitions').all().filter(p => visibleIds.has(p.holding_id)).map(p => [p.holding_id,p]));
+  // Crypto-actif avec achats et ventes datés (1.8.0) : le prix de revient de la quantité restante (PRU × quantité)
+  // remplace le prix de revient saisi, à la date de l'état (bilan à une date passée compris).
+  const moves = new Map();
+  for (const m of db.prepare(`SELECT m.* FROM crypto_movements m JOIN crypto_holdings c ON c.holding_id = m.holding_id`).all()) {
+    if (!visibleIds.has(m.holding_id)) continue;
+    if (!moves.has(m.holding_id)) moves.set(m.holding_id, []);
+    moves.get(m.holding_id).push(m);
+  }
+  for (const [hid, list] of moves) {
+    const c = cryptoCost(list, today);
+    if (c.error || !c.count) continue;
+    if (c.cost_cents > 0) acquisitions.set(hid, { holding_id: hid, purchase_cents: c.cost_cents, purchased_at: c.first_date, source: 'crypto' });
+    else acquisitions.delete(hid);
+  }
   // La quote-part du titulaire est portée par l'avoir (holdings.ownership_bp), pour tous les avoirs.
   const ownerBp = new Map(holdings.map((h) => [h.id, h.ownership_bp ?? 10000]));
   const properties = new Map(db.prepare('SELECT * FROM real_estate').all()

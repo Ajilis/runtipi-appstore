@@ -1522,6 +1522,7 @@
     const property = h.property || null;
     const acquisition = h.acquisition || null;
     const cr = h.crypto || null; // suivi crypto existant
+    const crMoves = Boolean(cr && cr.cost && cr.cost.count); // achats et ventes enregistrés : actif et quantité imposés
     const cryptoAssets = settings.crypto_assets || [];
     const d = openDialog(html`<form class="dialog-body form" id="holding-form">
       ${dialogHead(existing ? `Modifier ${existing.name}` : 'Ajouter un avoir', existing ? '' : 'Un compte, un placement, un bien ou un crédit. Seule sa valeur compte, pas ses mouvements.')}
@@ -1571,11 +1572,12 @@
       </div>
       <section class="section crypto-fields" data-crypto hidden>
         ${h3i('crypto', 'Crypto-actif')}
-        <label class="field"><span>Actif</span><span class="with-pict"><span data-coin-preview>${cr?.asset ? coinLogo(cr.asset, 's36') : pict('crypto', 'neutral')}</span><select class="select" name="crypto_asset">
+        <label class="field"><span>Actif</span><span class="with-pict"><span data-coin-preview>${cr?.asset ? coinLogo(cr.asset, 's36') : pict('crypto', 'neutral')}</span><select class="select" name="crypto_asset" ${crMoves ? 'title="Actif fixé par les achats et ventes enregistrés"' : ''}>
+          ${crMoves ? cryptoAssets.filter((a) => a.id === cr.asset).map((a) => html`<option value="${a.id}" selected>${a.id} · ${a.name}</option>`) : html`
           <option value="">Non précisé (valeur saisie à la main)</option>
           <optgroup label="Quantité lue à une adresse blockchain">${cryptoAssets.filter((a) => a.by_address).map((a) => html`<option value="${a.id}" ${cr?.asset === a.id ? 'selected' : ''}>${a.id} · ${a.name}</option>`)}</optgroup>
-          <optgroup label="Quantité saisie">${cryptoAssets.filter((a) => !a.by_address).map((a) => html`<option value="${a.id}" ${cr?.asset === a.id ? 'selected' : ''}>${a.id} · ${a.name}</option>`)}</optgroup>
-        </select></span></label>
+          <optgroup label="Quantité saisie">${cryptoAssets.filter((a) => !a.by_address).map((a) => html`<option value="${a.id}" ${cr?.asset === a.id ? 'selected' : ''}>${a.id} · ${a.name}</option>`)}</optgroup>`}
+        </select></span>${crMoves ? html`<small>L'actif ne change plus : cet avoir a des achats et ventes enregistrés.</small>` : ''}</label>
         <fieldset class="mode" data-crypto-modes hidden>
           <legend class="sr-only">Suivi de la quantité</legend>
           <div class="seg seg-radio">
@@ -1588,7 +1590,7 @@
           <input class="input mono" name="crypto_address" maxlength="120" autocomplete="off" autocapitalize="off" spellcheck="false" value="${cr?.address || ''}" aria-describedby="crypto-address-hint">
           <small id="crypto-address-hint" data-address-hint></small></label>
         <label class="field" data-crypto-quantity hidden><span>Quantité détenue</span>
-          <input class="input amount" name="crypto_quantity" inputmode="decimal" autocomplete="off" placeholder="Ex. 0,25" value="${cr?.quantity ? cr.quantity.replace('.', ',') : ''}" aria-describedby="crypto-qty-hint">
+          <input class="input amount" name="crypto_quantity" inputmode="decimal" autocomplete="off" placeholder="Ex. 0,25" value="${crMoves ? cr.cost.quantity.replace('.', ',') : cr?.quantity ? cr.quantity.replace('.', ',') : ''}" ${crMoves ? 'readonly' : ''} aria-describedby="crypto-qty-hint">
           <small id="crypto-qty-hint" data-qty-hint aria-live="polite"></small></label>
         <p class="small muted" data-crypto-hint></p>
         ${settings.crypto_lookups === false ? html`<div class="notice bad" data-crypto-off hidden>${icon('alert')}<div>Les services externes des crypto-actifs sont désactivés par l'administrateur : le solde et le cours ne seront pas actualisés.</div></div>` : ''}
@@ -1652,7 +1654,7 @@
       estimateButtons.forEach((b) => { b.hidden = !show; });
       form.purchase_amount.required = show;
       form.purchased_at.required = show;
-      acquisitionSection.hidden = sel.dataset.kind !== 'asset' || show || sel.dataset.loan === 'true' || !!sc;
+      acquisitionSection.hidden = sel.dataset.kind !== 'asset' || show || sel.dataset.loan === 'true' || !!sc || crMoves; // PRU calculé par les opérations
     };
     form.category_id.addEventListener('change', syncRealEstate);
     form.currency.addEventListener('change', syncRealEstate);
@@ -1783,7 +1785,8 @@
       const out = $('[data-qty-hint]', form);
       const raw = form.crypto_quantity.value.trim();
       const q = parseQuantity(raw);
-      if (!raw) out.textContent = 'Nombre de jetons détenus, par exemple 0,25. Modifiez-le après un achat ou une vente.';
+      if (crMoves) out.textContent = 'Calculée à partir de vos achats et ventes (section Prix de revient du détail).';
+      else if (!raw) out.textContent = 'Nombre de jetons détenus, par exemple 0,25. Modifiez-le après un achat ou une vente.';
       else if (q === null) out.textContent = 'Nombre positif attendu, par exemple 0,25 ou 1.250,5.';
       else out.textContent = `Quantité retenue : ${num(Number(q), { max: 8 })} ${form.crypto_asset.value}`
         + (/^[1-9]\d{0,2}(\.\d{3})+$/.test(raw.replace(/\s/g, '')) ? ' (le point sépare les milliers ; pour une décimale, utilisez la virgule).' : '');
@@ -1995,6 +1998,7 @@
         <p class="muted">${property || partial ? `Valeur de votre quote-part (${pctBp(h.total_ownership_bp)})` : ''}${property || partial ? ' · ' : ''}${valueLine}${h.currency !== base && h.value_base !== null ? `, soit ${money(h.value_base, base)}` : ''}</p>
         ${shareTop(h, sharing, mayEdit, property, mailOk, correction)}</div>
       ${crypto ? cryptoPanel(h, crypto, mayEdit) : ''}
+      ${crypto ? pruPanel(h, crypto, latent, mayEdit) : ''}
       ${property ? html`<div class="panel"><dl class="kv">
         <dt>Votre quote-part</dt><dd>${num(h.total_ownership_bp / 100)} %</dd>
         <dt>Valeur d'achat (bien entier)</dt><dd>${money(property.purchase_cents, h.currency, { digits: 2 })}</dd>
@@ -2077,6 +2081,108 @@
         <button class="btn" type="button" data-action="crypto-refresh" data-id="${h.id}">${icon('update')}Actualiser maintenant</button>
         <button class="btn" type="button" data-action="edit-holding" data-id="${h.id}">${icon('edit')}Modifier le suivi</button></div>` : ''}
     </section>`;
+  }
+
+  // Panneau « Prix de revient (PRU) » d'un crypto-actif (1.8.0) : achats et ventes datés, prix de revient unitaire
+  // moyen pondéré, plus-values latente et réalisée. Méthode du coût moyen pondéré : une vente ne change pas le PRU.
+  function pruPanel(h, c, latent, mayEdit) {
+    const k = c.cost && !c.cost.error ? c.cost : null;
+    const cur = h.currency;
+    const q = (v) => (state.discret ? `${MASK} ${c.asset}` : qtyFmt(v, c.asset));
+    const unit = (cents) => (cents === null || cents === undefined ? '—' : state.discret ? MASK : `${num(cents / 100, { min: 2, max: cents < 100 ? 6 : 2 })} ${symbol(cur)}`);
+    const held = c.mode === 'address' ? c.last_quantity : c.mode === 'quantity' ? c.quantity : null;
+    const gap = k && c.mode === 'address' && held !== null && held !== undefined ? Number(held) - Number(k.quantity) : 0;
+    const canEdit = mayEdit;
+    const add = canEdit ? html`<div class="form-actions" style="justify-content:flex-start">
+      <button class="btn" type="button" data-action="crypto-move" data-id="${h.id}" data-kind="buy">${icon('plus')}Ajouter un achat</button>
+      ${k && Number(k.quantity) > 0 ? html`<button class="btn" type="button" data-action="crypto-move" data-id="${h.id}" data-kind="sell">${icon('down')}Ajouter une vente</button>` : ''}</div>` : '';
+    if (!k) return html`<section class="panel pru-panel" aria-label="Prix de revient">
+      ${h3i('chart', 'Prix de revient (PRU)')}
+      <p class="muted">Ajoutez vos achats de ${c.asset}, et vos ventes, avec leur date et le montant payé : Vigie calcule le prix de revient unitaire moyen pondéré (PRU), la plus-value latente et la plus-value réalisée.</p>
+      ${c.mode === 'quantity' && canEdit ? html`<p class="small muted">${icon('info')} La quantité suivie deviendra celle de vos opérations : saisissez tous vos achats, éventuellement regroupés.</p>` : ''}
+      ${add}</section>`;
+    const latentHtml = latent ? html`<b class="${latent.gain_cents >= 0 ? 'pos' : 'neg'}">${money(latent.gain_cents, cur, { sign: true })}</b> <span class="small ${latent.gain_cents >= 0 ? 'pos' : 'neg'}">${pct(latent.gain_pct / 100, { sign: true })}</span>` : '—';
+    return html`<section class="panel pru-panel" aria-label="Prix de revient">
+      <div class="loan-head">${h3i('chart', 'Prix de revient (PRU)')}<span class="tag">${k.count} opération${k.count > 1 ? 's' : ''}</span></div>
+      <div class="pru-stats">
+        <div><span>PRU</span><b>${unit(k.pru_cents)}</b><small>par ${c.asset}</small></div>
+        <div><span>Quantité</span><b>${q(k.quantity)}</b><small>d'après vos opérations</small></div>
+        <div><span>Prix de revient</span><b>${money(k.cost_cents, cur)}</b><small>quantité × PRU</small></div>
+        <div><span>Plus-value latente</span>${latentHtml}<small>${h.total_ownership_bp < 10000 ? `votre quote-part ${pctBp(h.total_ownership_bp)}` : 'valeur actuelle − prix de revient'}</small></div>
+        ${k.sells ? html`<div><span>Plus-value réalisée</span><b class="${k.realized_cents >= 0 ? 'pos' : 'neg'}">${money(k.realized_cents, cur, { sign: true })}</b><small>sur ${k.sells} vente${k.sells > 1 ? 's' : ''}</small></div>` : ''}
+        <div><span>Total investi</span><b>${money(k.invested_cents, cur)}</b><small>achats et frais depuis le ${dateFr(k.first_date)}</small></div>
+      </div>
+      ${gap && Math.abs(gap) > 1e-9 ? html`<div class="notice">${icon('info')}<div>Écart avec l'adresse : ${state.discret ? MASK : `${gap > 0 ? '+' : '−'}${num(Math.abs(gap), { max: 8 })} ${c.asset}`} (${q(held)} lus sur la blockchain). Frais de réseau, transfert ou opération non saisie ?</div></div>` : ''}
+      <ul class="ops" aria-label="Achats et ventes">${c.movements.map((m) => {
+        const price = Number(m.quantity) > 0 ? m.amount_cents / Number(m.quantity) : null;
+        return html`<li class="op ${m.kind}">
+          <span class="op-kind"><span class="tag ${m.kind === 'buy' ? 'brand' : 'warn'}">${m.kind === 'buy' ? 'Achat' : 'Vente'}</span><span class="small muted">${dateFr(m.moved_at)}</span></span>
+          <span class="op-qty"><b>${m.kind === 'buy' ? '+' : '−'}${q(m.quantity)}</b><span class="small muted">à ${unit(price)}${m.note ? ` · ${m.note}` : ''}</span></span>
+          <span class="op-amount"><b>${money(m.amount_cents, cur)}</b><span class="small muted">${m.fee_cents ? `frais ${money(m.fee_cents, cur)}` : 'sans frais'}</span></span>
+          <span class="op-after">${m.kind === 'sell' ? html`<span class="small muted">Plus-value</span><b class="${m.realized_cents >= 0 ? 'pos' : 'neg'}">${money(m.realized_cents, cur, { sign: true })}</b>` : html`<span class="small muted">PRU après</span><b>${unit(m.pru_after_cents)}</b>`}</span>
+          ${canEdit ? html`<span class="op-tools"><button class="btn icon ghost" type="button" data-action="crypto-move-edit" data-id="${m.id}" data-holding="${h.id}" aria-label="Modifier l'opération du ${dateFr(m.moved_at)}">${icon('edit')}</button>
+            <button class="btn icon ghost" type="button" data-action="crypto-move-delete" data-id="${m.id}" data-holding="${h.id}" aria-label="Supprimer l'opération du ${dateFr(m.moved_at)}">${icon('trash')}</button></span>` : ''}
+        </li>`;
+      })}</ul>
+      ${add}
+      <p class="small muted">Coût moyen pondéré : chaque achat ajoute sa quantité et son coût (frais compris) ; une vente retire une part du coût proportionnelle à la quantité vendue, sans changer le PRU. Pour l'impôt, le calcul français porte sur l'ensemble du portefeuille crypto.</p>
+    </section>`;
+  }
+
+  // Ajout ou modification d'un achat ou d'une vente de crypto-actif.
+  function cryptoMoveForm(holdingId, c, currency, kind, m = null) {
+    const k = c.cost && !c.cost.error ? c.cost : null;
+    const d = openDialog(html`<form class="dialog-body form" id="crypto-move-form">
+      ${dialogHead(m ? 'Modifier l’opération' : `${kind === 'buy' ? 'Achat' : 'Vente'} ${deAsset(c.asset)}`, `${c.asset} · ${c.name} · montants en ${currency}`)}
+      <fieldset class="mode"><legend class="sr-only">Opération</legend><div class="seg seg-radio">
+        <label><input type="radio" name="kind" value="buy" ${kind === 'buy' ? 'checked' : ''}><span>${icon('plus')}Achat</span></label>
+        <label><input type="radio" name="kind" value="sell" ${kind === 'sell' ? 'checked' : ''}><span>${icon('down')}Vente</span></label></div></fieldset>
+      <div class="grid-2">
+        <label class="field"><span>Date</span><input class="input" type="date" name="date" required max="${todayIso()}" value="${m ? m.moved_at : todayIso()}"></label>
+        <label class="field"><span>Quantité (${c.asset})</span><input class="input amount" name="quantity" required inputmode="decimal" autocomplete="off" placeholder="Ex. 0,05" value="${m ? m.quantity.replace('.', ',') : ''}"></label>
+        <label class="field"><span data-amount-label>${kind === 'buy' ? 'Montant payé' : 'Montant reçu'} (${currency})</span><input class="input amount" name="amount" required inputmode="decimal" autocomplete="off" placeholder="Ex. 3.000" value="${m ? centsInput(m.amount_cents) : ''}"></label>
+        <label class="field"><span>Frais (${currency}, facultatif)</span><input class="input amount" name="fee" inputmode="decimal" autocomplete="off" placeholder="0" value="${m && m.fee_cents ? centsInput(m.fee_cents) : ''}"></label>
+      </div>
+      <label class="field"><span>Note (facultatif)</span><input class="input" name="note" maxlength="200" placeholder="Plateforme, portefeuille…" value="${m?.note || ''}"></label>
+      <div class="notice info" data-move-preview hidden>${icon('sum')}<div data-move-text></div></div>
+      <p class="small muted">Récompense de staking ou cadeau : un achat à 0 ${currency}. Échange contre une autre crypto : une vente ici et un achat sur l'autre avoir, à la valeur du jour de l'échange.</p>
+      <p class="error-text" hidden></p>
+      <div class="form-actions"><button class="btn" type="button" data-action="close-dialog">Annuler</button><button class="btn primary" type="submit">${icon('check')}${m ? 'Enregistrer' : 'Ajouter'}</button></div>
+    </form>`);
+    const form = $('#crypto-move-form', d);
+    const preview = () => {
+      const buy = form.querySelector('[name=kind]:checked').value === 'buy';
+      $('[data-amount-label]', form).textContent = `${buy ? 'Montant payé' : 'Montant reçu'} (${currency})`;
+      const qty = Number(parseQuantity(form.quantity.value));
+      const cents = parseCents(form.amount.value);
+      const fee = form.fee.value.trim() ? parseCents(form.fee.value) : 0;
+      const lines = [];
+      if (qty > 0 && cents !== null) lines.push(`Prix unitaire : ${num(cents / 100 / qty, { min: 2, max: cents / qty < 100 ? 6 : 2 })} ${symbol(currency)} par ${c.asset}`);
+      // Effet sur le PRU si l'opération est la plus récente (sinon tout est recalculé à l'enregistrement).
+      const latest = c.movements && c.movements.length ? c.movements[0].moved_at : '';
+      if (!m && k && qty > 0 && cents !== null && fee !== null && form.date.value >= latest) {
+        const held = Number(k.quantity);
+        if (buy) lines.push(`Après cet achat : ${qtyFmt(String(held + qty), c.asset)}, PRU ${num((k.cost_cents + cents + fee) / 100 / (held + qty), { min: 2, max: 2 })} ${symbol(currency)}`);
+        else if (qty > held + 1e-12) lines.push(`Vous détenez ${qtyFmt(k.quantity, c.asset)} d'après vos opérations : vente impossible.`);
+        else lines.push(`Plus-value réalisée estimée : ${money(Math.round(cents - fee - k.cost_cents * qty / held), currency, { sign: true })}`);
+      }
+      $('[data-move-preview]', form).hidden = !lines.length;
+      $('[data-move-text]', form).innerHTML = part(html`${lines.map((l) => html`<p>${l}</p>`)}`);
+    };
+    form.addEventListener('input', preview);
+    form.addEventListener('change', preview);
+    preview();
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const v = formData(form);
+      await withBusy(e.submitter, async () => {
+        try {
+          const r = await api(m ? 'PATCH' : 'POST', m ? `/api/crypto-movements/${m.id}` : `/api/holdings/${holdingId}/crypto/movements`, v);
+          toast(r.warning ? `Opération enregistrée, mais la valeur n'a pas pu être recalculée : ${r.warning}` : m ? 'Opération modifiée.' : v.kind === 'buy' ? 'Achat ajouté.' : 'Vente ajoutée.', r.warning ? 'error' : undefined);
+          reopenHolding(holdingId);
+        } catch (err) { const p = $('.error-text', form); p.textContent = err.message; p.hidden = false; }
+      });
+    });
   }
 
   // Panneau « Échéancier » d'un avoir : progression, chiffres clés, prochaine échéance et tableau d'amortissement.
@@ -3053,6 +3159,7 @@
     partage_correction_proposee: 'Correction de répartition proposée', partage_correction_acceptee: 'Correction de répartition acceptée',
     partage_correction_refusee: 'Correction de répartition refusée', partage_correction_annulee: 'Correction de répartition annulée',
     partage_repartition_corrigee: 'Répartition corrigée',
+    crypto_operation_ajoutee: 'Opération crypto ajoutée', crypto_operation_modifiee: 'Opération crypto modifiée', crypto_operation_supprimee: 'Opération crypto supprimée',
     partage_immobilier_envoye: 'Partage proposé', partage_immobilier_accepte: 'Partage accepté', partage_immobilier_refuse: 'Partage refusé', partage_immobilier_revoque: 'Partage retiré',
     lien_mot_de_passe: 'Lien de réinitialisation envoyé', logo_personnalise: 'Logo personnalisé', logo_retire: 'Logo personnalisé retiré', logo_recherche: 'Logo recherché', logos_recherche: 'Logos recherchés', logos_reessai: 'Logos réessayés', titulaire_ajoute: 'Titulaire ajouté', titulaire_renomme: 'Titulaire renommé', titulaire_supprime: 'Titulaire supprimé', export: 'Export', import: 'Restauration', sauvegarde: 'Sauvegarde', sauvegarde_telechargee: 'Sauvegarde téléchargée',
   };
@@ -3127,6 +3234,23 @@
         reopenHolding(Number(b.dataset.holding));
       } catch (err) { fail(err); }
     }),
+    'crypto-move': (b) => {
+      const d = $('dialog[open]');
+      const h = d && d._holding;
+      if (h && h.crypto) cryptoMoveForm(h.id, h.crypto, h.currency, b.dataset.kind);
+    },
+    'crypto-move-edit': (b) => {
+      const d = $('dialog[open]');
+      const h = d && d._holding;
+      const m = h && h.crypto ? h.crypto.movements.find((x) => x.id === Number(b.dataset.id)) : null;
+      if (m) cryptoMoveForm(h.id, h.crypto, h.currency, m.kind, m);
+    },
+    'crypto-move-delete': async (b) => {
+      const holdingId = Number(b.dataset.holding);
+      if (!(await confirmDialog({ title: 'Supprimer cette opération ?', message: 'Le PRU, la quantité et les plus-values seront recalculés.', confirm: 'Supprimer', danger: true }))) { openHolding(holdingId); return; }
+      try { const r = await api('DELETE', `/api/crypto-movements/${b.dataset.id}`); toast(r.warning ? `Opération supprimée ; ${r.warning}` : 'Opération supprimée.'); } catch (err) { fail(err); }
+      reopenHolding(holdingId);
+    },
     'crypto-refresh': async (b) => withBusy(b, async () => {
       try {
         const r = await api('POST', `/api/holdings/${b.dataset.id}/crypto/refresh`, {});

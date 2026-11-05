@@ -15,6 +15,7 @@ import {
 } from './portfolio.js';
 import { fetchEcbRates, ratesToBase } from './fx.js';
 import { formatCents, formatNumber } from './format.js';
+import { cryptoCost } from './crypto-cost.js';
 import { CRYPTO_ASSETS, ASSET_BY_ID, ADDRESS_EXAMPLE, checkAddress, parseQuantity, cryptoView, CryptoError } from './crypto.js';
 import { createBackup, listBackups, pruneBackups, BACKUP_NAME } from './backup.js';
 import { TRANSPARENT_PNG, CUSTOM_KEY, sniffImage, imageSize } from './logos.js';
@@ -890,7 +891,7 @@ export function registerRoutes(router, deps) {
       sharing: sharingByHolding(db, state).get(id) || null,
       correction: correctionFor(id, ctx.user.id),
       mail_ready: Boolean(mailReady() && mailConf()),
-      crypto: cryptoView(cryptoRow(id), { enabled: cfg.CRYPTO_LOOKUPS !== false }),
+      crypto: cryptoDetail(id),
       valuations, schedule, base_currency: state.base };
   });
 
@@ -1181,7 +1182,7 @@ export function registerRoutes(router, deps) {
   // --- Crypto-actifs : actif, suivi par adresse blockchain, par quantité, ou valeur saisie à la main ------------
   const isTracked = (id) => Boolean(db.prepare("SELECT 1 FROM crypto_holdings WHERE holding_id = ? AND mode <> 'manual'").get(id));
   const cryptoRow = (id) => db.prepare('SELECT * FROM crypto_holdings WHERE holding_id = ?').get(id) || null;
-  function cryptoFields(b, cat) {
+  function cryptoFields(b, cat, holdingId = null) {
     if (!Object.hasOwn(b, 'crypto')) return undefined; // inchangé
     if (b.crypto === null) return null; // suivi retiré
     if (cat.kind !== 'asset') fail(400, 'invalid_field', 'Le suivi d’un crypto-actif concerne un actif, pas un passif.');
@@ -1190,12 +1191,21 @@ export function registerRoutes(router, deps) {
     const asset = oneOf(String(c.asset || '').toUpperCase(), [...ASSET_BY_ID.keys()], 'Crypto-actif');
     const mode = oneOf(c.mode || 'address', ['address', 'quantity', 'manual'], 'Suivi');
     let address = null, quantity = null;
+    // Avec des achats et ventes enregistrés (1.8.0), l'actif ne change plus et la quantité vient des opérations.
+    const moves = holdingId ? movementsOf(holdingId) : [];
+    const old = holdingId ? cryptoRow(holdingId) : null;
+    if (moves.length && old && old.asset !== asset)
+      fail(409, 'has_movements', `Cet avoir a des achats et ventes en ${old.asset} : supprimez-les avant de changer d'actif.`);
     if (mode === 'address') {
       try { address = checkAddress(asset, c.address); } catch (err) { fail(400, 'invalid_field', err.message); }
     }
     if (mode === 'quantity') {
-      quantity = parseQuantity(c.quantity);
-      if (quantity === null) fail(400, 'invalid_field', 'Quantité : nombre positif attendu, par exemple 0,25 ou 1.250,5.');
+      const cost = moves.length ? cryptoCost(moves) : null;
+      if (cost && !cost.error) quantity = cost.quantity;
+      else {
+        quantity = parseQuantity(c.quantity);
+        if (quantity === null) fail(400, 'invalid_field', 'Quantité : nombre positif attendu, par exemple 0,25 ou 1.250,5.');
+      }
     }
     return { asset, mode, address, quantity };
   }
@@ -1316,7 +1326,9 @@ export function registerRoutes(router, deps) {
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(f.category_id);
     const prop = propertyFields(ctx.body, cat, f.currency, id);
     const ownBp = holdingOwnership(ctx.body, prop, id);
-    const cryptoConf = cryptoFields(ctx.body, cat);
+    const cryptoConf = cryptoFields(ctx.body, cat, id);
+    if ((cryptoConf === null || (cryptoConf === undefined && cat.kind !== 'asset')) && movementsOf(id).length)
+      fail(409, 'has_movements', 'Cet avoir a des achats et ventes enregistrés : supprimez-les avant de retirer le suivi du crypto-actif.');
     const trackedAfter = cryptoConf === undefined ? isTracked(id) : Boolean(cryptoConf && cryptoConf.mode !== 'manual');
     const amountChange = ctx.body.amount !== undefined && ctx.body.amount !== ''
       ? amount(ctx.body.amount, 'Valeur actuelle') : null;
@@ -1364,7 +1376,96 @@ export function registerRoutes(router, deps) {
     if (h.closed_at) fail(409, 'closed', "Rouvrez l'avoir avant de l'actualiser.");
     if (!isTracked(id)) fail(409, 'not_tracked', 'Cet avoir n’est pas suivi automatiquement.');
     const error = await refreshCrypto(id);
-    return { ok: !error, error, crypto: cryptoView(cryptoRow(id), { enabled: cfg.CRYPTO_LOOKUPS !== false }) };
+    return { ok: !error, error, crypto: cryptoDetail(id) };
+  });
+
+  // --- Achats et ventes datés d'un crypto-actif : PRU, plus-values latente et réalisée (1.8.0) ---------------
+  const movementsOf = (id) => db.prepare('SELECT * FROM crypto_movements WHERE holding_id = ? ORDER BY moved_at, id').all(id);
+  const qtyText = (q) => formatNumber(Number(q), { max: 8 });
+  const dayText = (iso) => iso.split('-').reverse().join('/');
+  function cryptoDetail(id) {
+    const row = cryptoRow(id);
+    if (!row) return null;
+    const view = cryptoView(row, { enabled: cfg.CRYPTO_LOOKUPS !== false });
+    const list = movementsOf(id);
+    if (!list.length) return { ...view, cost: null, movements: [] };
+    const c = cryptoCost(list);
+    const steps = new Map((c.steps || []).map((x) => [x.id, x]));
+    const { steps: _ignored, ...summary } = c;
+    return { ...view, cost: c.error ? { error: c.error } : summary,
+      movements: [...list].reverse().map((m) => ({ id: m.id, kind: m.kind, moved_at: m.moved_at, quantity: m.quantity,
+        amount_cents: m.amount_cents, fee_cents: m.fee_cents, note: m.note, ...(steps.get(m.id) || {}) })) };
+  }
+  function movementFields(b) {
+    const kind = oneOf(b.kind, ['buy', 'sell'], 'Opération');
+    if (b.date === undefined || b.date === null || b.date === '') fail(400, 'invalid_field', 'Date : obligatoire.');
+    const moved_at = valuationDate(b.date);
+    const quantity = parseQuantity(b.quantity);
+    if (quantity === null) fail(400, 'invalid_field', 'Quantité : nombre positif attendu, par exemple 0,25.');
+    const amount_cents = amount(b.amount, kind === 'buy' ? 'Montant payé' : 'Montant reçu');
+    const fee_cents = b.fee === undefined || b.fee === null || String(b.fee).trim() === '' ? 0 : amount(b.fee, 'Frais');
+    if (amount_cents < 0 || fee_cents < 0) fail(400, 'invalid_field', 'Montants : ils ne peuvent pas être négatifs.');
+    if (kind === 'sell' && fee_cents > amount_cents) fail(400, 'invalid_field', 'Frais : ils dépassent le montant reçu.');
+    const note = String(b.note ?? '').trim().slice(0, 200) || null;
+    return { kind, moved_at, quantity, amount_cents, fee_cents, note };
+  }
+  // Après chaque changement : pas de vente au-delà de la quantité détenue à sa date ; en mode quantité,
+  // la quantité suivie devient celle qui résulte des opérations.
+  function syncMovements(id, asset) {
+    const c = cryptoCost(movementsOf(id));
+    if (c.error) fail(409, 'oversell', `Vente du ${dayText(c.error.moved_at)} : ${qtyText(c.error.sold)} ${asset} vendus, pour ${qtyText(c.error.held)} ${asset} détenus à cette date. Ajoutez d'abord les achats antérieurs.`);
+    const row = cryptoRow(id);
+    if (row.mode === 'quantity' && c.count && row.quantity !== c.quantity)
+      db.prepare('UPDATE crypto_holdings SET quantity = ?, last_quantity = NULL, updated_at = ? WHERE holding_id = ?').run(c.quantity, Date.now(), id);
+    return c;
+  }
+  const movementText = (h, asset, m) => `${h.name} : ${m.kind === 'buy' ? 'achat' : 'vente'} de ${qtyText(m.quantity)} ${asset} le ${dayText(m.moved_at)}, ${formatCents(m.amount_cents)} ${h.currency}${m.fee_cents ? ` (frais ${formatCents(m.fee_cents)})` : ''}`;
+  function ownedMovement(mid, userId) {
+    const m = db.prepare('SELECT * FROM crypto_movements WHERE id = ?').get(intId(mid));
+    if (!m) fail(404, 'not_found', 'Opération introuvable.');
+    const h = ownedHolding(m.holding_id, userId);
+    const row = cryptoRow(m.holding_id);
+    if (!row) fail(409, 'not_crypto', "Choisissez d'abord le crypto-actif de cet avoir (Modifier).");
+    return { m, h, row };
+  }
+  const revalue = async (id, row) => (row.mode === 'quantity' ? refreshCrypto(id) : null);
+
+  router.post('/api/holdings/:id/crypto/movements', { auth: 'editor' }, async (ctx) => {
+    const id = intId(ctx.params.id);
+    const h = ownedHolding(id, ctx.user.id);
+    const row = cryptoRow(id);
+    if (!row) fail(409, 'not_crypto', "Choisissez d'abord le crypto-actif de cet avoir (Modifier).");
+    const m = movementFields(ctx.body);
+    transaction(db, () => {
+      db.prepare(`INSERT INTO crypto_movements (holding_id, kind, moved_at, quantity, amount_cents, fee_cents, note, created_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, m.kind, m.moved_at, m.quantity, m.amount_cents, m.fee_cents, m.note, Date.now(), ctx.user.id);
+      syncMovements(id, row.asset);
+    });
+    audit(ctx, 'crypto_operation_ajoutee', movementText(h, row.asset, m));
+    const warning = await revalue(id, row);
+    return { crypto: cryptoDetail(id), warning };
+  });
+  router.patch('/api/crypto-movements/:id', { auth: 'editor' }, async (ctx) => {
+    const { m: old, h, row } = ownedMovement(ctx.params.id, ctx.user.id);
+    const m = movementFields(ctx.body);
+    transaction(db, () => {
+      db.prepare(`UPDATE crypto_movements SET kind = ?, moved_at = ?, quantity = ?, amount_cents = ?, fee_cents = ?, note = ? WHERE id = ?`)
+        .run(m.kind, m.moved_at, m.quantity, m.amount_cents, m.fee_cents, m.note, old.id);
+      syncMovements(h.id, row.asset);
+    });
+    audit(ctx, 'crypto_operation_modifiee', movementText(h, row.asset, m));
+    const warning = await revalue(h.id, row);
+    return { crypto: cryptoDetail(h.id), warning };
+  });
+  router.delete('/api/crypto-movements/:id', { auth: 'editor' }, async (ctx) => {
+    const { m, h, row } = ownedMovement(ctx.params.id, ctx.user.id);
+    transaction(db, () => {
+      db.prepare('DELETE FROM crypto_movements WHERE id = ?').run(m.id);
+      syncMovements(h.id, row.asset);
+    });
+    audit(ctx, 'crypto_operation_supprimee', movementText(h, row.asset, m));
+    const warning = await revalue(h.id, row);
+    return { crypto: cryptoDetail(h.id), warning };
   });
 
   router.delete('/api/holdings/:id', { auth: 'editor' }, (ctx) => {
@@ -1920,7 +2021,7 @@ export function registerRoutes(router, deps) {
   // Journal. Chaque compte consulte le sien (Mon compte). L'administrateur voit en plus les connexions, la sécurité
   // et l'administration de tous les comptes, mais jamais le détail du patrimoine des autres (noms d'avoirs, montants).
   const PERSONAL_ACTIONS = `(action GLOB 'avoir_*' OR action GLOB 'valeur_*' OR action = 'mise_a_jour_rapide'
-    OR action GLOB 'categorie_*' OR action GLOB 'titulaire_*' OR action GLOB 'echeancier_*' OR action GLOB 'partage_*'
+    OR action GLOB 'categorie_*' OR action GLOB 'titulaire_*' OR action GLOB 'echeancier_*' OR action GLOB 'partage_*' OR action GLOB 'crypto_*'
     OR action IN ('export', 'import'))`;
   const auditPage = (ctx, where, params) => {
     const before = Number(ctx.query.get('before')) || Number.MAX_SAFE_INTEGER;
@@ -1952,6 +2053,7 @@ export function registerRoutes(router, deps) {
       real_estate: db.prepare('SELECT holding_id,purchase_cents,purchased_at,property_type,address,surface_m2,condition,ownership_bp FROM real_estate ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
       holding_acquisitions: db.prepare('SELECT holding_id,purchase_cents,purchased_at FROM holding_acquisitions ORDER BY holding_id').all().filter(p => owned.has(p.holding_id)),
       crypto_holdings: db.prepare('SELECT holding_id, asset, mode, address, quantity FROM crypto_holdings ORDER BY holding_id').all().filter((p) => owned.has(p.holding_id)),
+      crypto_movements: db.prepare('SELECT holding_id, kind, moved_at, quantity, amount_cents, fee_cents, note FROM crypto_movements ORDER BY holding_id, moved_at, id').all().filter((p) => owned.has(p.holding_id)),
       holding_shares: db.prepare(`SELECT holding_id,recipient_id,ownership_bp,deducted_bp FROM holding_shares
         WHERE accepted_at IS NOT NULL AND revoked_at IS NULL AND declined_at IS NULL ORDER BY holding_id,recipient_id`).all().filter((p) => owned.has(p.holding_id)),
       institution_logos: db.prepare('SELECT key, name, data FROM institution_logos ORDER BY key').all().map((r) => ({ key: r.key, name: r.name, data: Buffer.from(r.data).toString('base64') })),
@@ -2057,10 +2159,19 @@ export function registerRoutes(router, deps) {
           || typeof sc.annual_rate !== 'number' || !(sc.annual_rate >= 0 && sc.annual_rate <= 50) || !isIsoDate(sc.start_date)) fail(400, 'invalid_import', 'Échéancier invalide.');
         saveSchedule(hid(sc.holding_id, 'Échéancier'), sc);
       }
+      // Achats et ventes avant le suivi : en mode quantité, la quantité suivie en découle.
+      for (const m of Array.isArray(d.crypto_movements) ? d.crypto_movements : []) {
+        const id = hid(m.holding_id, 'Opération crypto');
+        if (!['buy', 'sell'].includes(m.kind) || !isIsoDate(m.moved_at) || parseQuantity(m.quantity) === null
+          || !Number.isInteger(m.amount_cents) || m.amount_cents < 0 || !Number.isInteger(m.fee_cents ?? 0) || (m.fee_cents ?? 0) < 0) fail(400, 'invalid_import', 'Opération crypto invalide.');
+        db.prepare(`INSERT INTO crypto_movements (holding_id, kind, moved_at, quantity, amount_cents, fee_cents, note, created_at, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, m.kind, m.moved_at, parseQuantity(m.quantity), m.amount_cents, m.fee_cents ?? 0,
+          m.note ? String(m.note).slice(0, 200) : null, Date.now(), ctx.user.id);
+      }
       for (const c of Array.isArray(d.crypto_holdings) ? d.crypto_holdings : []) {
         const id = hid(c.holding_id, 'Crypto-actif');
         const cat = db.prepare('SELECT c.* FROM categories c JOIN holdings h ON h.category_id = c.id WHERE h.id = ?').get(id);
-        saveCrypto(id, cryptoFields({ crypto: c }, cat));
+        saveCrypto(id, cryptoFields({ crypto: c }, cat, id));
       }
       // Seuls les partages déjà approuvés sont restaurés, vers des comptes présents sur ce serveur ;
       // les demandes non acceptées ne sont pas réémises. Les exports antérieurs à 0.10.0 disent real_estate_shares.

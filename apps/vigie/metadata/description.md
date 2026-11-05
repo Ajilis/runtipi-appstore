@@ -1,6 +1,6 @@
 # Vigie Patrimoine
 
-**Version du catalogue Runtipi : 35** · **Version de Vigie : 1.7.0** · **Runtipi minimum : 4.9.1**
+**Version du catalogue Runtipi : 36** · **Version de Vigie : 1.8.0** · **Runtipi minimum : 4.9.1**
 
 ## 1. Pourquoi Vigie ?
 
@@ -64,6 +64,7 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Actualisation automatique** à l'enregistrement, peu après le démarrage puis **toutes les 6 heures**, et à la demande (**Actualiser maintenant**). Une valeur par jour dans l'historique, avec la quantité et le cours en note (« Auto : 0,6221 BTC × 61.234,56 EUR ») ; la courbe et les totaux se mettent à jour seuls.
 - **Détail de l'avoir** : actif, adresse abrégée avec lien vers l'explorateur, quantité, cours retenu, date et heure de la dernière actualisation. En cas d'échec (explorateur ou CoinGecko indisponible), le message s'affiche et la dernière valeur calculée est conservée.
 - **Valeur à la main** toujours possible : on indique l'actif sans suivi automatique, comme avant.
+- **Prix de revient (PRU)** (1.8.0) : achats et ventes datés, prix de revient unitaire moyen pondéré, plus-values latente et réalisée, quantité déduite des opérations en suivi par quantité, écart signalé en suivi par adresse.
 - **Logo de l'actif** (1.6.0) sur la ligne de l'avoir, dans son détail et dans le formulaire, l'établissement restant en médaillon. Logo demandé une fois à CoinGecko puis servi par Vigie ; le symbole (BTC, ETH…) s'affiche en attendant.
 - **Limites** : une adresse par avoir. Un portefeuille à plusieurs adresses (portefeuille HD, Ledger, Trezor…) se suit avec un avoir par adresse ou en quantité saisie. Les jetons hors réseau Ethereum (USDC sur Solana, par exemple) et les montants placés sur une plateforme d'échange se suivent en quantité.
 - **Confidentialité** : seuls l'adresse publique et le nom de l'actif sont envoyés, jamais un montant, un nom ou une clé ; ne saisissez jamais de clé privée ni de phrase de récupération. Une adresse publique dévoile son solde à qui la connaît : l'explorateur interrogé voit l'adresse IP de votre serveur. L'administrateur coupe ces échanges dans **Réglages → Sécurité** (« Lire les soldes et les cours des crypto-actifs ») ou par `CRYPTO_LOOKUPS=false`.
@@ -128,6 +129,15 @@ Vigie n'est ni un logiciel de comptabilité, ni un outil de conseil financier ou
 - **Données persistantes** dans `APP_DATA_DIR/data/` : fichier de configuration `config/vigie.env`, base `db/vigie.sqlite` et `backups/`.
 
 ## Nouveautés par version
+
+### Version 1.8.0 : prix de revient (PRU) des crypto-actifs
+
+- Dans le détail d'un avoir crypto, nouvelle section **Prix de revient (PRU)** : on ajoute ses **achats et ventes datés** (quantité, montant payé ou reçu, frais, note), on peut les modifier ou les supprimer.
+- Vigie calcule le **prix de revient unitaire moyen pondéré** (PRU), le prix de revient de la quantité restante, la **plus-value latente** (valeur actuelle − prix de revient, avec le pourcentage), la **plus-value réalisée** à chaque vente et le total investi. Méthode du coût moyen pondéré : une vente retire une part du coût proportionnelle à la quantité vendue, sans changer le PRU de ce qui reste.
+- En suivi **par quantité**, la quantité suivie devient celle des opérations ; en suivi **par adresse**, la quantité reste celle lue sur la blockchain et un écart éventuel est signalé (frais de réseau, transfert, opération oubliée).
+- Garde-fous : pas de vente au-delà de la quantité détenue à sa date ; l'actif ne change plus tant que des opérations existent.
+- La plus-value latente des listes, du détail et du bilan utilise ce prix de revient. Les opérations sont incluses dans l'export JSON, restaurées avec lui et inscrites au journal.
+- Le calcul sert au suivi du patrimoine ; pour l'impôt, la méthode française porte sur l'ensemble du portefeuille crypto.
 
 ### Version 1.7.0 : bilan en paysage, en couleur et avec les logos
 
