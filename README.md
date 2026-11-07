@@ -1,5 +1,11 @@
 # Ajilis Runtipi App Store
 
+## LobeHub 2.3.2 — Runtipi 4.9.1
+
+Nouvelle application **LobeHub** : IA auto-hébergée avec ParadeDB/PostgreSQL, Redis et RustFS persistants, clé JWKS générée automatiquement, accès LAN `http://IP_DU_SERVEUR:8292` et Cloudflare Tunnel (LobeHub + hostname S3) **sans Traefik**. [Docker Compose](apps/lobehub/docker-compose.yml) · [Configuration Runtipi](apps/lobehub/config.json) · [Installation/Cloudflare/persistance](apps/lobehub/metadata/description.md).
+
+---
+
 ## CloakBrowser — versions
 
 | Composant | Version |

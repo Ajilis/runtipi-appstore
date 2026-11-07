@@ -1,0 +1,124 @@
+{
+  "name": "LobeHub",
+  "id": "lobehub",
+  "available": true,
+  "short_desc": "Plateforme d'agents et de conversations IA auto-hebergee, avec base de donnees et stockage persistants.",
+  "author": "LobeHub",
+  "port": 8292,
+  "categories": [
+    "ai"
+  ],
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1. Acces direct LAN sur 8292 et Cloudflare Tunnel sans Traefik. ParadeDB/PostgreSQL, Redis et RustFS persistants ; stockage S3 sur 8293. Le mode Agent Gateway n'est pas inclus.",
+  "tipi_version": 1,
+  "version": "2.3.2",
+  "source": "https://github.com/lobehub/lobehub",
+  "website": "https://lobehub.com",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "text",
+      "label": "URL HTTPS publique LobeHub (Cloudflare)",
+      "hint": "Origine canonique, sans slash final. Tunnel vers http://IP_DU_SERVEUR:8292.",
+      "placeholder": "https://lobe.exemple.fr",
+      "required": true,
+      "env_variable": "LOBE_PUBLIC_URL"
+    },
+    {
+      "type": "text",
+      "label": "URL HTTP locale LobeHub",
+      "hint": "URL exacte utilisée sur le LAN pour autoriser cette origine dans Better Auth. Adapter le port si vous le changez dans Runtipi.",
+      "placeholder": "http://192.168.1.10:8292",
+      "required": true,
+      "env_variable": "LOBE_LAN_ORIGIN"
+    },
+    {
+      "type": "text",
+      "label": "URL HTTPS publique du stockage S3",
+      "hint": "Deuxieme hostname Cloudflare Tunnel vers http://IP_DU_SERVEUR:8293, necessaire aux uploads depuis le navigateur.",
+      "placeholder": "https://s3.exemple.fr",
+      "required": true,
+      "env_variable": "LOBE_S3_PUBLIC_URL"
+    },
+    {
+      "type": "text",
+      "label": "E-mails autorises a s'inscrire",
+      "hint": "Adresse(s) e-mail autorisee(s), separees par des virgules. Evite les inscriptions ouvertes sur Internet.",
+      "placeholder": "admin@exemple.fr",
+      "required": true,
+      "env_variable": "LOBE_ALLOWED_EMAILS"
+    },
+    {
+      "type": "random",
+      "label": "Secret Better Auth (conserver)",
+      "min": 64,
+      "encoding": "hex",
+      "required": true,
+      "env_variable": "LOBE_AUTH_SECRET"
+    },
+    {
+      "type": "random",
+      "label": "Cle de chiffrement LobeHub (conserver)",
+      "min": 64,
+      "encoding": "hex",
+      "required": true,
+      "env_variable": "LOBE_KEY_VAULTS_SECRET"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe ParadeDB/PostgreSQL (conserver)",
+      "min": 48,
+      "encoding": "hex",
+      "required": true,
+      "env_variable": "LOBE_DB_PASSWORD"
+    },
+    {
+      "type": "random",
+      "label": "Cle d'acces RustFS S3 (conserver)",
+      "min": 24,
+      "encoding": "hex",
+      "required": true,
+      "env_variable": "LOBE_S3_ACCESS_KEY"
+    },
+    {
+      "type": "random",
+      "label": "Secret RustFS S3 (conserver)",
+      "min": 48,
+      "encoding": "hex",
+      "required": true,
+      "env_variable": "LOBE_S3_SECRET_KEY"
+    },
+    {
+      "type": "text",
+      "label": "IP d'ecoute sur le serveur",
+      "hint": "0.0.0.0 publie sur toutes les interfaces ; utiliser l'IP LAN du serveur pour restreindre l'ecoute, puis filtrer par pare-feu.",
+      "required": false,
+      "default": "0.0.0.0",
+      "env_variable": "LOBE_BIND_IP"
+    },
+    {
+      "type": "number",
+      "label": "Port HTTP local du stockage S3",
+      "hint": "Defaut 8293. Adapter egalement l'origine Cloudflare Tunnel.",
+      "required": false,
+      "default": 8293,
+      "env_variable": "LOBE_S3_HOST_PORT"
+    },
+    {
+      "type": "password",
+      "label": "Cle API OpenAI (facultative)",
+      "hint": "Peut aussi etre configuree par les utilisateurs dans l'application.",
+      "required": false,
+      "env_variable": "LOBE_OPENAI_API_KEY"
+    }
+  ],
+  "created_at": 1794052800000,
+  "updated_at": 1794052800000
+}
