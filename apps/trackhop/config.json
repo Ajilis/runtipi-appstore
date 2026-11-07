@@ -1,0 +1,66 @@
+{
+  "name": "Trackhop",
+  "id": "trackhop",
+  "available": true,
+  "short_desc": "Synchronise automatiquement les playlists entre services musicaux, depuis votre propre serveur.",
+  "author": "xlollx",
+  "port": 8293,
+  "categories": [
+    "media",
+    "utilities"
+  ],
+  "description": "Trackhop Server 1.8.1 (bêta) : synchronisation de playlists, transferts et planification sur votre NAS ou serveur. Configuration, états, synchronisations et connexions conservés sur le volume persistant /data (fichiers JSON, sans base SQL). Accès HTTP sur le LAN et HTTPS via Cloudflare Tunnel, sans routage Traefik. Mot de passe administrateur généré lors de l’installation. Certains services nécessitent des identifiants OAuth propres et un domaine HTTPS public.",
+  "tipi_version": 1,
+  "version": "1.8.1",
+  "source": "https://github.com/xlollx/Trackhop",
+  "website": "https://trackhop.org/guide/docker",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "text",
+      "label": "URL publique Trackhop (Cloudflare Tunnel)",
+      "hint": "Adresse HTTPS exacte, sans slash final, par exemple https://trackhop.exemple.fr. Sert aux liens de connexion OAuth /callback. Le tunnel doit viser http://IP_DU_SERVEUR:8293.",
+      "placeholder": "https://trackhop.exemple.fr",
+      "regex": "^https://[^/\\s]+$",
+      "pattern_error": "Indiquez une URL HTTPS sans chemin ni slash final.",
+      "required": true,
+      "env_variable": "TRACKHOP_PUBLIC_URL"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe administrateur Trackhop",
+      "hint": "Mot de passe généré automatiquement pour le compte admin. Conservez-le dans un gestionnaire de mots de passe ; ne le remplacez pas sans prévoir les connexions existantes.",
+      "required": true,
+      "min": 48,
+      "encoding": "hex",
+      "env_variable": "TRACKHOP_PASSWORD"
+    },
+    {
+      "type": "boolean",
+      "label": "Activer plusieurs utilisateurs",
+      "hint": "Désactivé : usage mono-utilisateur, identifiant admin. Activé : chaque membre peut disposer de ses propres services et synchronisations ; admin reste administrateur.",
+      "required": false,
+      "default": false,
+      "env_variable": "TRACKHOP_MULTIUSER"
+    },
+    {
+      "type": "ip",
+      "label": "Adresse IP d’écoute sur le serveur",
+      "hint": "0.0.0.0 pour l’accès via l’IP du serveur sur le réseau local. Pour limiter l’écoute à l’interface LAN, indiquer son adresse IP privée. Ne pas ouvrir le port sur Internet.",
+      "required": true,
+      "default": "0.0.0.0",
+      "placeholder": "0.0.0.0",
+      "env_variable": "TRACKHOP_LISTEN_ADDRESS"
+    }
+  ],
+  "created_at": 1794069300000,
+  "updated_at": 1794069300000
+}
