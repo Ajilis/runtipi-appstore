@@ -2,7 +2,7 @@
 
 ## Trackhop — synchronisation des playlists (Runtipi 4.9.1)
 
-**Révision Runtipi 2** : interface Web sur **http://IP_DU_SERVEUR:8293** et via Cloudflare Tunnel HTTPS, **sans routage Traefik**. Formulaire d'installation : **identifiant administrateur personnalisable** (défaut `admin`) et **mot de passe saisi par l'utilisateur** (champ masqué, minimum 12 caractères), plutôt qu'un mot de passe généré. Les identifiants existants restent utilisables après actualisation du catalogue ; configuration, fichiers JSON, jetons et playlists restent persistants dans `${APP_DATA_DIR}/data`. Image officielle Trackhop Server `1.8.1` AMD64/ARM64 et logo officiel. [Docker Compose](apps/trackhop/docker-compose.yml) · [Configuration Runtipi](apps/trackhop/config.json) · [Installation, migration et sauvegardes](apps/trackhop/metadata/description.md).
+**Révision Runtipi 3** : correction du mappage TCP pour l'éditeur visuel Runtipi 4.9.1 (port fixe `8293:8080/tcp`, plus de variable d'adresse d'écoute) ; interface Web sur **http://IP_DU_SERVEUR:8293** et via Cloudflare Tunnel HTTPS, **sans routage Traefik**. Formulaire d'installation : **identifiant administrateur personnalisable** (défaut `admin`) et **mot de passe saisi par l'utilisateur** (champ masqué, minimum 12 caractères), plutôt qu'un mot de passe généré. Les identifiants existants restent utilisables après actualisation du catalogue ; configuration, fichiers JSON, jetons et playlists restent persistants dans `${APP_DATA_DIR}/data`. Image officielle Trackhop Server `1.8.1` AMD64/ARM64 et logo officiel. [Docker Compose](apps/trackhop/docker-compose.yml) · [Configuration Runtipi](apps/trackhop/config.json) · [Installation, migration et sauvegardes](apps/trackhop/metadata/description.md).
 
 ---
 
