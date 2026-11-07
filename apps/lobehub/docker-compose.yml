@@ -641,7 +641,9 @@ services:
   rustfs:
     image: rustfs/rustfs:1.0.4
     restart: unless-stopped
-    command: ["--access-key", "${LOBE_S3_ACCESS_KEY}", "--secret-key", "${LOBE_S3_SECRET_KEY}", "/data"]
+    # Les secrets sont deja fournis par RUSTFS_ACCESS_KEY et RUSTFS_SECRET_KEY.
+    # Ne jamais les passer en arguments CLI : l'entrypoint les affiche dans les logs.
+    command: ["/data"]
     environment:
       RUSTFS_CONSOLE_ENABLE: "false"
       RUSTFS_ACCESS_KEY: "${LOBE_S3_ACCESS_KEY}"
@@ -656,7 +658,7 @@ services:
     labels:
       traefik.enable: "false"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9000/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9000/health/ready >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -669,10 +671,38 @@ services:
     command:
       - -ec
       - |
-        rc alias set rustfs http://rustfs:9000 "$$S3_ACCESS" "$$S3_SECRET"
-        rc mb rustfs/lobe --ignore-existing
-        rc anonymous set private rustfs/lobe
-        printf '%s' '<CORSConfiguration><CORSRule><AllowedOrigin>*</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>' | rc bucket cors set rustfs/lobe -
+        # Les erreurs rc code 3 (reseau/503) peuvent etre transitoires.
+        # Chaque etape est tracee sans exposer les identifiants.
+        run_step() {
+          step="$1"
+          shift
+          attempt=1
+          max_attempts=12
+          while :; do
+            printf '[rustfs-init] %s : tentative %s/%s\n' "$step" "$attempt" "$max_attempts"
+            if "$@"; then
+              printf '[rustfs-init] %s : OK\n' "$step"
+              return 0
+            else
+              code=$?
+            fi
+            if [ "$code" -ne 3 ]; then
+              printf '[rustfs-init] %s : erreur non transitoire (code %s)\n' "$step" "$code" >&2
+              return "$code"
+            fi
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              printf '[rustfs-init] %s : abandon apres %s tentatives, dernier code %s\n' "$step" "$attempt" "$code" >&2
+              return "$code"
+            fi
+            attempt=$((attempt+1))
+            sleep 5
+          done
+        }
+        run_step "Connexion/alias S3" rc alias set rustfs http://rustfs:9000 "$S3_ACCESS" "$S3_SECRET"
+        run_step "Creation du bucket lobe" rc mb rustfs/lobe --ignore-existing
+        run_step "Protection acces anonyme" rc anonymous set private rustfs/lobe
+        printf '%s' '<CORSConfiguration><CORSRule><AllowedOrigin>*</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>' > /tmp/lobe-cors.xml
+        run_step "Configuration CORS" rc bucket cors set rustfs/lobe /tmp/lobe-cors.xml
     environment:
       S3_ACCESS: "${LOBE_S3_ACCESS_KEY}"
       S3_SECRET: "${LOBE_S3_SECRET_KEY}"
