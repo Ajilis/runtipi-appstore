@@ -9,8 +9,8 @@
     "media",
     "utilities"
   ],
-  "description": "Trackhop Server 1.8.1 (bêta) : interface Web de synchronisation de playlists accessible en HTTP sur le LAN (port 8293) et en HTTPS via Cloudflare Tunnel, sans Traefik. Identifiant et mot de passe administrateur personnalisables dans le formulaire Runtipi. Données, connexions et configurations JSON conservées dans /data.",
-  "tipi_version": 2,
+  "description": "Trackhop Server 1.8.1 (bêta) : interface Web en HTTP sur le LAN (port TCP fixe 8293) et en HTTPS via Cloudflare Tunnel, sans Traefik. Identifiant et mot de passe administrateur personnalisables dans le formulaire Runtipi. Port 8293:8080 explicite pour la compatibilité avec l'éditeur Runtipi 4.9.1. Données et configurations JSON persistantes dans /data.",
+  "tipi_version": 3,
   "version": "1.8.1",
   "source": "https://github.com/xlollx/Trackhop",
   "website": "https://trackhop.org/guide/docker",
@@ -64,18 +64,9 @@
       "required": false,
       "default": false,
       "env_variable": "TRACKHOP_MULTIUSER"
-    },
-    {
-      "type": "ip",
-      "label": "Adresse IP d’écoute sur le serveur",
-      "hint": "0.0.0.0 pour l’accès via l’IP du serveur sur le réseau local. Pour limiter l’écoute à l’interface LAN, indiquer son adresse IP privée. Ne pas ouvrir le port sur Internet.",
-      "required": true,
-      "default": "0.0.0.0",
-      "placeholder": "0.0.0.0",
-      "env_variable": "TRACKHOP_LISTEN_ADDRESS"
     }
   ],
   "created_at": 1794069300000,
-  "updated_at": 1794072900000,
+  "updated_at": 1794075480000,
   "no_gui": false
 }
