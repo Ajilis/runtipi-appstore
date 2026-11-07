@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **7**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **8**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -37,6 +37,14 @@ Le tunnel Cloudflare **n'a pas besoin d'exister lors de la première installatio
 Le healthcheck LobeHub (révision 6) sonde directement le serveur local sans suivre de redirection. La passerelle Nginx (révision 7) vérifie maintenant la page HTML locale `/_runtipi_admin/` au lieu de `/`, évitant les redirections vers un domaine public inexistant. **Le healthcheck ne prouve pas à lui seul que les identifiants admin et les téléchargements de fichiers fonctionnent : tester ces fonctions.**
 
 Si une ancienne installation conserve une valeur `LOBE_PUBLIC_URL` factice mais non vide, la supprimer du formulaire Runtipi pour activer le repli LAN. Aucun volume, secret Vault, JWKS ou mot de passe utilisateur ne doit être réinitialisé pour passer du LAN au tunnel.
+
+## Correctif catalogue : date dans le futur (révision Runtipi 8)
+
+La révision précédente définissait `updated_at` à une date future. Le schéma Runtipi impose que `created_at` et `updated_at` soient strictement antérieurs à l'heure du serveur, faute de quoi **l'application est écartée du catalogue malgré la présence des fichiers dans `repos/`**.
+
+Le champ `updated_at` est désormais omis : Runtipi lui attribue son défaut `0` et n'a plus de date future à valider. `created_at` conserve sa date historique valide. Aucun volume, secret, conteneur ou autre réglage de LobeHub n'est modifié. Pour appliquer : actualiser le store Ajilis, puis rafraîchir l'interface ; le cache du catalogue peut nécessiter jusqu'à 15 minutes d'expiration en l'absence d'invalidation explicite.
+
+**Pour les prochaines révisions** : ne pas introduire d'horodatage prédéfini dans le futur ; omettre `updated_at` est préférable tant qu'aucun horodatage courant fiable n'est disponible.
 
 ## Installation initiale
 
