@@ -5,10 +5,18 @@ LiteLLM est une passerelle API unifiée pour les modèles LLM, avec interface d'
 ## Installation et accès
 
 1. Dans Runtipi, ajoutez l'App Store `https://github.com/Ajilis/runtipi-appstore` puis actualisez le catalogue.
-2. Installez **LiteLLM**. Runtipi génère une clé administrateur, une clé de chiffrement et un mot de passe PostgreSQL. **Conservez ces valeurs et le fichier `app.env`.**
-3. Sur le réseau local, ouvrez `http://IP_DU_SERVEUR:8294/ui` (racine API : `http://IP_DU_SERVEUR:8294`). La clé maîtresse est `sk-` suivi de la valeur `LITELLM_MASTER_SECRET` générée par Runtipi.
+2. Installez **LiteLLM**. Runtipi génère une clé maîtresse API, une clé de chiffrement et un mot de passe PostgreSQL. **Choisissez également le mot de passe de l'interface administrateur**, distinct de la clé API maîtresse. Conservez tous ces secrets et le fichier `app.env`.
+3. Sur le réseau local, ouvrez `http://IP_DU_SERVEUR:8294/ui` (racine API : `http://IP_DU_SERVEUR:8294`). Connectez-vous avec l'identifiant `admin` et le mot de passe saisi dans le champ **Mot de passe administrateur LiteLLM** (`LITELLM_ADMIN_PASSWORD`). La clé maîtresse de l'API reste `sk-` suivi de `LITELLM_MASTER_SECRET`.
 4. Pour Cloudflare Tunnel, créez un hostname public HTTPS dont le service d'origine est `http://IP_DU_SERVEUR:8294`. Aucun domaine ni routage Traefik ne doit être configuré dans Runtipi. Si `cloudflared` fonctionne directement sur le serveur, `http://127.0.0.1:8294` convient également.
 5. Protégez le domaine public, et notamment `/ui`, avec **Cloudflare Access**. Le tunnel n'ajoute pas automatiquement une authentification à l'interface LiteLLM.
+
+## Authentification administrateur
+
+- Identifiant UI : `admin` (variable `UI_USERNAME`).
+- Mot de passe UI : champ obligatoire `LITELLM_ADMIN_PASSWORD` (transmis à `UI_PASSWORD`).
+- Le mot de passe est distinct de `LITELLM_MASTER_KEY`. **Attention : LiteLLM accepte encore la clé maîtresse comme identifiant de connexion de secours tant que le login par secrets d'environnement est autorisé.**
+- Pour renforcer la sécurité à long terme, créez un utilisateur individuel `proxy_admin` dans LiteLLM, testez sa connexion, puis configurez `general_settings.disable_env_credential_login: true`. Ne le faites pas avant la création du compte, sous peine de perdre l'accès à l'UI.
+- **Si LiteLLM est déjà installé**, actualisez l'App Store et renseignez `LITELLM_ADMIN_PASSWORD` dans la configuration de l'application avant de recréer le conteneur. Sans valeur, la connexion avec le nouveau mot de passe ne fonctionnera pas ; vérifiez aussi les overrides éventuels dans `user-config`.
 
 ## Persistance et sauvegarde
 
