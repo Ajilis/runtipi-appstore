@@ -1,7 +1,8 @@
 # Trackhop pour Runtipi 4.9.1 (App Store Ajilis).
 # LAN : http://IP_DU_SERVEUR:8293
 # Cloudflare Tunnel : HTTPS public -> http://IP_DU_SERVEUR:8293
-# Aucun routage Traefik : pas de x-runtipi.is_main.
+# Interface Web : port 8293 -> 8080, sans Traefik ni x-runtipi.is_main.
+# Login et mot de passe saisis dans le formulaire Runtipi.
 services:
   trackhop:
     image: ghcr.io/xlollx/trackhop:1.8.1
@@ -9,7 +10,7 @@ services:
     init: true
     environment:
       SONGPORT_URL: "${TRACKHOP_PUBLIC_URL}"
-      SONGPORT_USER: "admin"
+      SONGPORT_USER: "${TRACKHOP_USER:-admin}"
       SONGPORT_PASSWORD: "${TRACKHOP_PASSWORD}"
       SONGPORT_MULTIUSER: "${TRACKHOP_MULTIUSER:-false}"
       SONGPORT_LOCALE: "fr"
