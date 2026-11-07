@@ -9,8 +9,8 @@
     "ai",
     "utilities"
   ],
-  "description": "LiteLLM v1.108.0 pour Runtipi 4.9.1. Accès LAN sur le port 8294 et Cloudflare Tunnel sans Traefik. Configuration YAML et base PostgreSQL persistantes.",
-  "tipi_version": 1,
+  "description": "LiteLLM v1.108.0 pour Runtipi 4.9.1, avec connexion administrateur personnalisée, PostgreSQL et configuration persistants, LAN 8294 et tunnel Cloudflare sans Traefik.",
+  "tipi_version": 2,
   "version": "1.108.0",
   "source": "https://github.com/BerriAI/litellm",
   "website": "https://docs.litellm.ai/",
@@ -32,6 +32,15 @@
       "min": 64,
       "encoding": "hex",
       "env_variable": "LITELLM_MASTER_SECRET"
+    },
+    {
+      "type": "password",
+      "label": "Mot de passe administrateur LiteLLM (interface Web)",
+      "hint": "Choisissez un mot de passe distinct de la clé maîtresse pour vous connecter avec l'identifiant admin sur /ui. Minimum 12 caractères. Conservez ce mot de passe dans votre gestionnaire de secrets.",
+      "required": true,
+      "min": 12,
+      "max": 128,
+      "env_variable": "LITELLM_ADMIN_PASSWORD"
     },
     {
       "type": "random",
