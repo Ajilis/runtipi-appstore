@@ -9,8 +9,8 @@
     "ai",
     "utilities"
   ],
-  "description": "LiteLLM v1.108.0 pour Runtipi 4.9.1, avec connexion administrateur personnalisée, PostgreSQL et configuration persistants, LAN 8294 et tunnel Cloudflare sans Traefik.",
-  "tipi_version": 2,
+  "description": "LiteLLM v1.108.0 pour Runtipi 4.9.1, connexion admin dédiée, configuration et PostgreSQL persistants. Deux services permanents uniquement, LAN 8294 et Cloudflare Tunnel sans Traefik.",
+  "tipi_version": 3,
   "version": "1.108.0",
   "source": "https://github.com/BerriAI/litellm",
   "website": "https://docs.litellm.ai/",
