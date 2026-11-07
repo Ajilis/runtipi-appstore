@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : installation locale sans Cloudflare Tunnel, URL publique facultative, administrateur global, clé Vault valide et healthcheck sans redirection.",
-  "tipi_version": 8,
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : installation LAN sans Cloudflare Tunnel, URL publique facultative, clé Vault valide, initialisation RustFS avec readiness et diagnostics par étape.",
+  "tipi_version": 9,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
