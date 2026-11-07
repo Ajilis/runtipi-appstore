@@ -9,7 +9,7 @@
     "ai"
   ],
   "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : premier compte admin global provisionne depuis Runtipi, inscriptions publiques interdites et creation des utilisateurs reservee a l'administrateur. RustFS et bases internes, port public unique 8292, sans Traefik.",
-  "tipi_version": 3,
+  "tipi_version": 4,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
@@ -40,7 +40,7 @@
       "env_variable": "LOBE_LAN_ORIGIN"
     },
     {
-      "type": "text",
+      "type": "email",
       "label": "E-mail du premier administrateur global",
       "hint": "Installation neuve : ce compte est cree automatiquement avant ouverture du site. Installation existante : mettre l'e-mail exact d'un compte deja cree pour lui attribuer les droits admin. Si la base contient des comptes mais aucun a cette adresse, le lancement est bloque par securite.",
       "placeholder": "administrateur@exemple.fr",
@@ -52,7 +52,9 @@
       "label": "Mot de passe initial du premier administrateur",
       "hint": "12 a 64 caracteres. Utilise seulement a la creation sur base vide, conserve dans Runtipi et non applique aux comptes deja existants. Ne partager ce secret avec personne.",
       "required": true,
-      "env_variable": "LOBE_INITIAL_ADMIN_PASSWORD"
+      "env_variable": "LOBE_INITIAL_ADMIN_PASSWORD",
+      "min": 12,
+      "max": 64
     },
     {
       "type": "random",
@@ -111,5 +113,5 @@
     }
   ],
   "created_at": 1794052800000,
-  "updated_at": 1794059073332
+  "updated_at": 1794059395303
 }

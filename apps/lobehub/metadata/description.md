@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **3**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **4**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Installation initiale
 
@@ -26,7 +26,7 @@ Après connexion avec l'administrateur global, ouvrir **`https://lobe.exemple.fr
 - L'API native `GET /api/auth/admin/list-users` permet de voir les comptes, et `POST /api/auth/admin/create-user` de créer un compte standard avec nom, e-mail et mot de passe provisoire. L'autorisation est vérifiée **côté serveur** par le plugin Better Auth `admin()` de LobeHub.
 - La création d'un utilisateur standard **ne donne aucun droit d'administrateur**. Communiquer son mot de passe provisoire de manière sûre ; demander à l'utilisateur de le changer après connexion. Ce paquet ne comprend pas d'envoi d'e-mail automatique ni de procédure d'invitation par lien.
 - L'accès public à `/api/auth/sign-up/*` est refusé par Nginx (`403`), et `/signup` redirige vers `/signin`. Une éventuelle mention « S'inscrire » encore affichée par le client LobeHub ne permet **pas** de créer un compte.
-- La connexion par e-mail et mot de passe (`/api/auth/sign-in/email`) reste disponible. Les méthodes de création implicite de comptes par authentification anonyme et sociale ne sont pas activées sur cette installation.
+- La connexion par e-mail et mot de passe (`/api/auth/sign-in/email`) reste disponible. Les méthodes de création implicite de comptes par authentification anonyme et sociale ne sont pas activées sur cette installation. Les routes de connexion par code OTP et par magic link sont également refusées par la passerelle.
 
 **Sécurité du premier compte :** aucun visiteur Internet ne peut « réclamer » le rôle admin en étant le premier à visiter le formulaire public. Le tout premier compte est provisionné par Runtipi à travers une requête **interne**, sans port LobeHub exposé. Le mot de passe initial figure dans les variables sécurisées de Runtipi : protéger les sauvegardes et accès à `app.env`. Le processus de provisionnement est idempotent : il ne réinitialise jamais le mot de passe d'un utilisateur déjà présent.
 
@@ -52,7 +52,7 @@ Les navigateurs LAN doivent pouvoir accéder à `https://lobe.exemple.fr` pour l
 | Emplacement sous `APP_DATA_DIR` | Contenu |
 | --- | --- |
 | `config/jwks.json` | Clé privée Better Auth/JWKS, créée une seule fois |
-| `config/nginx-gateway-v2.conf` | Configuration de la passerelle Nginx, créée une seule fois |
+| `config/nginx-gateway-v3.conf` | Configuration de la passerelle Nginx, créée une seule fois |
 | `config/runtipi-admin-v1.html` | Page de gestion des comptes, créée une seule fois |
 | `config/runtipi-admin-state` | État du provisionnement admin |
 | `postgres/` | Comptes, rôles `admin` / `super_admin`, agents, conversations |

@@ -2,7 +2,7 @@
 
 ## LobeHub 2.3.2 — premier administrateur global, inscriptions verrouillées
 
-Révision Runtipi **3** : premier compte administrateur précréé avant l'ouverture publique, puis création des utilisateurs réservée à cet administrateur via `/_runtipi_admin/`. Les inscriptions publiques sont bloquées. **8292** reste l'unique port publié et un seul hostname Cloudflare Tunnel suffit ; RustFS, PostgreSQL et Redis restent internes et persistants. **Aucun Traefik.** [Compose](apps/lobehub/docker-compose.yml) · [Formulaire Runtipi](apps/lobehub/config.json) · [Installation et migration](apps/lobehub/metadata/description.md).
+Révision Runtipi **4** : premier compte administrateur précréé avant l'ouverture publique, puis création des utilisateurs réservée à cet administrateur via `/_runtipi_admin/`. Les inscriptions publiques sont bloquées. **8292** reste l'unique port publié et un seul hostname Cloudflare Tunnel suffit ; RustFS, PostgreSQL et Redis restent internes et persistants. **Aucun Traefik.** [Compose](apps/lobehub/docker-compose.yml) · [Formulaire Runtipi](apps/lobehub/config.json) · [Installation et migration](apps/lobehub/metadata/description.md).
 
 ---
 ## CloakBrowser — versions
