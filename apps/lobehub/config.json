@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : installation LAN sans Cloudflare Tunnel, URL publique facultative, clé Vault valide, initialisation RustFS avec readiness et diagnostics par étape.",
-  "tipi_version": 9,
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : installation LAN autonome, administrateur global, stockage RustFS, port LAN 8292 sans problème de conversion Runtipi.",
+  "tipi_version": 10,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
@@ -100,7 +100,7 @@
     {
       "type": "text",
       "label": "IP d'ecoute sur le serveur",
-      "hint": "0.0.0.0 publie sur toutes les interfaces ; utiliser l'IP LAN du serveur pour restreindre l'ecoute, puis filtrer par pare-feu.",
+      "hint": "Par defaut 0.0.0.0 publie le port 8292/tcp sur toutes les interfaces. Mettre une IP LAN du serveur pour limiter l'ecoute ; protege aussi l'acces par pare-feu. Ce champ ne doit pas etre vide (valeur par defaut utilisee).",
       "required": false,
       "default": "0.0.0.0",
       "env_variable": "LOBE_BIND_IP"
