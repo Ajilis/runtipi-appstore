@@ -5,12 +5,24 @@
 ## Installation sur Runtipi 4.9.1
 
 1. Ajouter l'App Store `https://github.com/Ajilis/runtipi-appstore` dans **Paramètres → App Stores** et actualiser le catalogue.
-2. Installer **Trackhop** en indiquant l'URL publique **HTTPS** de Cloudflare Tunnel (par exemple `https://trackhop.exemple.fr` sans slash final). Conserver le mot de passe généré.
-3. Accès réseau local : `http://IP_DU_SERVEUR:8293`. Identifiant : `admin`. Mot de passe : valeur générée par Runtipi.
+2. Installer **Trackhop** en indiquant l'URL publique **HTTPS** de Cloudflare Tunnel (par exemple `https://trackhop.exemple.fr` sans slash final). Saisir un **identifiant administrateur** (par défaut `admin`) et **votre propre mot de passe** (minimum 12 caractères). Les deux champs sont disponibles dans le formulaire d'installation Runtipi.
+3. Accès réseau local : `http://IP_DU_SERVEUR:8293`. Identifiant : celui indiqué dans le formulaire d'installation Runtipi (par défaut `admin`). Mot de passe : celui que vous avez saisi dans ce formulaire.
 4. Dans Cloudflare Zero Trust, créer un hostname public pour le tunnel et choisir une origine de type **HTTP** avec l'adresse `http://IP_DU_SERVEUR:8293`.
 5. Ouvrir `https://trackhop.exemple.fr` pour l'accès distant. L'adresse configurée dans `SONGPORT_URL` sert aussi aux redirections OAuth `/callback` et doit être enregistrée auprès des plateformes exigeant une URL de rappel.
 
 Si `cloudflared` tourne **sur l'hôte en mode réseau hôte**, `http://127.0.0.1:8293` convient. S'il tourne **dans un conteneur Docker distinct**, `127.0.0.1` désigne ce conteneur et non le serveur Runtipi ; utiliser l'adresse LAN de l'hôte ou un mécanisme d'accès à l'hôte.
+
+## Accès à l'interface Web et identifiants administrateur
+
+Trackhop Server dispose de sa propre **interface Web** : ouvrir `http://IP_DU_SERVEUR:8293` sur le réseau local, ou l'URL HTTPS Cloudflare Tunnel depuis l'extérieur. Dans Runtipi, l'application est déclarée avec `no_gui: false`, pour que son accès Web ne soit pas masqué.
+
+La **révision 2 du catalogue** permet de personnaliser le compte administrateur pendant l'installation :
+- **Identifiant administrateur (login)** : champ `TRACKHOP_USER` (par défaut `admin`), transmis à l'application sous `SONGPORT_USER`.
+- **Mot de passe administrateur** : champ masqué de type `password`, `TRACKHOP_PASSWORD`, transmis comme `SONGPORT_PASSWORD`. Ce champ n'est plus de type `random`.
+
+L'application utilise une authentification HTTP : le navigateur peut afficher une fenêtre native de connexion au lieu d'une page de connexion graphique. Ce comportement est normal. Les identifiants demandés correspondent à ceux définis dans le formulaire Runtipi, pas aux identifiants du tableau de bord Runtipi.
+
+**Mise à jour d'une installation existante :** rafraîchir le catalogue Ajilis puis ouvrir les paramètres de Trackhop dans Runtipi pour modifier ou ajouter le login et le mot de passe, si cette option est proposée par l'interface. Une valeur `TRACKHOP_USER` absente conserve automatiquement `admin`, tandis que l'ancien `TRACKHOP_PASSWORD` reste compatible : aucune suppression des données ni réinstallation n'est nécessaire pour appliquer les fichiers du catalogue. Redémarrer Trackhop après une modification de variables. Lorsque Runtipi n'autorise pas l'édition du formulaire d'une application installée, définir les valeurs dans un override `user-config/<slug-du-store>/trackhop/app.env` conformément au guide [Personnaliser la configuration d'une application](https://runtipi.io/docs/guides/customize-app-config), puis redémarrer. En mode multiutilisateur, changer le login dans l'environnement ne renomme pas automatiquement les utilisateurs déjà enregistrés.
 
 ## Aucun routage Traefik
 
@@ -30,7 +42,7 @@ Le dossier `${APP_DATA_DIR}/data` de Runtipi est monté dans le conteneur sur `/
 | `csv/` | Listes musicales et autres fichiers CSV. |
 | Autres fichiers et sous-dossiers | État supplémentaire, notamment pour plusieurs utilisateurs. |
 
-**Il n'existe pas de base PostgreSQL, MySQL ou SQLite à créer** : l'application stocke ses données en JSON. Sauvegarder l'intégralité de `app-data/<slug-du-store>/trackhop/data`, et garder les paramètres Runtipi, notamment son `app.env` contenant le mot de passe, en lieu sûr. Faire une sauvegarde cohérente à l'arrêt de l'application. Runtipi peut supprimer les données lors d'une désinstallation.
+**Il n'existe pas de base PostgreSQL, MySQL ou SQLite à créer** : l'application stocke ses données en JSON. Sauvegarder l'intégralité de `app-data/<slug-du-store>/trackhop/data`, et garder les paramètres Runtipi, notamment son `app.env` contenant les identifiants, en lieu sûr. Faire une sauvegarde cohérente à l'arrêt de l'application. Runtipi peut supprimer les données lors d'une désinstallation.
 
 ## Sécurité et limites
 
