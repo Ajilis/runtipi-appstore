@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **6**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **7**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -24,14 +24,28 @@ Le healthcheck utilise désormais `node:http` avec `agent: false` vers `127.0.0.
 
 Si l'application reste `unhealthy`, examiner le diagnostic exact et `docker logs` plutôt que de désactiver le healthcheck.
 
+## Installation sans tunnel Cloudflare (révision Runtipi 7)
+
+Le tunnel Cloudflare **n'a pas besoin d'exister lors de la première installation**. L'URL LAN suffit pour l'initialisation, l'accès à l'interface et le provisionnement du premier administrateur.
+
+1. Dans Runtipi, laisser **URL HTTPS publique LobeHub** vide.
+2. Renseigner obligatoirement **URL HTTP locale LobeHub**, par exemple `http://192.168.1.10:8292`, avec une IP LAN joignable et le port de la passerelle.
+3. Installer et démarrer l'application. LobeHub utilise cette URL LAN pour `APP_URL` et `S3_ENDPOINT`. Le provisionnement administrateur contacte toujours `http://lobehub:3210/api/auth/sign-up/email` à l'intérieur du réseau Docker, et transmet l'origine LAN au lieu d'une origine publique injoignable.
+4. Vérifier la santé des services, puis accéder à `http://IP_DU_SERVEUR:8292/signin`. Une authentification fonctionnelle sur LAN doit être testée avant le raccordement externe.
+5. **Ensuite seulement**, créer le tunnel Cloudflare vers `http://IP_DU_SERVEUR:8292`. Dans Runtipi, renseigner l'URL HTTPS réelle (par exemple `https://lobe.exemple.fr`), sauvegarder et redémarrer LobeHub pour mettre à jour `APP_URL`, `S3_ENDPOINT` et l'origine autorisée. Une reconnexion peut être nécessaire.
+
+Le healthcheck LobeHub (révision 6) sonde directement le serveur local sans suivre de redirection. La passerelle Nginx (révision 7) vérifie maintenant la page HTML locale `/_runtipi_admin/` au lieu de `/`, évitant les redirections vers un domaine public inexistant. **Le healthcheck ne prouve pas à lui seul que les identifiants admin et les téléchargements de fichiers fonctionnent : tester ces fonctions.**
+
+Si une ancienne installation conserve une valeur `LOBE_PUBLIC_URL` factice mais non vide, la supprimer du formulaire Runtipi pour activer le repli LAN. Aucun volume, secret Vault, JWKS ou mot de passe utilisateur ne doit être réinitialisé pour passer du LAN au tunnel.
+
 ## Installation initiale
 
 1. Dans Runtipi, actualiser le store `https://github.com/Ajilis/runtipi-appstore`, puis installer **LobeHub**.
-2. Remplir `LOBE_PUBLIC_URL` (`https://lobe.exemple.fr`) et `LOBE_LAN_ORIGIN` (`http://IP_DU_SERVEUR:8292`).
+2. Remplir `LOBE_LAN_ORIGIN` (`http://IP_DU_SERVEUR:8292`). Laisser `LOBE_PUBLIC_URL` vide jusqu'à la mise en service du tunnel Cloudflare.
 3. Dans **E-mail du premier administrateur global**, indiquer votre adresse e-mail ; saisir un **mot de passe initial de 12 à 64 caractères** dans le champ Runtipi dédié. Le mot de passe doit rester confidentiel.
 4. Démarrer l'application. Les services `lobehub-admin-precheck`, `lobehub-admin-register`, `lobehub-admin-promote` s'exécutent **avant** le démarrage de la passerelle publique. Si la base est vide, le premier compte est créé par une requête Better Auth interne, puis reçoit le rôle `admin` Better Auth **et** le rôle global `super_admin` RBAC, avec les permissions existantes. Les données et les secrets restent persistants.
-5. Dans Cloudflare Zero Trust → Tunnels → Public Hostnames, conserver un **seul hostname** `lobe.exemple.fr` → HTTP `http://IP_DU_SERVEUR:8292`. Accès LAN : `http://IP_DU_SERVEUR:8292` ; accès distant : `https://lobe.exemple.fr`.
-6. Se connecter à `https://lobe.exemple.fr/signin` avec l'adresse et le mot de passe renseignés dans Runtipi.
+5. Après vérification du fonctionnement local, dans Cloudflare Zero Trust → Tunnels → Public Hostnames, créer un **seul hostname** `lobe.exemple.fr` → HTTP `http://IP_DU_SERVEUR:8292`. Renseigner ensuite ce hostname comme `LOBE_PUBLIC_URL` dans Runtipi et redémarrer l'application.
+6. Se connecter à `http://IP_DU_SERVEUR:8292/signin` avant la création du tunnel, puis à `https://lobe.exemple.fr/signin` une fois le tunnel actif, avec les identifiants configurés.
 
 ### Si LobeHub était déjà installé
 
