@@ -2,7 +2,7 @@
 
 ## Trackhop — synchronisation des playlists (Runtipi 4.9.1)
 
-**Nouvelle application** : Trackhop Server `1.8.1`, accès LAN sur le port **8293**, Cloudflare Tunnel par HTTP local, **sans Traefik**. Configuration, fichiers de données JSON, jetons et playlists persistants dans `${APP_DATA_DIR}/data`. Image AMD64/ARM64 officielle et logo Trackhop. [Docker Compose](apps/trackhop/docker-compose.yml) · [Configuration Runtipi](apps/trackhop/config.json) · [Installation / Cloudflare / sauvegardes](apps/trackhop/metadata/description.md).
+**Révision Runtipi 2** : interface Web sur **http://IP_DU_SERVEUR:8293** et via Cloudflare Tunnel HTTPS, **sans routage Traefik**. Formulaire d'installation : **identifiant administrateur personnalisable** (défaut `admin`) et **mot de passe saisi par l'utilisateur** (champ masqué, minimum 12 caractères), plutôt qu'un mot de passe généré. Les identifiants existants restent utilisables après actualisation du catalogue ; configuration, fichiers JSON, jetons et playlists restent persistants dans `${APP_DATA_DIR}/data`. Image officielle Trackhop Server `1.8.1` AMD64/ARM64 et logo officiel. [Docker Compose](apps/trackhop/docker-compose.yml) · [Configuration Runtipi](apps/trackhop/config.json) · [Installation, migration et sauvegardes](apps/trackhop/metadata/description.md).
 
 ---
 
