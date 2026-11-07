@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1. Acces direct LAN sur 8292 et Cloudflare Tunnel sans Traefik. ParadeDB/PostgreSQL, Redis et RustFS persistants ; stockage S3 sur 8293. Le mode Agent Gateway n'est pas inclus.",
-  "tipi_version": 1,
+  "description": "LobeHub 2.3.2 avec PostgreSQL/ParadeDB, Redis, RustFS et configuration persistants. Un seul port LAN/Cloudflare (8292), sans Traefik et sans port S3 publie ; objets S3 accessibles uniquement par URL SigV4 valide via /lobe/.",
+  "tipi_version": 2,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
@@ -26,7 +26,7 @@
     {
       "type": "text",
       "label": "URL HTTPS publique LobeHub (Cloudflare)",
-      "hint": "Origine canonique, sans slash final. Tunnel vers http://IP_DU_SERVEUR:8292.",
+      "hint": "URL publique HTTPS de LobeHub ; le meme hostname sert aussi aux fichiers S3 signes (/lobe/). Cloudflare Tunnel vers http://IP_DU_SERVEUR:8292.",
       "placeholder": "https://lobe.exemple.fr",
       "required": true,
       "env_variable": "LOBE_PUBLIC_URL"
@@ -34,18 +34,10 @@
     {
       "type": "text",
       "label": "URL HTTP locale LobeHub",
-      "hint": "URL exacte utilisée sur le LAN pour autoriser cette origine dans Better Auth. Adapter le port si vous le changez dans Runtipi.",
+      "hint": "Origine LAN exacte (http://IP_DU_SERVEUR:8292). Les transferts de fichiers necessitent que le hostname public reste joignable depuis le LAN.",
       "placeholder": "http://192.168.1.10:8292",
       "required": true,
       "env_variable": "LOBE_LAN_ORIGIN"
-    },
-    {
-      "type": "text",
-      "label": "URL HTTPS publique du stockage S3",
-      "hint": "Deuxieme hostname Cloudflare Tunnel vers http://IP_DU_SERVEUR:8293, necessaire aux uploads depuis le navigateur.",
-      "placeholder": "https://s3.exemple.fr",
-      "required": true,
-      "env_variable": "LOBE_S3_PUBLIC_URL"
     },
     {
       "type": "text",
@@ -104,14 +96,6 @@
       "env_variable": "LOBE_BIND_IP"
     },
     {
-      "type": "number",
-      "label": "Port HTTP local du stockage S3",
-      "hint": "Defaut 8293. Adapter egalement l'origine Cloudflare Tunnel.",
-      "required": false,
-      "default": 8293,
-      "env_variable": "LOBE_S3_HOST_PORT"
-    },
-    {
       "type": "password",
       "label": "Cle API OpenAI (facultative)",
       "hint": "Peut aussi etre configuree par les utilisateurs dans l'application.",
@@ -120,5 +104,5 @@
     }
   ],
   "created_at": 1794052800000,
-  "updated_at": 1794052800000
+  "updated_at": 1794056478913
 }

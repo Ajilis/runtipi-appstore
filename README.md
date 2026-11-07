@@ -1,11 +1,10 @@
 # Ajilis Runtipi App Store
 
-## LobeHub 2.3.2 — Runtipi 4.9.1
+## LobeHub 2.3.2 — un seul tunnel, RustFS privé
 
-Nouvelle application **LobeHub** : IA auto-hébergée avec ParadeDB/PostgreSQL, Redis et RustFS persistants, clé JWKS générée automatiquement, accès LAN `http://IP_DU_SERVEUR:8292` et Cloudflare Tunnel (LobeHub + hostname S3) **sans Traefik**. [Docker Compose](apps/lobehub/docker-compose.yml) · [Configuration Runtipi](apps/lobehub/config.json) · [Installation/Cloudflare/persistance](apps/lobehub/metadata/description.md).
+Révision **2** : **8292** est le seul port hôte, avec un seul hostname Cloudflare Tunnel. La passerelle Nginx transfère uniquement les objets S3 pré-signés via `/lobe/` ; RustFS et les bases de données restent sans ports publiés. Aucun Traefik. [Compose](apps/lobehub/docker-compose.yml) · [Configuration Runtipi](apps/lobehub/config.json) · [Documentation](apps/lobehub/metadata/description.md).
 
 ---
-
 ## CloakBrowser — versions
 
 | Composant | Version |
