@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trackhop logo: the launcher icon (the visible 72 of 108 units of res/drawable/ic_launcher_*.xml). © 2026 xlollx, CC BY-SA 4.0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="18 18 72 72">
+  <title>Trackhop</title>
+  <defs>
+    <linearGradient id="beam" gradientUnits="userSpaceOnUse" x1="61.90" y1="83.54" x2="85.70" y2="-28.44">
+      <stop offset="0" stop-color="#000000"/>
+      <stop offset="0.4170" stop-color="#400000"/>
+      <stop offset="0.4321" stop-color="#421AFF"/>
+      <stop offset="0.5" stop-color="#59FFFF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="108" height="108" fill="url(#beam)"/>
+  <path fill="#FFFFFF" fill-opacity="0.18" d="M40,27 h28 a13,13 0 0 1 13,13 v28 a13,13 0 0 1 -13,13 h-28 a13,13 0 0 1 -13,-13 v-28 a13,13 0 0 1 13,-13 z"/>
+  <path fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="0.4" d="M40,27.2 h28 a12.8,12.8 0 0 1 12.8,12.8 v28 a12.8,12.8 0 0 1 -12.8,12.8 h-28 a12.8,12.8 0 0 1 -12.8,-12.8 v-28 a12.8,12.8 0 0 1 12.8,-12.8 z"/>
+  <g transform="translate(54 54) scale(0.65) translate(-54 -54)" fill="#FFFFFF" stroke="#FFFFFF" stroke-linecap="round">
+    <path fill="none" stroke-width="5.5" d="M30.6,40.5 A27,27 0 0 1 77.4,40.5"/>
+    <path fill="none" stroke-width="5.5" d="M77.4,67.5 A27,27 0 0 1 30.6,67.5"/>
+    <path stroke="none" d="M81.85,36.2 L71.45,42.2 L81.4,47.4 Z"/>
+    <path stroke="none" d="M26.15,71.8 L36.55,65.8 L26.6,60.6 Z"/>
+    <g transform="translate(2.1 1.5)">
+      <path stroke="none" d="M54.08,61.11 A7,5.6 -20 1 1 40.92,65.89 A7,5.6 -20 1 1 54.08,61.11 Z"/>
+      <path fill="none" stroke-width="3.6" d="M52.6,62.5 L52.6,37.5"/>
+      <path stroke="none" d="M52.6,37.2 C58.5,38.6 63.4,42.4 63.2,49.6 C61.6,45.2 58,42.9 52.6,42.6 Z"/>
+    </g>
+  </g>
+</svg>
