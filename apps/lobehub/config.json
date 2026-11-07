@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : admin global provisionne, inscriptions publiques interdites, clé Vault valide et healthcheck HTTP direct sans redirection.",
-  "tipi_version": 6,
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : installation locale sans Cloudflare Tunnel, URL publique facultative, administrateur global, clé Vault valide et healthcheck sans redirection.",
+  "tipi_version": 7,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
@@ -25,16 +25,16 @@
   "form_fields": [
     {
       "type": "text",
-      "label": "URL HTTPS publique LobeHub (Cloudflare)",
-      "hint": "URL publique HTTPS de LobeHub ; le meme hostname sert aussi aux fichiers S3 signes (/lobe/). Cloudflare Tunnel vers http://IP_DU_SERVEUR:8292.",
-      "placeholder": "https://lobe.exemple.fr",
-      "required": true,
+      "label": "URL HTTPS publique LobeHub (facultative, après création du tunnel)",
+      "hint": "Laisser vide à la première installation sans Cloudflare Tunnel : LobeHub utilise l'URL HTTP locale ci-dessous. Après création du tunnel, renseigner l'URL publique HTTPS et redémarrer l'application. Ne pas mettre de domaine factice.",
+      "placeholder": "https://lobe.exemple.fr (à renseigner plus tard)",
+      "required": false,
       "env_variable": "LOBE_PUBLIC_URL"
     },
     {
       "type": "text",
       "label": "URL HTTP locale LobeHub",
-      "hint": "Origine LAN exacte (http://IP_DU_SERVEUR:8292). Les transferts de fichiers necessitent que le hostname public reste joignable depuis le LAN.",
+      "hint": "Obligatoire : http://IP_LAN_DU_SERVEUR:8292. Utilisée comme URL canonique initiale si l'URL Cloudflare est vide ; accès depuis le LAN et depuis les services internes.",
       "placeholder": "http://192.168.1.10:8292",
       "required": true,
       "env_variable": "LOBE_LAN_ORIGIN"
@@ -114,5 +114,5 @@
     }
   ],
   "created_at": 1794052800000,
-  "updated_at": 1794074400000
+  "updated_at": 1794076800000
 }

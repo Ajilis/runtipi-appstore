@@ -357,7 +357,7 @@ services:
         require('/app/startServer.js');
     environment:
       NODE_ENV: production
-      APP_URL: "${LOBE_PUBLIC_URL}"
+      APP_URL: "${LOBE_PUBLIC_URL:-${LOBE_LAN_ORIGIN}}"
       INTERNAL_APP_URL: "http://localhost:3210"
       AUTH_ADDITIONAL_TRUSTED_ORIGINS: "${LOBE_LAN_ORIGIN}"
       AUTH_ALLOWED_EMAILS: ""
@@ -367,7 +367,7 @@ services:
       REDIS_URL: "redis://redis:6379"
       REDIS_PREFIX: "lobehub"
       REDIS_TLS: "0"
-      S3_ENDPOINT: "${LOBE_PUBLIC_URL}"
+      S3_ENDPOINT: "${LOBE_PUBLIC_URL:-${LOBE_LAN_ORIGIN}}"
       S3_INTERNAL_ENDPOINT: "http://rustfs:9000"
       S3_BUCKET: "lobe"
       S3_ENABLE_PATH_STYLE: "1"
@@ -507,7 +507,7 @@ services:
     environment:
       ADMIN_EMAIL: "${LOBE_ADMIN_EMAIL}"
       ADMIN_PASSWORD: "${LOBE_INITIAL_ADMIN_PASSWORD}"
-      ADMIN_PUBLIC_ORIGIN: "${LOBE_PUBLIC_URL}"
+      ADMIN_PUBLIC_ORIGIN: "${LOBE_PUBLIC_URL:-${LOBE_LAN_ORIGIN}}"
     volumes:
       - "${APP_DATA_DIR}/config:/config:ro"
     depends_on:
@@ -595,7 +595,7 @@ services:
     labels:
       traefik.enable: "false"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/_runtipi_admin/ >/dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 10
