@@ -674,31 +674,31 @@ services:
         # Les erreurs rc code 3 (reseau/503) peuvent etre transitoires.
         # Chaque etape est tracee sans exposer les identifiants.
         run_step() {
-          step="$1"
+          step="$$1"
           shift
           attempt=1
           max_attempts=12
           while :; do
-            printf '[rustfs-init] %s : tentative %s/%s\n' "$step" "$attempt" "$max_attempts"
-            if "$@"; then
-              printf '[rustfs-init] %s : OK\n' "$step"
+            printf '[rustfs-init] %s : tentative %s/%s\n' "$$step" "$$attempt" "$$max_attempts"
+            if "$$@"; then
+              printf '[rustfs-init] %s : OK\n' "$$step"
               return 0
             else
-              code=$?
+              code=$$?
             fi
-            if [ "$code" -ne 3 ]; then
-              printf '[rustfs-init] %s : erreur non transitoire (code %s)\n' "$step" "$code" >&2
-              return "$code"
+            if [ "$$code" -ne 3 ]; then
+              printf '[rustfs-init] %s : erreur non transitoire (code %s)\n' "$$step" "$$code" >&2
+              return "$$code"
             fi
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              printf '[rustfs-init] %s : abandon apres %s tentatives, dernier code %s\n' "$step" "$attempt" "$code" >&2
-              return "$code"
+            if [ "$$attempt" -ge "$$max_attempts" ]; then
+              printf '[rustfs-init] %s : abandon apres %s tentatives, dernier code %s\n' "$$step" "$$attempt" "$$code" >&2
+              return "$$code"
             fi
-            attempt=$((attempt+1))
+            attempt=$$((attempt+1))
             sleep 5
           done
         }
-        run_step "Connexion/alias S3" rc alias set rustfs http://rustfs:9000 "$S3_ACCESS" "$S3_SECRET"
+        run_step "Connexion/alias S3" rc alias set rustfs http://rustfs:9000 "$$S3_ACCESS" "$$S3_SECRET"
         run_step "Creation du bucket lobe" rc mb rustfs/lobe --ignore-existing
         run_step "Protection acces anonyme" rc anonymous set private rustfs/lobe
         printf '%s' '<CORSConfiguration><CORSRule><AllowedOrigin>*</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>' > /tmp/lobe-cors.xml
