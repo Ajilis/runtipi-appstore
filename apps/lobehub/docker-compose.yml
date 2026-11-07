@@ -338,6 +338,19 @@ services:
     command:
       - |
         const fs = require('node:fs');
+        // Runtipi genere 32 octets sous forme de 64 caracteres hexadecimaux.
+        // Conversion deterministe : la cle originale n'est jamais regeneree.
+        const rawVaultSecret = process.env.RUNTIPI_VAULT_SECRET || '';
+        if (rawVaultSecret.length === 64 && !/[^a-f0-9]/i.test(rawVaultSecret)) {
+          process.env.KEY_VAULTS_SECRET = Buffer.from(rawVaultSecret, 'hex').toString('base64');
+        } else {
+          const decoded = Buffer.from(rawVaultSecret, 'base64');
+          if (decoded.length !== 32 || decoded.toString('base64') !== rawVaultSecret) {
+            throw new Error('Cle Vault invalide : 64 caracteres hexadecimaux ou Base64 canonique de 32 octets requis. Aucune regeneration automatique.');
+          }
+          process.env.KEY_VAULTS_SECRET = rawVaultSecret;
+        }
+        delete process.env.RUNTIPI_VAULT_SECRET;
         const jwks = JSON.parse(fs.readFileSync('/app/runtipi-config/jwks.json', 'utf8'));
         if (!Array.isArray(jwks.keys) || !jwks.keys[0]?.d) throw new Error('JWKS absent ou invalide');
         process.env.JWKS_KEY = JSON.stringify(jwks);
@@ -349,7 +362,7 @@ services:
       AUTH_ADDITIONAL_TRUSTED_ORIGINS: "${LOBE_LAN_ORIGIN}"
       AUTH_ALLOWED_EMAILS: ""
       AUTH_SECRET: "${LOBE_AUTH_SECRET}"
-      KEY_VAULTS_SECRET: "${LOBE_KEY_VAULTS_SECRET}"
+      RUNTIPI_VAULT_SECRET: "${LOBE_KEY_VAULTS_SECRET}"
       DATABASE_URL: "postgresql://postgres:${LOBE_DB_PASSWORD}@postgresql:5432/lobehub"
       REDIS_URL: "redis://redis:6379"
       REDIS_PREFIX: "lobehub"
