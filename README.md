@@ -1,5 +1,11 @@
 # Ajilis Runtipi App Store
 
+## Trackhop — synchronisation des playlists (Runtipi 4.9.1)
+
+**Nouvelle application** : Trackhop Server `1.8.1`, accès LAN sur le port **8293**, Cloudflare Tunnel par HTTP local, **sans Traefik**. Configuration, fichiers de données JSON, jetons et playlists persistants dans `${APP_DATA_DIR}/data`. Image AMD64/ARM64 officielle et logo Trackhop. [Docker Compose](apps/trackhop/docker-compose.yml) · [Configuration Runtipi](apps/trackhop/config.json) · [Installation / Cloudflare / sauvegardes](apps/trackhop/metadata/description.md).
+
+---
+
 ## LobeHub 2.3.2 — premier administrateur global, inscriptions verrouillées
 
 Révision Runtipi **7** : première installation entièrement en LAN, sans tunnel Cloudflare ; URL publique facultative, clé Vault valide et contrôles de santé locaux ; premier compte administrateur précréé avant l'ouverture publique, puis création des utilisateurs réservée à cet administrateur via `/_runtipi_admin/`. Les inscriptions publiques sont bloquées. **8292** reste l'unique port publié et un seul hostname Cloudflare Tunnel suffit ; RustFS, PostgreSQL et Redis restent internes et persistants. **Aucun Traefik.** [Compose](apps/lobehub/docker-compose.yml) · [Formulaire Runtipi](apps/lobehub/config.json) · [Installation et migration](apps/lobehub/metadata/description.md).
