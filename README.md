@@ -1,8 +1,8 @@
 # Ajilis Runtipi App Store
 
-## LobeHub 2.3.2 — un seul tunnel, RustFS privé
+## LobeHub 2.3.2 — premier administrateur global, inscriptions verrouillées
 
-Révision **2** : **8292** est le seul port hôte, avec un seul hostname Cloudflare Tunnel. La passerelle Nginx transfère uniquement les objets S3 pré-signés via `/lobe/` ; RustFS et les bases de données restent sans ports publiés. Aucun Traefik. [Compose](apps/lobehub/docker-compose.yml) · [Configuration Runtipi](apps/lobehub/config.json) · [Documentation](apps/lobehub/metadata/description.md).
+Révision Runtipi **3** : premier compte administrateur précréé avant l'ouverture publique, puis création des utilisateurs réservée à cet administrateur via `/_runtipi_admin/`. Les inscriptions publiques sont bloquées. **8292** reste l'unique port publié et un seul hostname Cloudflare Tunnel suffit ; RustFS, PostgreSQL et Redis restent internes et persistants. **Aucun Traefik.** [Compose](apps/lobehub/docker-compose.yml) · [Formulaire Runtipi](apps/lobehub/config.json) · [Installation et migration](apps/lobehub/metadata/description.md).
 
 ---
 ## CloakBrowser — versions

@@ -1,51 +1,74 @@
-# LobeHub 2.3.2 — Runtipi 4.9.1 — un seul hostname Cloudflare
+# LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-La révision Runtipi **2** garde LobeHub, PostgreSQL/ParadeDB, Redis et RustFS sur le réseau Docker interne. **Un seul port hôte 8292** est publié par une passerelle Nginx, sans Traefik.
+Révision Runtipi **3**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
-## Installation
+## Installation initiale
 
-1. Dans Runtipi, actualiser le store `https://github.com/Ajilis/runtipi-appstore`, puis installer ou mettre à jour **LobeHub**.
-2. Renseigner `LOBE_PUBLIC_URL=https://lobe.exemple.fr` et `LOBE_LAN_ORIGIN=http://192.168.1.10:8292` (adapter l'adresse à votre serveur). Limiter les inscriptions aux e-mails autorisés.
-3. Configurer **un seul** hostname Cloudflare Tunnel : `lobe.exemple.fr` → HTTP `http://IP_DU_SERVEUR:8292`.
-4. Accès LAN : `http://IP_DU_SERVEUR:8292` ; accès public : `https://lobe.exemple.fr`.
-5. Si vous mettez à jour la version 1 : **supprimer l'ancien hostname S3, ne plus publier 8293, conserver tous vos secrets et volumes existants**.
+1. Dans Runtipi, actualiser le store `https://github.com/Ajilis/runtipi-appstore`, puis installer **LobeHub**.
+2. Remplir `LOBE_PUBLIC_URL` (`https://lobe.exemple.fr`) et `LOBE_LAN_ORIGIN` (`http://IP_DU_SERVEUR:8292`).
+3. Dans **E-mail du premier administrateur global**, indiquer votre adresse e-mail ; saisir un **mot de passe initial de 12 à 64 caractères** dans le champ Runtipi dédié. Le mot de passe doit rester confidentiel.
+4. Démarrer l'application. Les services `lobehub-admin-precheck`, `lobehub-admin-register`, `lobehub-admin-promote` s'exécutent **avant** le démarrage de la passerelle publique. Si la base est vide, le premier compte est créé par une requête Better Auth interne, puis reçoit le rôle `admin` Better Auth **et** le rôle global `super_admin` RBAC, avec les permissions existantes. Les données et les secrets restent persistants.
+5. Dans Cloudflare Zero Trust → Tunnels → Public Hostnames, conserver un **seul hostname** `lobe.exemple.fr` → HTTP `http://IP_DU_SERVEUR:8292`. Accès LAN : `http://IP_DU_SERVEUR:8292` ; accès distant : `https://lobe.exemple.fr`.
+6. Se connecter à `https://lobe.exemple.fr/signin` avec l'adresse et le mot de passe renseignés dans Runtipi.
 
-## Architecture et sécurité
+### Si LobeHub était déjà installé
 
-| Composant | Port hôte | Connexion |
+- **Ne pas supprimer ou réinitialiser les volumes, secrets Better Auth, mots de passe PostgreSQL/S3, ni `config/jwks.json`.**
+- Renseigner comme `LOBE_ADMIN_EMAIL` **l'e-mail d'un utilisateur qui existe déjà** dans la base. Le compte existant est élevé administrateur global : **son mot de passe n'est pas modifié**. Le champ de mot de passe initial Runtipi n'est utilisé que si la base est vide.
+- S'il existe déjà des comptes mais aucun ne correspond à l'e-mail configuré, l'initialisation échoue volontairement et la passerelle publique ne démarre pas. Corriger l'e-mail dans Runtipi ; ne pas supprimer les données pour contourner ce contrôle.
+- La liste `LOBE_ALLOWED_EMAILS` de l'ancienne révision n'est plus utilisée : les créations de comptes sont désormais contrôlées par l'API administrateur et non par une inscription publique.
+
+## Comptes : page d'administration
+
+Après connexion avec l'administrateur global, ouvrir **`https://lobe.exemple.fr/_runtipi_admin/`** (ou `http://IP_DU_SERVEUR:8292/_runtipi_admin/` sur le LAN). Il s'agit d'une **interface complémentaire, fournie par le paquet Runtipi**, pas d'un écran natif de LobeHub.
+
+- Cette page vérifie la session actuelle Better Auth et n'affiche les actions de gestion qu'aux comptes ayant le rôle `admin`.
+- L'API native `GET /api/auth/admin/list-users` permet de voir les comptes, et `POST /api/auth/admin/create-user` de créer un compte standard avec nom, e-mail et mot de passe provisoire. L'autorisation est vérifiée **côté serveur** par le plugin Better Auth `admin()` de LobeHub.
+- La création d'un utilisateur standard **ne donne aucun droit d'administrateur**. Communiquer son mot de passe provisoire de manière sûre ; demander à l'utilisateur de le changer après connexion. Ce paquet ne comprend pas d'envoi d'e-mail automatique ni de procédure d'invitation par lien.
+- L'accès public à `/api/auth/sign-up/*` est refusé par Nginx (`403`), et `/signup` redirige vers `/signin`. Une éventuelle mention « S'inscrire » encore affichée par le client LobeHub ne permet **pas** de créer un compte.
+- La connexion par e-mail et mot de passe (`/api/auth/sign-in/email`) reste disponible. Les méthodes de création implicite de comptes par authentification anonyme et sociale ne sont pas activées sur cette installation.
+
+**Sécurité du premier compte :** aucun visiteur Internet ne peut « réclamer » le rôle admin en étant le premier à visiter le formulaire public. Le tout premier compte est provisionné par Runtipi à travers une requête **interne**, sans port LobeHub exposé. Le mot de passe initial figure dans les variables sécurisées de Runtipi : protéger les sauvegardes et accès à `app.env`. Le processus de provisionnement est idempotent : il ne réinitialise jamais le mot de passe d'un utilisateur déjà présent.
+
+## Architecture réseau et RustFS
+
+| Composant | Port publié sur le serveur | Accès |
 | --- | --- | --- |
-| Passerelle Nginx `lobehub-s3-gateway` | **8292** | LAN / Cloudflare Tunnel |
-| Application LobeHub (3210) | Aucun | Docker privé |
-| RustFS S3 (9000) | **Aucun** | Docker privé |
-| PostgreSQL / ParadeDB (5432) | Aucun | Docker privé |
-| Redis (6379) | Aucun | Docker privé |
-| Console RustFS (9001) | Aucun | Désactivée |
+| `lobehub-s3-gateway` (Nginx) | **8292** | LAN + Cloudflare Tunnel |
+| LobeHub | Aucun (3210 interne) | Docker uniquement |
+| PostgreSQL / ParadeDB | Aucun (5432 interne) | Docker uniquement |
+| Redis | Aucun (6379 interne) | Docker uniquement |
+| RustFS S3 | **Aucun** (9000 interne) | Docker uniquement |
+| Console RustFS | Aucun | Désactivée |
 
-Le chemin `https://lobe.exemple.fr/` est acheminé vers LobeHub. Le chemin `https://lobe.exemple.fr/lobe/<objet>?X-Amz-...` transmet **uniquement** des requêtes S3 présignées `GET`, `HEAD` et `PUT` vers RustFS dans Docker. Les `OPTIONS` répondent aux pré-requêtes CORS. Les appels non signés et les méthodes administratives sont refusés par Nginx ; RustFS vérifie ensuite la signature cryptographique, la méthode et l'expiration. Le proxy conserve l'hôte, le chemin et la query string pour ne pas casser SigV4. L'ancien accès anonyme public au bucket est supprimé (`rc anonymous set private`).
+Aucun service n'utilise le routage Traefik (`traefik.enable=false`). Ne pas publier de port via NAT sur le routeur. Si le serveur possède plusieurs interfaces, définir `LOBE_BIND_IP` avec l'IP LAN ou utiliser un pare-feu ; `0.0.0.0` écoute sur toutes les interfaces. Pour cloudflared dans un conteneur séparé, `127.0.0.1` n'est pas l'IP de l'hôte Runtipi.
 
-**Attention :** RustFS n'est plus directement exposé, mais une URL S3 pré-signée valide permet toujours un accès HTTP à l'objet correspondant via le chemin `/lobe/` du seul hostname public. Cela n'est PAS une interdiction absolue de toute requête S3 depuis Internet. Une isolation totale nécessiterait une modification du code de LobeHub pour faire transiter les transferts par son API applicative authentifiée, ce qui n'est pas inclus ici.
+Les transferts S3 signés `GET`, `HEAD` et `PUT` utilisent `https://lobe.exemple.fr/lobe/<objet>?X-Amz-...`. Nginx refuse les accès S3 non signés et les opérations d'administration ; RustFS valide ensuite les signatures. Les anciens accès anonymes au bucket sont révoqués au démarrage. **Toute personne possédant une URL S3 signée valide peut accéder temporairement à l'objet concerné**, même si RustFS n'a pas de port publié. Pour rendre tout accès aux fichiers exclusivement authentifié par l'application, une modification plus profonde de LobeHub serait nécessaire.
 
-Le domaine public reste nécessaire aux transferts de fichiers depuis le LAN ; les navigateurs LAN doivent donc pouvoir le résoudre et l'atteindre. Cloudflare Access appliqué à tout le hostname peut bloquer les URL signées ou CORS, ainsi que les récupérations par certains modèles IA. Ajuster les politiques Cloudflare si nécessaire, idéalement seulement sur `/lobe/*`, sans rendre le bucket anonyme. Ne pas ouvrir de port S3 sur la box ni de NAT. Par défaut `0.0.0.0` écoute sur toutes les interfaces : préférer l'IP LAN du serveur et un pare-feu si l'hôte est multi-réseaux. Pour cloudflared en Docker distinct, `127.0.0.1` n'est pas l'hôte : utiliser l'IP LAN ou un réseau partagé.
+Les navigateurs LAN doivent pouvoir accéder à `https://lobe.exemple.fr` pour les URL signées. La valeur canonique `APP_URL` peut déclencher des redirections HTTPS depuis le LAN. Cloudflare Access sur tout le hostname peut bloquer les téléchargements signés ou certaines requêtes CORS : vérifier les politiques Cloudflare si nécessaire. La taille des fichiers reste soumise aux limites du compte Cloudflare.
 
 ## Persistance et sauvegardes
 
-| Sous-dossier Runtipi `APP_DATA_DIR` | Contenu |
+| Emplacement sous `APP_DATA_DIR` | Contenu |
 | --- | --- |
-| `config/jwks.json` | Clé JWT privée générée une seule fois, mode 0600 |
-| `config/nginx-gateway-v1.conf` | Configuration Nginx créée une seule fois et conservée |
-| `postgres/` | Conversations, paramètres, utilisateurs, agents |
-| `redis/` | Cache Redis / journal AOF |
+| `config/jwks.json` | Clé privée Better Auth/JWKS, créée une seule fois |
+| `config/nginx-gateway-v2.conf` | Configuration de la passerelle Nginx, créée une seule fois |
+| `config/runtipi-admin-v1.html` | Page de gestion des comptes, créée une seule fois |
+| `config/runtipi-admin-state` | État du provisionnement admin |
+| `postgres/` | Comptes, rôles `admin` / `super_admin`, agents, conversations |
+| `redis/` | Cache et AOF Redis |
 | `rustfs/` | Documents, images, pièces jointes |
 
-Runtipi conserve aussi les secrets d'installation (Better Auth, KEY_VAULTS_SECRET, mot de passe SQL, accès et secret S3). **Sauvegarder les secrets et les répertoires ensemble.** Lors d'une mise à jour ne pas régénérer les secrets ni supprimer les volumes. Pour PostgreSQL, faire une sauvegarde cohérente (`pg_dump` ou arrêt préalable).
+Runtipi conserve également les variables sensibles. Sauvegarder ensemble les variables d'environnement et ces volumes. Pour une sauvegarde PostgreSQL cohérente, utiliser `pg_dump` ou arrêter la pile. Une mise à jour n'écrase pas les fichiers de configuration versionnés existants, ni les mots de passe utilisateurs.
 
-## Vérifications
+## Tests après déploiement
 
-1. `curl -I http://IP_DU_SERVEUR:8292/` : LobeHub doit répondre (200 ou redirection).
-2. `curl -i http://IP_DU_SERVEUR:8292/lobe/test` : **403 attendu** sans signature.
-3. `docker ps` : aucune publication pour RustFS sur 8293 ni pour PostgreSQL et Redis.
-4. Sur `https://lobe.exemple.fr`, tester l'authentification, l'envoi et l'aperçu d'images et de PDF, puis depuis le LAN. Pour les transferts volumineux, vérifier les limites Cloudflare et le multipart.
+1. Vérifier dans les journaux Docker que les services `lobehub-admin-precheck`, `lobehub-admin-register`, `lobehub-admin-promote` se terminent avec succès. En cas d'échec, la passerelle reste fermée : **ne pas supprimer la base de données**.
+2. `curl -i -X POST http://IP_DU_SERVEUR:8292/api/auth/sign-up/email` doit retourner **403**. `curl -I http://IP_DU_SERVEUR:8292/signup` doit rediriger vers `/signin`.
+3. Se connecter avec le premier compte, ouvrir `/_runtipi_admin/`, créer un utilisateur standard et vérifier qu'il peut se connecter sans pouvoir créer d'autres comptes.
+4. Tester avec un utilisateur non administrateur : l'API `/api/auth/admin/create-user` doit refuser l'opération.
+5. `curl -i http://IP_DU_SERVEUR:8292/lobe/test` doit retourner **403** sans URL S3 signée ; `docker ps` ne doit pas publier 8293. Tester ensuite un PDF et une image, leur lecture et leur téléchargement via l'URL publique.
 
-Le parseur Nginx et les filtrages de méthodes et signatures ont été testés sur serveur HTTP simulé. **L'exécution réelle dans Runtipi et l'intégration S3/Cloudflare de bout en bout restent à confirmer.** Agent Gateway / Device Gateway, SearXNG et Elasticsearch ne sont pas inclus.
+**Limite de validation :** le code de LobeHub 2.3.2 confirme les routes Better Auth et le schéma PostgreSQL utilisés. La syntaxe des scripts JavaScript a été vérifiée ; en revanche aucun déploiement Docker, aucune création réelle de compte, aucune requête PostgreSQL de ce scénario et aucun test de bout en bout Cloudflare/RustFS n'ont pu être exécutés sur votre Runtipi. Installer cette révision après sauvegarde des données et vérifier les journaux.
 
-Images : `lobehub/lobehub:2.3.2`, `paradedb/paradedb:0.26.5-pg17`, `redis:7.4-alpine`, `rustfs/rustfs:1.0.4`, `rustfs/rc:v0.1.37`, `nginx:1.28-alpine`.
+Versions : LobeHub `2.3.2`, ParadeDB `0.26.5-pg17`, PostgreSQL helper `17-alpine`, Node.js helper `24-alpine`, Redis `7.4-alpine`, RustFS `1.0.4`, RustFS rc `v0.1.37`, Nginx `1.28-alpine`. Sans Agent Gateway, Device Gateway, SearXNG ni Elasticsearch.

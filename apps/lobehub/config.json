@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 avec PostgreSQL/ParadeDB, Redis, RustFS et configuration persistants. Un seul port LAN/Cloudflare (8292), sans Traefik et sans port S3 publie ; objets S3 accessibles uniquement par URL SigV4 valide via /lobe/.",
-  "tipi_version": 2,
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : premier compte admin global provisionne depuis Runtipi, inscriptions publiques interdites et creation des utilisateurs reservee a l'administrateur. RustFS et bases internes, port public unique 8292, sans Traefik.",
+  "tipi_version": 3,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
@@ -41,11 +41,18 @@
     },
     {
       "type": "text",
-      "label": "E-mails autorises a s'inscrire",
-      "hint": "Adresse(s) e-mail autorisee(s), separees par des virgules. Evite les inscriptions ouvertes sur Internet.",
-      "placeholder": "admin@exemple.fr",
+      "label": "E-mail du premier administrateur global",
+      "hint": "Installation neuve : ce compte est cree automatiquement avant ouverture du site. Installation existante : mettre l'e-mail exact d'un compte deja cree pour lui attribuer les droits admin. Si la base contient des comptes mais aucun a cette adresse, le lancement est bloque par securite.",
+      "placeholder": "administrateur@exemple.fr",
       "required": true,
-      "env_variable": "LOBE_ALLOWED_EMAILS"
+      "env_variable": "LOBE_ADMIN_EMAIL"
+    },
+    {
+      "type": "password",
+      "label": "Mot de passe initial du premier administrateur",
+      "hint": "12 a 64 caracteres. Utilise seulement a la creation sur base vide, conserve dans Runtipi et non applique aux comptes deja existants. Ne partager ce secret avec personne.",
+      "required": true,
+      "env_variable": "LOBE_INITIAL_ADMIN_PASSWORD"
     },
     {
       "type": "random",
@@ -104,5 +111,5 @@
     }
   ],
   "created_at": 1794052800000,
-  "updated_at": 1794056478913
+  "updated_at": 1794059073332
 }
