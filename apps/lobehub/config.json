@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : premier compte admin global provisionne depuis Runtipi, inscriptions publiques interdites, creation des utilisateurs reservee a l'administrateur et validation/conversion automatique de la cle Vault.",
-  "tipi_version": 5,
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : admin global provisionne, inscriptions publiques interdites, clé Vault valide et healthcheck HTTP direct sans redirection.",
+  "tipi_version": 6,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
@@ -114,5 +114,5 @@
     }
   ],
   "created_at": 1794052800000,
-  "updated_at": 1794068100000
+  "updated_at": 1794074400000
 }
