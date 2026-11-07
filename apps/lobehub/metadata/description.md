@@ -1,6 +1,17 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **4**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **5**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+
+## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
+
+Le champ Runtipi `LOBE_KEY_VAULTS_SECRET` génère **64 caractères hexadécimaux**, correspondant à **32 octets aléatoires**. LobeHub attend un encodage **Base64 de 16, 24 ou 32 octets** ; dans cette application, la clé utilisée est toujours de **32 octets**.
+
+- **Première installation :** Runtipi crée le secret une seule fois et le conserve dans `app.env`. Au démarrage, LobeHub convertit la représentation hexadécimale en Base64 canonique avant de charger le serveur. Il n'y a pas de création d'un second secret ni de modification de `app.env`.
+- **Redémarrage et mise à jour :** le même secret hexadécimal donne la même clé Base64, sans rotation. Les valeurs Base64 canoniques qui représentent déjà exactement 32 octets (par exemple après une correction manuelle) sont conservées telles quelles.
+- **Valeur absente ou incorrecte :** le démarrage échoue avec un message explicite **sans remplacer la clé**. Ne pas réinstaller ni réinitialiser PostgreSQL pour contourner ce contrôle. Vérifier la valeur existante dans les paramètres Runtipi, sans la publier dans des logs ou un ticket.
+- **Sauvegarde :** sauvegarder conjointement la configuration Runtipi (`app.env`), `config/jwks.json` et la base PostgreSQL. Toute rotation voulue doit être planifiée avec une migration des données chiffrées.
+
+Cette correction prend aussi en charge les installations existantes qui conservent la valeur hexadécimale de 64 caractères générée par les révisions antérieures : la conversion est **déterministe** et ne régénère rien. Aucun secret n'est imprimé dans les journaux.
 
 ## Installation initiale
 
