@@ -397,7 +397,26 @@ services:
     labels:
       traefik.enable: "false"
     healthcheck:
-      test: ["CMD", "/bin/node", "-e", "fetch('http://127.0.0.1:3210/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      # node:http ne suit pas les redirections vers l'URL publique
+      # et ne passe pas par un proxy configure pour fetch/undici.
+      test:
+        - CMD
+        - /bin/node
+        - -e
+        - |
+          const http = require('node:http');
+          const request = http.get({hostname: '127.0.0.1', port: 3210, path: '/', timeout: 8000, agent: false}, (response) => {
+            const status = response.statusCode || 0;
+            response.resume();
+            if (status >= 200 && status < 400) process.exit(0);
+            console.error('LobeHub healthcheck: HTTP ' + status);
+            process.exit(1);
+          });
+          request.on('timeout', () => request.destroy(new Error('HTTP timeout')));
+          request.on('error', (error) => {
+            console.error('LobeHub healthcheck: ' + (error.code || error.message));
+            process.exit(1);
+          });
       interval: 30s
       timeout: 10s
       retries: 10
