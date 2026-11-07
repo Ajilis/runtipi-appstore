@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **8**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **9**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -45,6 +45,18 @@ La révision précédente définissait `updated_at` à une date future. Le sché
 Le champ `updated_at` est désormais omis : Runtipi lui attribue son défaut `0` et n'a plus de date future à valider. `created_at` conserve sa date historique valide. Aucun volume, secret, conteneur ou autre réglage de LobeHub n'est modifié. Pour appliquer : actualiser le store Ajilis, puis rafraîchir l'interface ; le cache du catalogue peut nécessiter jusqu'à 15 minutes d'expiration en l'absence d'invalidation explicite.
 
 **Pour les prochaines révisions** : ne pas introduire d'horodatage prédéfini dans le futur ; omettre `updated_at` est préférable tant qu'aucun horodatage courant fiable n'est disponible.
+
+## Initialisation RustFS robuste (révision Runtipi 9)
+
+RustFS 1.0.4 dispose de deux contrôles : `/health` signale que le service HTTP fonctionne ; `/health/ready` exige que le stockage, IAM et les métadonnées soient prêts. Le healthcheck Docker interroge désormais **`/health/ready`** avant de lancer `rustfs-init`.
+
+`rustfs-init` initialise le bucket privé `lobe` avec quatre étapes clairement identifiées : alias S3, création du bucket avec `--ignore-existing`, accès anonyme privé, configuration CORS. **Seul le code de sortie 3 du client rc (erreur réseau/503) donne lieu à une nouvelle tentative**, au maximum 12 tentatives espacées de cinq secondes par étape ; les autres erreurs échouent immédiatement. Le journal de `rustfs-init` affiche le nom de l'étape, la tentative et le code de sortie sans imprimer les identifiants.
+
+Le conteneur RustFS reçoit les identifiants **exclusivement via ses variables d'environnement** existantes `RUSTFS_ACCESS_KEY` et `RUSTFS_SECRET_KEY`, et non plus via des arguments visibles dans les logs du script de démarrage. Les valeurs des clés ne sont ni régénérées ni modifiées, et les données `rustfs/` sont conservées.
+
+**Sécurité :** si des journaux précédents ont révélé la clé S3, ces secrets doivent être considérés comme exposés. Planifier leur rotation **de manière coordonnée** dans Runtipi et les éventuels clients S3 après sauvegarde et contrôle de l'accès aux fichiers. Ne pas simplement modifier la clé dans le conteneur RustFS : LobeHub et `rustfs-init` doivent utiliser les mêmes valeurs.
+
+Pour diagnostiquer une nouvelle erreur : `docker logs --tail 150 lobehub_appstore-ajilis-rustfs-init-1` et `docker inspect --format '{{json .State.Health}}' lobehub_appstore-ajilis-rustfs-1`. Si la réponse `/health/ready` demeure 503 ou si une étape échoue après les tentatives, consulter les journaux RustFS et le stockage plutôt que réinitialiser le bucket.
 
 ## Installation initiale
 
