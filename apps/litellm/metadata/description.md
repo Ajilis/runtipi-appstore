@@ -37,6 +37,10 @@ Seul le port hôte **8294/tcp** est publié (`8294:4000/tcp`). PostgreSQL reste 
 - Image LiteLLM versionnée : `ghcr.io/berriai/litellm:v1.108.0`.
 - Base PostgreSQL : `postgres:16` (même version majeure lors des mises à jour courantes).
 - Pour une sauvegarde cohérente, exécutez `pg_dump` ou arrêtez le service avant une copie du répertoire PostgreSQL. Une simple copie à chaud des fichiers PostgreSQL peut être incohérente.
-- Le service d'initialisation écrit `config.yaml` uniquement si le fichier est absent.
+- Le service LiteLLM initialise `config.yaml` lui-même **uniquement si le fichier est absent** ; aucun conteneur d'initialisation séparé n'est créé. Deux conteneurs permanents restent en service (`litellm`, `postgres`), évitant le statut erroné `2/3 running` de Runtipi 4.9.1.
 
 Sources : [LiteLLM](https://github.com/BerriAI/litellm) · [Documentation LiteLLM](https://docs.litellm.ai/docs/proxy/docker_quick_start) · [Documentation Runtipi](https://runtipi.io/docs/guides/create-your-own-app-store).
+
+## Correction Runtipi, révision 3 — état 2/3 conteneurs
+
+Le service ponctuel `litellm-config-init` a été supprimé : Runtipi 4.9.1 comptait son arrêt normal comme un service défaillant et affichait l'application comme `stopped`. LiteLLM initialise maintenant la configuration au démarrage dans le même conteneur, puis exécute son entrypoint officiel. **Aucune suppression de la base PostgreSQL ni du fichier `config.yaml` n'est nécessaire.** Mettre à jour le catalogue puis recréer l'application depuis Runtipi sans désinstaller les données. Contrôler `docker compose ps` et les journaux de `litellm` si un des deux services ne démarre pas.
