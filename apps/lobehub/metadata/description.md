@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **9**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **10**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -57,6 +57,14 @@ Le conteneur RustFS reçoit les identifiants **exclusivement via ses variables d
 **Sécurité :** si des journaux précédents ont révélé la clé S3, ces secrets doivent être considérés comme exposés. Planifier leur rotation **de manière coordonnée** dans Runtipi et les éventuels clients S3 après sauvegarde et contrôle de l'accès aux fichiers. Ne pas simplement modifier la clé dans le conteneur RustFS : LobeHub et `rustfs-init` doivent utiliser les mêmes valeurs.
 
 Pour diagnostiquer une nouvelle erreur : `docker logs --tail 150 lobehub_appstore-ajilis-rustfs-init-1` et `docker inspect --format '{{json .State.Health}}' lobehub_appstore-ajilis-rustfs-1`. Si la réponse `/health/ready` demeure 503 ou si une étape échoue après les tentatives, consulter les journaux RustFS et le stockage plutôt que réinitialiser le bucket.
+
+## Publication du port LAN 8292 (révision Runtipi 10)
+
+Runtipi convertit les ports Compose destinés à son éditeur YAML avec un découpage sur `:`. La notation initiale `${LOBE_BIND_IP:-0.0.0.0}:${APP_PORT:-8292}:8080/tcp` comporte des séparateurs `:` **à l'intérieur des valeurs par défaut**, ce qui génère un champ `PORT DE L'HÔTE` incorrect et un mauvais `PORT DU CONTENEUR` dans l'éditeur.
+
+La syntaxe retenue est désormais `${LOBE_BIND_IP}:${APP_PORT}:8080/tcp`. Runtipi renseigne `LOBE_BIND_IP` par la valeur par défaut du formulaire (`0.0.0.0`) et injecte `APP_PORT` à partir du port déclaré dans `config.json` (8292 ou l'éventuelle valeur personnalisée). Le découpage de Runtipi retrouve donc exactement trois éléments : adresse IP, port hôte et port conteneur. Seul **TCP** est publié ; UDP n'est pas nécessaire.
+
+Le service `lobehub-s3-gateway` continue de servir l'interface en LAN à `http://IP_DU_SERVEUR:8292`, sans tunnel Cloudflare au premier démarrage. Ce correctif **n'affecte pas le healthcheck interne Nginx** : si le conteneur reste `unhealthy`, consulter `docker logs lobehub_appstore-ajilis-lobehub-s3-gateway-1` et `docker inspect --format '{{json .State.Health}}' lobehub_appstore-ajilis-lobehub-s3-gateway-1`.
 
 ## Installation initiale
 
