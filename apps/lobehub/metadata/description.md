@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **5**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **6**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -12,6 +12,17 @@ Le champ Runtipi `LOBE_KEY_VAULTS_SECRET` génère **64 caractères hexadécimau
 - **Sauvegarde :** sauvegarder conjointement la configuration Runtipi (`app.env`), `config/jwks.json` et la base PostgreSQL. Toute rotation voulue doit être planifiée avec une migration des données chiffrées.
 
 Cette correction prend aussi en charge les installations existantes qui conservent la valeur hexadécimale de 64 caractères générée par les révisions antérieures : la conversion est **déterministe** et ne régénère rien. Aucun secret n'est imprimé dans les journaux.
+
+## Contrôle de santé HTTP local (révision Runtipi 6)
+
+Le healthcheck utilise désormais `node:http` avec `agent: false` vers `127.0.0.1:3210/`, plutôt que `fetch()`. Il ne suit donc pas les redirections vers le domaine public (par exemple `/signin`), et n'utilise pas de proxy HTTP implicite.
+
+- **Réponse HTTP 2xx ou 3xx :** LobeHub est considéré joignable. Une redirection d'authentification `302` ou `307` est normale.
+- **HTTP 4xx ou 5xx, refus de connexion, délai dépassé :** le contrôle échoue et inscrit un diagnostic (ex. `HTTP 500`, `ECONNREFUSED`, `HTTP timeout`) dans `docker inspect --format '{{json .State.Health}}' lobehub_appstore-ajilis-lobehub-1`.
+- Le contrôle teste **la réponse locale du serveur web**, pas toutes les dépendances métier ou les chemins de connexion utilisateur ; la base et RustFS sont contrôlés séparément par Compose.
+- Il ne modifie ni la base PostgreSQL ni les clés JWT/JWKS et Vault, et ne réduit pas les dépendances de démarrage.
+
+Si l'application reste `unhealthy`, examiner le diagnostic exact et `docker logs` plutôt que de désactiver le healthcheck.
 
 ## Installation initiale
 
