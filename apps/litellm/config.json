@@ -1,0 +1,55 @@
+{
+  "name": "LiteLLM",
+  "id": "litellm",
+  "available": true,
+  "short_desc": "Passerelle API LLM avec interface d'administration et PostgreSQL persistant.",
+  "author": "BerriAI",
+  "port": 8294,
+  "categories": [
+    "ai",
+    "utilities"
+  ],
+  "description": "LiteLLM v1.108.0 pour Runtipi 4.9.1. Accès LAN sur le port 8294 et Cloudflare Tunnel sans Traefik. Configuration YAML et base PostgreSQL persistantes.",
+  "tipi_version": 1,
+  "version": "1.108.0",
+  "source": "https://github.com/BerriAI/litellm",
+  "website": "https://docs.litellm.ai/",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "random",
+      "label": "Clé administrateur LiteLLM (conserver)",
+      "hint": "Clé maîtresse sk-... utilisée pour l'API et la connexion administrateur. À protéger et sauvegarder avec app.env.",
+      "required": true,
+      "min": 64,
+      "encoding": "hex",
+      "env_variable": "LITELLM_MASTER_SECRET"
+    },
+    {
+      "type": "random",
+      "label": "Clé de chiffrement LiteLLM (ne jamais changer)",
+      "hint": "Chiffre les identifiants fournisseurs en base. Une rotation rend les valeurs existantes illisibles.",
+      "required": true,
+      "min": 64,
+      "encoding": "hex",
+      "env_variable": "LITELLM_SALT_SECRET"
+    },
+    {
+      "type": "random",
+      "label": "Mot de passe PostgreSQL (conserver)",
+      "hint": "Utilisé uniquement entre les conteneurs ; le port PostgreSQL n'est pas publié.",
+      "required": true,
+      "min": 48,
+      "encoding": "hex",
+      "env_variable": "LITELLM_DB_PASSWORD"
+    }
+  ]
+}
