@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : premier compte admin global provisionne depuis Runtipi, inscriptions publiques interdites et creation des utilisateurs reservee a l'administrateur. RustFS et bases internes, port public unique 8292, sans Traefik.",
-  "tipi_version": 4,
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : premier compte admin global provisionne depuis Runtipi, inscriptions publiques interdites, creation des utilisateurs reservee a l'administrateur et validation/conversion automatique de la cle Vault.",
+  "tipi_version": 5,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
@@ -66,11 +66,12 @@
     },
     {
       "type": "random",
-      "label": "Cle de chiffrement LobeHub (conserver)",
+      "label": "Clé Vault LobeHub (32 octets, conserver)",
       "min": 64,
       "encoding": "hex",
       "required": true,
-      "env_variable": "LOBE_KEY_VAULTS_SECRET"
+      "env_variable": "LOBE_KEY_VAULTS_SECRET",
+      "hint": "Générée automatiquement par Runtipi : 64 caractères hexadécimaux (32 octets), convertis en Base64 valide au démarrage. Ne jamais modifier après installation : risque de perte des données chiffrées."
     },
     {
       "type": "random",
@@ -113,5 +114,5 @@
     }
   ],
   "created_at": 1794052800000,
-  "updated_at": 1794059395303
+  "updated_at": 1794068100000
 }
