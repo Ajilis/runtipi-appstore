@@ -2,33 +2,20 @@
 # LAN: http://IP_DU_SERVEUR:8294 ; Tunnel -> http://IP_DU_SERVEUR:8294
 # Pas de Traefik, pas de publication PostgreSQL.
 services:
-  litellm-config-init:
-    image: alpine:3.21
-    restart: "no"
-    command:
-      - /bin/sh
-      - -ec
-      - |
-        mkdir -p /config
-        if [ ! -f /config/config.yaml ]; then
-          cat > /config/config.yaml <<'CONFIG'
-        # Configuration persistante LiteLLM ; modèles via l'UI ou ici.
-        model_list: []
-        litellm_settings:
-          drop_params: true
-        CONFIG
-          chmod 644 /config/config.yaml
-        fi
-    volumes:
-      - ${APP_DATA_DIR}/config:/config
-    security_opt:
-      - no-new-privileges:true
-
   litellm:
     image: ghcr.io/berriai/litellm:v1.108.0
     restart: unless-stopped
     init: true
-    command: ["--config", "/app/litellm-config/config.yaml", "--port", "4000"]
+    # Initialise config.yaml dans le même conteneur, puis lance LiteLLM.
+    # Évite un conteneur one-shot compté comme arrêté par Runtipi 4.9.1.
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mkdir -p /app/litellm-config
+        if [ ! -f /app/litellm-config/config.yaml ]; then
+          printf '%s\\n' 'model_list: []' 'litellm_settings:' '  drop_params: true' > /app/litellm-config/config.yaml
+        fi
+        exec /app/docker/prod_entrypoint.sh --config /app/litellm-config/config.yaml --port 4000
     environment:
       DATABASE_URL: "postgresql://litellm:${LITELLM_DB_PASSWORD}@postgres:5432/litellm"
       LITELLM_MASTER_KEY: "sk-${LITELLM_MASTER_SECRET}"
@@ -38,7 +25,7 @@ services:
       STORE_MODEL_IN_DB: "True"
       TZ: "${TZ:-Europe/Paris}"
     volumes:
-      - ${APP_DATA_DIR}/config:/app/litellm-config:ro
+      - ${APP_DATA_DIR}/config:/app/litellm-config
     ports:
       - "8294:4000/tcp"
     labels:
@@ -49,8 +36,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      litellm-config-init:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)"]
       interval: 30s
