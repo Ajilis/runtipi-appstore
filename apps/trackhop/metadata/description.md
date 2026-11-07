@@ -16,7 +16,7 @@ Si `cloudflared` tourne **sur l'hôte en mode réseau hôte**, `http://127.0.0.1
 
 Trackhop Server dispose de sa propre **interface Web** : ouvrir `http://IP_DU_SERVEUR:8293` sur le réseau local, ou l'URL HTTPS Cloudflare Tunnel depuis l'extérieur. Dans Runtipi, l'application est déclarée avec `no_gui: false`, pour que son accès Web ne soit pas masqué.
 
-La **révision 2 du catalogue** permet de personnaliser le compte administrateur pendant l'installation :
+Depuis la **révision 2 du catalogue**, et maintenu en révision 3, il est possible de personnaliser le compte administrateur pendant l'installation :
 - **Identifiant administrateur (login)** : champ `TRACKHOP_USER` (par défaut `admin`), transmis à l'application sous `SONGPORT_USER`.
 - **Mot de passe administrateur** : champ masqué de type `password`, `TRACKHOP_PASSWORD`, transmis comme `SONGPORT_PASSWORD`. Ce champ n'est plus de type `random`.
 
@@ -24,9 +24,26 @@ L'application utilise une authentification HTTP : le navigateur peut afficher un
 
 **Mise à jour d'une installation existante :** rafraîchir le catalogue Ajilis puis ouvrir les paramètres de Trackhop dans Runtipi pour modifier ou ajouter le login et le mot de passe, si cette option est proposée par l'interface. Une valeur `TRACKHOP_USER` absente conserve automatiquement `admin`, tandis que l'ancien `TRACKHOP_PASSWORD` reste compatible : aucune suppression des données ni réinstallation n'est nécessaire pour appliquer les fichiers du catalogue. Redémarrer Trackhop après une modification de variables. Lorsque Runtipi n'autorise pas l'édition du formulaire d'une application installée, définir les valeurs dans un override `user-config/<slug-du-store>/trackhop/app.env` conformément au guide [Personnaliser la configuration d'une application](https://runtipi.io/docs/guides/customize-app-config), puis redémarrer. En mode multiutilisateur, changer le login dans l'environnement ne renomme pas automatiquement les utilisateurs déjà enregistrés.
 
+## Correctif Runtipi 4.9.1 — éditeur visuel des ports (révision 3)
+
+Certains éditeurs visuels de configuration découpent incorrectement le mappage précédent `${TRACKHOP_LISTEN_ADDRESS:-0.0.0.0}:${APP_PORT:-8293}:8080/tcp` sur les deux-points de `:-`. Les champs peuvent alors afficher des valeurs invalides comme `${TRACKHOP_LISTEN_ADDRESS` et `-0.0.0.0}`, au lieu des véritables ports TCP.
+
+**Correction :** le Docker Compose utilise maintenant uniquement :
+
+```yaml
+    ports:
+      - "8293:8080/tcp"
+```
+
+Cela rend l'interface Web accessible sur `http://IP_DU_SERVEUR:8293`, et laisse Cloudflare Tunnel accéder à cette même origine HTTP, tout en conservant `traefik.enable: "false"`. Aucun port UDP n'est publié. Le champ « Adresse IP d'écoute » a été retiré du formulaire : l'éditeur ne doit plus l'interpréter.
+
+**Pour une installation déjà créée :** actualiser le catalogue et appliquer la mise à jour de Trackhop. Si un override personnalisé ou une modification manuelle du Compose a déjà enregistré l'ancien mappage, corriger sous **Éditer YAML** la section `ports` selon l'exemple ci-dessus, enregistrer et recréer / redémarrer le service depuis Runtipi. Vérifier dans l'onglet **Ports** : hôte **8293**, conteneur **8080**, **TCP uniquement**. Ne pas modifier les volumes et ne pas désinstaller l'application pour cette opération.
+
+Ce port est ouvert sur les interfaces de l'hôte par défaut : limiter sa portée au LAN par le pare-feu du serveur et ne jamais rediriger le port depuis le routeur Internet.
+
 ## Aucun routage Traefik
 
-Le port hôte **8293/tcp** est directement publié vers **8080/tcp** dans le conteneur. Le service n'utilise pas `x-runtipi.is_main`, et son étiquette `traefik.enable` vaut `false`. Dans `config.json`, `exposable` et `force_expose` valent `false` ; Runtipi ne doit pas proposer son système d'exposition par domaine pour Trackhop.
+Le port hôte **8293/tcp** est directement publié vers **8080/tcp** dans le conteneur, avec la ligne **fixe** `- "8293:8080/tcp"` dans le Compose (sans variables imbriquées dans `ports`). Le service n'utilise pas `x-runtipi.is_main`, et son étiquette `traefik.enable` vaut `false`. Dans `config.json`, `exposable` et `force_expose` valent `false` ; Runtipi ne doit pas proposer son système d'exposition par domaine pour Trackhop.
 
 Cloudflare Tunnel se configure **en dehors** de ce Compose. Aucun conteneur `cloudflared`, aucun jeton secret, ni règle de routage Traefik ne sont ajoutés.
 
