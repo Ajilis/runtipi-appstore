@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **10**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **11**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -65,6 +65,18 @@ Runtipi convertit les ports Compose destinés à son éditeur YAML avec un déco
 La syntaxe retenue est désormais `${LOBE_BIND_IP}:${APP_PORT}:8080/tcp`. Runtipi renseigne `LOBE_BIND_IP` par la valeur par défaut du formulaire (`0.0.0.0`) et injecte `APP_PORT` à partir du port déclaré dans `config.json` (8292 ou l'éventuelle valeur personnalisée). Le découpage de Runtipi retrouve donc exactement trois éléments : adresse IP, port hôte et port conteneur. Seul **TCP** est publié ; UDP n'est pas nécessaire.
 
 Le service `lobehub-s3-gateway` continue de servir l'interface en LAN à `http://IP_DU_SERVEUR:8292`, sans tunnel Cloudflare au premier démarrage. Ce correctif **n'affecte pas le healthcheck interne Nginx** : si le conteneur reste `unhealthy`, consulter `docker logs lobehub_appstore-ajilis-lobehub-s3-gateway-1` et `docker inspect --format '{{json .State.Health}}' lobehub_appstore-ajilis-lobehub-s3-gateway-1`.
+
+## Console administrateur Nginx : suppression de l'erreur 500 (révision Runtipi 11)
+
+Les logs Runtipi montrent que `GET /_runtipi_admin/` échouait avec `HTTP 500` et le message `/etc/nginx/runtipi-admin/index.htmlindex.html is not a directory`. La règle `location = /_runtipi_admin/` utilisait un `alias` pointant **directement sur le fichier `index.html`** ; le module Nginx `index` ajoutait lui aussi `index.html`, produisant un chemin invalide.
+
+La règle utilise désormais un préfixe `location ^~ /_runtipi_admin/` et l'`alias /etc/nginx/runtipi-admin/` (répertoire), avec `index index.html`. Les accès `/_runtipi_admin/` et `/_runtipi_admin/index.html` pointent sur le document statique valide. Le contrôle de santé Nginx garde son URL locale `http://127.0.0.1:8080/_runtipi_admin/` : il devient sain si la page retourne HTTP 200. Les restrictions contre les inscriptions publiques, les signatures S3 et l'authentification Better Auth restent inchangées.
+
+**Mise à jour des installations existantes :** le script `lobehub-init` n'écrase jamais les anciens fichiers de configuration persistants. Il crée donc un **nouveau** fichier `config/nginx-gateway-v4.conf` lors du prochain démarrage, et le service Nginx monte désormais ce nouveau fichier en lecture seule. `nginx-gateway-v3.conf` est conservé pour référence ; ni les données ni les clés ne sont remplacées.
+
+**Limite connue Runtipi 4.12.0 :** la synchronisation des états Docker compte aussi les cinq conteneurs d'initialisation qui se sont normalement terminés avec `Exited (0)`. Le message `5/10 running` peut donc encore faire apparaître LobeHub comme **Arrêté** dans le tableau de bord alors que ses cinq services permanents sont démarrés et sains. Ce défaut de statut nécessite une correction côté Runtipi ; relancer ou réinstaller LobeHub ne le résout pas. Vérifier les états réels avec `docker ps -a --filter "label=com.docker.compose.project=lobehub_appstore-ajilis"`.
+
+**Validation locale :** avec le binaire Nginx, la règle antérieure renvoie HTTP 500 sur `/_runtipi_admin/` ; la nouvelle règle répond HTTP 200 et refuse les fichiers inexistants (404). Cette validation ne remplace pas un test après mise à jour de l'instance réelle.
 
 ## Installation initiale
 
