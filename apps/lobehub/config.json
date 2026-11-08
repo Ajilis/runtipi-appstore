@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : installation LAN autonome, administrateur global, stockage RustFS, port LAN 8292 sans problème de conversion Runtipi.",
-  "tipi_version": 10,
+  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : LAN autonome, admin global, RustFS et correctif Nginx 500 sur la console d'administration.",
+  "tipi_version": 11,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
