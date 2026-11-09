@@ -466,8 +466,8 @@ services:
           echo 'Instance deja peuplee : parametrer ADMIN_EMAIL avec un compte existant, puis relancer.' >&2
           exit 1
         fi
-        case "$result" in
-          fresh|existing_admin) printf '%s\n' "$result" > /config/runtipi-admin-state ;;
+        case "$$result" in
+          fresh|existing_admin) printf '%s\n' "$$result" > /config/runtipi-admin-state ;;
           *) echo 'Etat admin inattendu.' >&2; exit 1 ;;
         esac
         touch /tmp/lobehub-admin-precheck-ready
