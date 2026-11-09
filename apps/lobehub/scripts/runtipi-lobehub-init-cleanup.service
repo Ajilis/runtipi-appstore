@@ -1,8 +1,0 @@
-[Unit]
-Description=Retirer les initialisateurs LobeHub termines pour corriger le statut Runtipi
-Wants=docker.service
-After=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/runtipi-lobehub-init-cleanup

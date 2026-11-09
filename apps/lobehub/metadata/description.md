@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **11**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **12**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -78,30 +78,21 @@ La règle utilise désormais un préfixe `location ^~ /_runtipi_admin/` et l'`al
 
 **Validation locale :** avec le binaire Nginx, la règle antérieure renvoie HTTP 500 sur `/_runtipi_admin/` ; la nouvelle règle répond HTTP 200 et refuse les fichiers inexistants (404). Cette validation ne remplace pas un test après mise à jour de l'instance réelle.
 
-## Initialisateurs exécutés une fois, puis retirés du suivi Runtipi
+## Installation autonome sur un Runtipi vierge (révision 12)
 
-**Pourquoi :** Runtipi 4.12.0 répertorie les cinq conteneurs d'initialisation `Exited (0)` parmi les conteneurs de l'application et déclare à tort `5/10 running` → `stopped`, alors que les cinq services permanents sont sains. Le Compose seul ne peut pas supprimer automatiquement ses propres conteneurs sans privilèges Docker sur l'hôte.
+La première installation LobeHub s'effectue entièrement depuis le formulaire Runtipi, avec une adresse LAN, sans installation de service `systemd`, sans commande SSH et sans Cloudflare Tunnel préalable.
 
-**Solution facultative, à installer une seule fois sur l'hôte Runtipi :** le script [`scripts/cleanup-completed-init.sh`](scripts/cleanup-completed-init.sh), exécuté par une unité systemd toutes les minutes, contrôle d'abord que les cinq services permanents sont **`running (healthy)`**. Il exige ensuite que les cinq initialisateurs encore présents soient **`Exited (0)`** ; si l'un n'a pas réussi, **aucun conteneur n'est supprimé**. Lorsqu'ils ont tous réussi, le script supprime exclusivement les ID de ces cinq conteneurs temporaires avec `docker rm` (jamais `-f`, jamais `-v`). Après nettoyage, Docker et Runtipi ne voient plus que les cinq services permanents en cours d'exécution.
+**Problème Runtipi 4.12.0 :** les cinq tâches Compose terminées avec `Exited (0)` étaient comptabilisées dans les dix conteneurs de l'application. Runtipi signalait `5/10 running` et basculait à tort vers « Arrêté ».
 
-Les étapes d'initialisation continuent à fonctionner normalement sur **la première installation et les redémarrages qui recréent les conteneurs**. Le nettoyage se réexécute après leur réussite, sans migrer à nouveau les données ni supprimer les configurations. Aucun socket Docker n'est monté dans un conteneur LobeHub : seul le serveur hôte exécute les vérifications et la suppression.
+**Fonctionnement révision 12 :** les cinq initialiseurs conservent leur logique actuelle (JWKS/configuration, bucket RustFS et CORS, précontrôle admin, inscription du premier compte, promotion en administrateur global). Chacun crée un marqueur d'exécution dans son dossier éphémère `/tmp` **uniquement après succès**, devient `healthy` et reste en veille passive, sans requêtes ni tâches supplémentaires. Les dépendances passent à `condition: service_healthy`. La passerelle Nginx ne démarre qu'après la promotion effective de l'administrateur.
 
-Depuis le répertoire d'installation Runtipi, après `./runtipi-cli appstore update`, en tant que root :
+**Résultat attendu : dix conteneurs `Up`**, dont cinq services applicatifs actifs et cinq processus d'initialisation en veille passive. Contrairement à un nettoyage Docker, les cinq conteneurs temporaires **ne sont pas supprimés** : les supprimer automatiquement imposerait des privilèges d'accès au daemon Docker ou une correction du moteur Runtipi. La veille passive permet au Compose de rester autonome sur une installation vierge, au prix d'une faible consommation de mémoire par helper.
 
-```sh
-install -m 0755 repos/appstore-ajilis/apps/lobehub/scripts/cleanup-completed-init.sh /usr/local/sbin/runtipi-lobehub-init-cleanup
-install -m 0644 repos/appstore-ajilis/apps/lobehub/scripts/runtipi-lobehub-init-cleanup.service /etc/systemd/system/
-install -m 0644 repos/appstore-ajilis/apps/lobehub/scripts/runtipi-lobehub-init-cleanup.timer /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now runtipi-lobehub-init-cleanup.timer
-systemctl start runtipi-lobehub-init-cleanup.service
-```
+À chaque recréation forcée du Compose (mise à jour ou redémarrage), les étapes sont relancées de façon **idempotente** : les JWKS, le bucket privé existant et le mot de passe de l'administrateur ne sont pas remplacés. Si une étape échoue, elle ne produit aucun marqueur de réussite et la suite du démarrage reste bloquée.
 
-Pour contrôler le résultat : `systemctl status runtipi-lobehub-init-cleanup.timer`, `journalctl -u runtipi-lobehub-init-cleanup.service -n 30 --no-pager`, puis `docker ps -a --filter "label=com.docker.compose.project=lobehub_appstore-ajilis"`.
+**Depuis la révision 11 :** procéder à une mise à jour de l'application dans Runtipi, sans désinstallation et sans toucher aux volumes ou aux secrets. La solution extérieure `systemd` de la PR #57 est désormais obsolète. Si elle avait déjà été installée manuellement sur le serveur, la désactiver **avant** la mise à jour avec `systemctl disable --now runtipi-lobehub-init-cleanup.timer`.
 
-Pour désactiver ce nettoyage : `systemctl disable --now runtipi-lobehub-init-cleanup.timer`. Après désinstallation définitive de LobeHub, désactiver et supprimer l'unité et la minuterie de l'hôte.
-
-**Limites :** l'état affiché par Runtipi peut demander un cycle de synchronisation supplémentaire (environ 5 minutes). Si un service permanent est `unhealthy`, le script ne modifie rien : régler d'abord la panne. Si Runtipi change sa méthode de calcul des états, désactiver ce mécanisme. Ce contournement ne remplace pas une correction du service `app-status-sync.service.ts` de Runtipi en amont.
+Pour vérifier le résultat : `docker ps -a --filter "label=com.docker.compose.project=lobehub_appstore-ajilis"` ; dix services `Up` doivent apparaître. Les initialiseurs doivent être `healthy` après succès.
 
 ## Installation initiale
 

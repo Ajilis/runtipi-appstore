@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 pour Runtipi 4.9.1 : LAN autonome, admin global, RustFS et correctif Nginx 500 sur la console d'administration.",
-  "tipi_version": 11,
+  "description": "LobeHub 2.3.2 : premiere installation autonome avec initialisation surveillee, Runtipi 4.12 affiche un statut stable sans service systemd.",
+  "tipi_version": 12,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
