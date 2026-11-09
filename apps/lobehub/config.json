@@ -8,8 +8,8 @@
   "categories": [
     "ai"
   ],
-  "description": "LobeHub 2.3.2 : premiere installation autonome avec initialisation surveillee, Runtipi 4.12 affiche un statut stable sans service systemd.",
-  "tipi_version": 12,
+  "description": "LobeHub 2.3.2 : installation autonome sur Runtipi 4.12, init en veille apres succes, correction de la variable admin-precheck Compose.",
+  "tipi_version": 13,
   "version": "2.3.2",
   "source": "https://github.com/lobehub/lobehub",
   "website": "https://lobehub.com",
