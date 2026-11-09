@@ -1,6 +1,6 @@
 # LobeHub 2.3.2 — Runtipi 4.9.1 — administrateur global et inscriptions verrouillées
 
-Révision Runtipi **12**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
+Révision Runtipi **13**. LobeHub est hébergé avec ParadeDB/PostgreSQL, Redis, RustFS et une passerelle Nginx sous **un seul hostname Cloudflare Tunnel**. **La première identité est un administrateur global**, créé **avant toute ouverture de l'interface publique**. Les utilisateurs suivants ne peuvent être créés que par cet administrateur au moyen de l'API Better Auth existante.
 
 ## Clé Vault : génération sûre et réutilisation (révision Runtipi 5)
 
@@ -78,7 +78,9 @@ La règle utilise désormais un préfixe `location ^~ /_runtipi_admin/` et l'`al
 
 **Validation locale :** avec le binaire Nginx, la règle antérieure renvoie HTTP 500 sur `/_runtipi_admin/` ; la nouvelle règle répond HTTP 200 et refuse les fichiers inexistants (404). Cette validation ne remplace pas un test après mise à jour de l'instance réelle.
 
-## Installation autonome sur un Runtipi vierge (révision 12)
+## Installation autonome sur un Runtipi vierge (révision 13)
+
+**Correctif révision 13 — première installation :** la révision 12 laissait `$result` non échappé deux fois dans le script shell de `lobehub-admin-precheck`. Docker Compose interpolait `$result` en chaîne vide avant de lancer le conteneur, ce qui provoquait `Etat admin inattendu.`, des redémarrages en boucle et un `docker compose up` en échec. La révision 13 utilise `$result` pour laisser la variable shell au conteneur. Tous les autres usages de variables shell de ce Compose ont été revérifiés ; aucun autre `$variable` non échappé n'a été détecté. Les marqueurs de réussite, le maintien en veille des init et les dépendances `service_healthy` restent inchangés.
 
 La première installation LobeHub s'effectue entièrement depuis le formulaire Runtipi, avec une adresse LAN, sans installation de service `systemd`, sans commande SSH et sans Cloudflare Tunnel préalable.
 
