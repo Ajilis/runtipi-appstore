@@ -1,0 +1,12 @@
+[Unit]
+Description=Nettoyage prudent des conteneurs temporaires LobeHub dans Runtipi
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit=runtipi-lobehub-init-cleanup.service
+
+[Install]
+WantedBy=timers.target
