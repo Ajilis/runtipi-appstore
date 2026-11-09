@@ -8,6 +8,10 @@
 
 ## LobeHub 2.3.2 — premier administrateur global, inscriptions verrouillées
 
+**Runtipi 4.12.0 — correctif optionnel du faux statut « Arrêté » :** les cinq jobs d'initialisation de LobeHub sont normalement `Exited (0)`. Le [nettoyage automatique prudent](apps/lobehub/metadata/description.md#initialisateurs-exécutés-une-fois-puis-retirés-du-suivi-runtipi) vérifie que les cinq services permanents sont `healthy`, puis retire sans supprimer les volumes les conteneurs temporaires terminés avec succès. Les scripts `systemd` sont inclus dans [`apps/lobehub/scripts/`](apps/lobehub/scripts/cleanup-completed-init.sh) et s'installent une seule fois sur le serveur Runtipi. **Aucune modification du Compose ni des secrets ; la révision applicative reste à 11.**
+
+
+
 Révision Runtipi **11** : correction de la page admin Nginx (HTTP 500, fichier de configuration v4) ; correction du port LAN 8292 dans l'éditeur Runtipi (pas de séparateurs `: ` imbriqués) ; initialisation RustFS fiable (readiness, retries ciblés, logs par étape) et suppression des secrets S3 des arguments de démarrage ; horodatage du catalogue corrigé pour que LobeHub soit à nouveau visible ; première installation entièrement en LAN, sans tunnel Cloudflare ; URL publique facultative, clé Vault valide et contrôles de santé locaux ; premier compte administrateur précréé avant l'ouverture publique, puis création des utilisateurs réservée à cet administrateur via `/_runtipi_admin/`. Les inscriptions publiques sont bloquées. **8292** reste l'unique port publié et un seul hostname Cloudflare Tunnel suffit ; RustFS, PostgreSQL et Redis restent internes et persistants. **Aucun Traefik.** [Compose](apps/lobehub/docker-compose.yml) · [Formulaire Runtipi](apps/lobehub/config.json) · [Installation et migration](apps/lobehub/metadata/description.md).
 
 ---

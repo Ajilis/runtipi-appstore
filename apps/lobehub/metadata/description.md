@@ -78,6 +78,31 @@ La règle utilise désormais un préfixe `location ^~ /_runtipi_admin/` et l'`al
 
 **Validation locale :** avec le binaire Nginx, la règle antérieure renvoie HTTP 500 sur `/_runtipi_admin/` ; la nouvelle règle répond HTTP 200 et refuse les fichiers inexistants (404). Cette validation ne remplace pas un test après mise à jour de l'instance réelle.
 
+## Initialisateurs exécutés une fois, puis retirés du suivi Runtipi
+
+**Pourquoi :** Runtipi 4.12.0 répertorie les cinq conteneurs d'initialisation `Exited (0)` parmi les conteneurs de l'application et déclare à tort `5/10 running` → `stopped`, alors que les cinq services permanents sont sains. Le Compose seul ne peut pas supprimer automatiquement ses propres conteneurs sans privilèges Docker sur l'hôte.
+
+**Solution facultative, à installer une seule fois sur l'hôte Runtipi :** le script [`scripts/cleanup-completed-init.sh`](scripts/cleanup-completed-init.sh), exécuté par une unité systemd toutes les minutes, contrôle d'abord que les cinq services permanents sont **`running (healthy)`**. Il exige ensuite que les cinq initialisateurs encore présents soient **`Exited (0)`** ; si l'un n'a pas réussi, **aucun conteneur n'est supprimé**. Lorsqu'ils ont tous réussi, le script supprime exclusivement les ID de ces cinq conteneurs temporaires avec `docker rm` (jamais `-f`, jamais `-v`). Après nettoyage, Docker et Runtipi ne voient plus que les cinq services permanents en cours d'exécution.
+
+Les étapes d'initialisation continuent à fonctionner normalement sur **la première installation et les redémarrages qui recréent les conteneurs**. Le nettoyage se réexécute après leur réussite, sans migrer à nouveau les données ni supprimer les configurations. Aucun socket Docker n'est monté dans un conteneur LobeHub : seul le serveur hôte exécute les vérifications et la suppression.
+
+Depuis le répertoire d'installation Runtipi, après `./runtipi-cli appstore update`, en tant que root :
+
+```sh
+install -m 0755 repos/appstore-ajilis/apps/lobehub/scripts/cleanup-completed-init.sh /usr/local/sbin/runtipi-lobehub-init-cleanup
+install -m 0644 repos/appstore-ajilis/apps/lobehub/scripts/runtipi-lobehub-init-cleanup.service /etc/systemd/system/
+install -m 0644 repos/appstore-ajilis/apps/lobehub/scripts/runtipi-lobehub-init-cleanup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now runtipi-lobehub-init-cleanup.timer
+systemctl start runtipi-lobehub-init-cleanup.service
+```
+
+Pour contrôler le résultat : `systemctl status runtipi-lobehub-init-cleanup.timer`, `journalctl -u runtipi-lobehub-init-cleanup.service -n 30 --no-pager`, puis `docker ps -a --filter "label=com.docker.compose.project=lobehub_appstore-ajilis"`.
+
+Pour désactiver ce nettoyage : `systemctl disable --now runtipi-lobehub-init-cleanup.timer`. Après désinstallation définitive de LobeHub, désactiver et supprimer l'unité et la minuterie de l'hôte.
+
+**Limites :** l'état affiché par Runtipi peut demander un cycle de synchronisation supplémentaire (environ 5 minutes). Si un service permanent est `unhealthy`, le script ne modifie rien : régler d'abord la panne. Si Runtipi change sa méthode de calcul des états, désactiver ce mécanisme. Ce contournement ne remplace pas une correction du service `app-status-sync.service.ts` de Runtipi en amont.
+
 ## Installation initiale
 
 1. Dans Runtipi, actualiser le store `https://github.com/Ajilis/runtipi-appstore`, puis installer **LobeHub**.
