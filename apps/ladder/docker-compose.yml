@@ -1,0 +1,25 @@
+# Ladder v0.0.23 — Runtipi 4.9.1, sans Traefik.
+# LAN: http://IP_DU_SERVEUR:8295 ; Cloudflare Tunnel: origine HTTP identique.
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:v0.0.23
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      USERPASS: "${LADDER_USERNAME}:${LADDER_PASSWORD}"
+      RULESET: "${LADDER_RULESET_URL:-https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml}"
+      ALLOWED_DOMAINS: "${LADDER_ALLOWED_DOMAINS:-}"
+      LOG_URLS: "false"
+      EXPOSE_RULESET: "false"
+      PREFORK: "false"
+      TZ: "${TZ:-Europe/Paris}"
+    ports:
+      - "8295:8080/tcp"
+    labels:
+      traefik.enable: "false"
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+
+x-runtipi:
+  schema_version: 2
