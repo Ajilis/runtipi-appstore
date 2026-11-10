@@ -1,0 +1,68 @@
+{
+  "name": "Ladder",
+  "id": "ladder",
+  "available": true,
+  "short_desc": "Proxy Web HTTP auto-hébergé pour tester les en-têtes et règles de diffusion de sites.",
+  "author": "everywall",
+  "port": 8295,
+  "categories": [
+    "utilities",
+    "development"
+  ],
+  "description": "Ladder 0.0.23 : proxy HTTP de test, protégé par authentification Basic Auth. Accessible en LAN sur le port 8295 et via Cloudflare Tunnel en origine HTTP, sans Traefik. Règles chargées depuis l’URL officielle configurable ; configuration Runtipi persistante.",
+  "tipi_version": 1,
+  "version": "0.0.23",
+  "source": "https://github.com/everywall/ladder",
+  "website": "https://github.com/everywall/ladder",
+  "exposable": false,
+  "force_expose": false,
+  "https": false,
+  "dynamic_config": true,
+  "min_tipi_version": "4.9.1",
+  "supported_architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "form_fields": [
+    {
+      "type": "text",
+      "label": "Identifiant d'accès Ladder",
+      "hint": "Nom d'utilisateur HTTP Basic Auth (différent du compte Runtipi). Ne pas utiliser de deux-points.",
+      "required": true,
+      "default": "admin",
+      "regex": "^[A-Za-z0-9_.-]{3,50}$",
+      "pattern_error": "3 à 50 caractères, lettres, chiffres, point, tiret ou underscore.",
+      "env_variable": "LADDER_USERNAME"
+    },
+    {
+      "type": "password",
+      "label": "Mot de passe d'accès Ladder",
+      "hint": "Mot de passe de Basic Auth à conserver. Au moins 12 caractères ; le caractère : est interdit car USERPASS utilise le séparateur :.",
+      "required": true,
+      "min": 12,
+      "max": 128,
+      "regex": "^[^:\\r\\n]{12,128}$",
+      "pattern_error": "Entre 12 et 128 caractères, sans deux-points ni retour à la ligne.",
+      "env_variable": "LADDER_PASSWORD"
+    },
+    {
+      "type": "text",
+      "label": "URL du jeu de règles Ladder",
+      "hint": "URL HTTPS officielle des règles ; contenu distant susceptible de changer sans mise à jour du conteneur. Une URL privée n'est pas recommandée.",
+      "default": "https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml",
+      "required": true,
+      "env_variable": "LADDER_RULESET_URL"
+    },
+    {
+      "type": "text",
+      "label": "Domaines autorisés (optionnel)",
+      "hint": "Liste séparée par des virgules (exemple : example.org,example.com). Vide : aucune restriction de destination. Recommandé pour une instance publique.",
+      "required": false,
+      "default": "",
+      "env_variable": "LADDER_ALLOWED_DOMAINS"
+    }
+  ],
+  "created_at": 1794323700000,
+  "updated_at": 1794323700000,
+  "no_gui": false
+}
