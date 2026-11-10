@@ -9,8 +9,8 @@
     "utilities",
     "development"
   ],
-  "description": "Ladder 0.0.23 : proxy HTTP de test, protégé par authentification Basic Auth. Accessible en LAN sur le port 8295 et via Cloudflare Tunnel en origine HTTP, sans Traefik. Règles chargées depuis l’URL officielle configurable ; configuration Runtipi persistante.",
-  "tipi_version": 1,
+  "description": "Ladder 0.0.23 avec AuthCrunch 1.6.2 : portail de connexion Web, stockage persistant des identités et sessions, LAN 8295 et Cloudflare Tunnel en origine HTTP, sans Traefik.",
+  "tipi_version": 2,
   "version": "0.0.23",
   "source": "https://github.com/everywall/ladder",
   "website": "https://github.com/everywall/ladder",
@@ -26,8 +26,8 @@
   "form_fields": [
     {
       "type": "text",
-      "label": "Identifiant d'accès Ladder",
-      "hint": "Nom d'utilisateur HTTP Basic Auth (différent du compte Runtipi). Ne pas utiliser de deux-points.",
+      "label": "Identifiant de connexion Web",
+      "hint": "Compte initial AuthCrunch, utilisant l'ancien identifiant Ladder. Conserver le compte lors des mises à jour.",
       "required": true,
       "default": "admin",
       "regex": "^[A-Za-z0-9_.-]{3,50}$",
@@ -36,13 +36,13 @@
     },
     {
       "type": "password",
-      "label": "Mot de passe d'accès Ladder",
-      "hint": "Mot de passe de Basic Auth à conserver. Au moins 12 caractères ; le caractère : est interdit car USERPASS utilise le séparateur :.",
+      "label": "Mot de passe initial de connexion Web",
+      "hint": "Mot de passe initial AuthCrunch. Pour éviter les problèmes de syntaxe Caddyfile, ne pas utiliser de guillemet double ni de retour à la ligne.",
       "required": true,
       "min": 12,
       "max": 128,
-      "regex": "^[^:\\r\\n]{12,128}$",
-      "pattern_error": "Entre 12 et 128 caractères, sans deux-points ni retour à la ligne.",
+      "regex": "^[^:\"\\r\\n]{12,128}$",
+      "pattern_error": "12 à 128 caractères, sans deux-points ni guillemets doubles.",
       "env_variable": "LADDER_PASSWORD"
     },
     {
@@ -63,6 +63,6 @@
     }
   ],
   "created_at": 1794323700000,
-  "updated_at": 1794323700000,
+  "updated_at": 1794331080000,
   "no_gui": false
 }
