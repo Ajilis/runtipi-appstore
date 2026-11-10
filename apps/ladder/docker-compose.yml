@@ -1,25 +1,101 @@
-# Ladder v0.0.23 — Runtipi 4.9.1, sans Traefik.
-# LAN: http://IP_DU_SERVEUR:8295 ; Cloudflare Tunnel: origine HTTP identique.
+# Ladder 0.0.23 + AuthCrunch 1.6.2 / Runtipi 4.9.1
+# HTTP LAN 8295 => AuthCrunch 8080 => Ladder 8080 (internal only).
 services:
   ladder:
     image: ghcr.io/everywall/ladder:v0.0.23
     restart: unless-stopped
     environment:
       PORT: "8080"
-      USERPASS: "${LADDER_USERNAME}:${LADDER_PASSWORD}"
       RULESET: "${LADDER_RULESET_URL:-https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml}"
       ALLOWED_DOMAINS: "${LADDER_ALLOWED_DOMAINS:-}"
       LOG_URLS: "false"
       EXPOSE_RULESET: "false"
       PREFORK: "false"
       TZ: "${TZ:-Europe/Paris}"
+    expose:
+      - "8080"
+    labels:
+      traefik.enable: "false"
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+
+  ladder-auth:
+    image: ghcr.io/authcrunch/authcrunch:v1.6.2
+    restart: unless-stopped
+    depends_on:
+      - ladder
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 077
+        mkdir -p /data/authcrunch/caddy
+        if [ ! -s /data/authcrunch/signing.key ]; then
+          od -An -N32 -tx1 /dev/urandom | tr -d ' \\n' > /data/authcrunch/signing.key.tmp
+          mv -n /data/authcrunch/signing.key.tmp /data/authcrunch/signing.key
+        fi
+        export AUTHCRUNCH_SIGNING_KEY="$$(cat /data/authcrunch/signing.key)"
+        printf '%s\n' "$$LADDER_CADDYFILE" > /tmp/Caddyfile
+        caddy adapt --config /tmp/Caddyfile --adapter caddyfile >/dev/null
+        exec caddy run --config /tmp/Caddyfile --adapter caddyfile
+    environment:
+      LADDER_USERNAME: "${LADDER_USERNAME}"
+      LADDER_PASSWORD: "${LADDER_PASSWORD}"
+      LADDER_CADDYFILE: |
+        {
+            admin off
+            persist_config off
+            storage file_system /data/authcrunch/caddy
+            security {
+                local identity store localdb {
+                    realm local
+                    path /data/authcrunch/users.json
+                    user {$$LADDER_USERNAME} {
+                        name Ladder Admin
+                        email admin@ladder.local
+                        password "{$$LADDER_PASSWORD}"
+                        roles authp/admin authp/user
+                    }
+                }
+                authentication portal myportal {
+                    enable identity store localdb
+                    crypto key sign-verify {env.AUTHCRUNCH_SIGNING_KEY}
+                    cookie insecure enabled
+                    cookie prefix LADDER
+                    ui {
+                        links {
+                            "Ladder" / icon "las la-external-link-alt"
+                        }
+                    }
+                }
+                authorization policy apppolicy {
+                    set auth url /auth/login
+                    crypto key verify {env.AUTHCRUNCH_SIGNING_KEY}
+                    allow roles authp/admin authp/user
+                    set session_id cookie name LADDER_SESSION_ID
+                    set access_token cookie name LADDER_ACCESS_TOKEN
+                }
+            }
+        }
+        http://:8080 {
+            route /auth* {
+                redir /auth /auth/ 308
+                authenticate with myportal
+            }
+            route /* {
+                authorize with apppolicy
+                reverse_proxy ladder:8080
+            }
+        }
+    volumes:
+      - "${APP_DATA_DIR}/authcrunch:/data/authcrunch"
     ports:
       - "8295:8080/tcp"
     labels:
       traefik.enable: "false"
     security_opt:
       - no-new-privileges:true
-    stop_grace_period: 20s
+    stop_grace_period: 30s
 
 x-runtipi:
   schema_version: 2
